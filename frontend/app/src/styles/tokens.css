@@ -1,0 +1,36 @@
+/* VistaFlow Design Tokens */
+
+:root,
+[data-theme="dawn"] {
+  --color-bg: #030303;
+  --color-surface: rgba(255, 255, 255, 0.04);
+  --color-surface-hover: rgba(255, 255, 255, 0.07);
+  --color-border: rgba(255, 255, 255, 0.08);
+  --color-text-primary: #F5F5F7;
+  --color-text-secondary: #8A8A8E;
+  --color-pulse: #E5C07B;
+  --color-pulse-dim: rgba(229, 192, 123, 0.3);
+  --color-pulse-glow: rgba(229, 192, 123, 0.15);
+  --aura-color-1: #1a2a40;
+  --aura-color-2: rgba(229, 192, 123, 0.15);
+  --path-color: rgba(229, 192, 123, 0.3);
+  --color-overlay-bg: rgba(0, 0, 0, 0.6);
+  --color-modal-bg: rgba(10, 10, 12, 0.92);
+}
+
+[data-theme="dusk"] {
+  --color-bg: #030303;
+  --color-surface: rgba(255, 255, 255, 0.04);
+  --color-surface-hover: rgba(255, 255, 255, 0.07);
+  --color-border: rgba(255, 255, 255, 0.08);
+  --color-text-primary: #F5F5F7;
+  --color-text-secondary: #8A8A8E;
+  --color-pulse: #8B5CF6;
+  --color-pulse-dim: rgba(139, 92, 246, 0.3);
+  --color-pulse-glow: rgba(139, 92, 246, 0.15);
+  --aura-color-1: #110e24;
+  --aura-color-2: rgba(139, 92, 246, 0.15);
+  --path-color: rgba(139, 92, 246, 0.3);
+  --color-overlay-bg: rgba(0, 0, 0, 0.6);
+  --color-modal-bg: rgba(10, 10, 12, 0.92);
+}

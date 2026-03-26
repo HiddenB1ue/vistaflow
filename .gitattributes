@@ -1,0 +1,45 @@
+# Set the default behavior, in case people don't have core.autocrlf set.
+# （核心！仓库统一存 LF，即使你在 Windows 用 CRLF 编辑也没问题）
+* text=auto
+
+# Explicitly declare text files you want to always be normalized
+# （可选：明确声明源码文件，让 Git 更严格规范化）
+*.c text
+*.h text
+*.cpp text
+*.java text
+*.py text
+*.js text
+*.ts text
+*.jsx text
+*.tsx text
+*.html text
+*.css text
+*.md text
+*.json text
+*.yml text
+*.yaml text
+
+# Force LF for shell scripts and Unix-style files（强烈推荐！）
+# （这些文件在 Windows 检出也强制用 LF，避免脚本在 Linux/Mac 上出问题）
+*.sh text eol=lf
+*.bash text eol=lf
+*.zsh text eol=lf
+Makefile text eol=lf
+
+# Declare files that will always have CRLF on checkout（很少用，仅 Windows 项目需要）
+# *.sln text eol=crlf   # 如果你有 Visual Studio 项目才取消注释
+
+# Denote all files that are truly binary and should not be modified.
+# （防止图片、字体等被 Git 错误当成文本而损坏）
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pdf binary
+*.zip binary
+*.exe binary
+*.dll binary
+*.so binary
+*.dylib binary

@@ -1,0 +1,648 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VistaFlow | 智能出行规划</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/ScrollTrigger.min.js"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        void: '#030303',
+                        starlight: '#F5F5F7',
+                        dawn: '#E5C07B',
+                        dusk: '#8B5CF6',
+                        muted: '#8A8A8E'
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        display: ['"Space Grotesk"', 'sans-serif'],
+                        serif: ['"Cormorant Garamond"', 'serif']
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;1,400&family=Inter:wght@300;400;500&family=Space+Grotesk:wght@300;400;500&display=swap');
+        
+        body { background-color: #030303; color: #F5F5F7; overflow-x: hidden; transition: background-color 1s; }
+        ::-webkit-scrollbar { width: 0px; background: transparent; }
+
+        :root {
+            --aura-color-1: #1a2a40;
+            --aura-color-2: rgba(229, 192, 123, 0.15);
+            --path-color: rgba(229, 192, 123, 0.3);
+            --pulse-color: #E5C07B;
+            --bg-color: #030303;
+        }
+        
+        body.night-mode {
+            --aura-color-1: #110e24;
+            --aura-color-2: rgba(139, 92, 246, 0.15);
+            --path-color: rgba(139, 92, 246, 0.3);
+            --pulse-color: #8B5CF6;
+        }
+
+        .aura-container { position: fixed; inset: 0; z-index: 0; pointer-events: none; }
+        .aura { position: absolute; border-radius: 50%; filter: blur(120px); opacity: 0.4; transition: transform 0.8s cubic-bezier(0.23, 1, 0.32, 1), background 2s ease; }
+        .aura-1 { width: 70vw; height: 70vw; background: radial-gradient(circle, var(--aura-color-1) 0%, transparent 70%); top: -20%; left: -10%; }
+        .aura-2 { width: 50vw; height: 50vw; background: radial-gradient(circle, var(--aura-color-2) 0%, transparent 70%); bottom: -10%; right: -10%; }
+
+        .noise { position: fixed; inset: 0; z-index: 5; pointer-events: none; opacity: 0.04; background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E"); }
+        
+        .nl-input { background: transparent; border: none; border-bottom: 1px solid rgba(255,255,255,0.2); color: var(--pulse-color); font-family: 'Space Grotesk', sans-serif; text-align: center; outline: none; transition: border-color 0.4s, width 0.4s, color 1s; width: 140px; font-size: 1.5rem; cursor: text; }
+        .nl-input:focus { border-bottom-color: var(--pulse-color); width: 180px; }
+        .nl-input.date-input { width: 160px; }
+        .nl-input.date-input:focus { width: 200px; }
+
+        /* 卡片样式 */
+        .ticket-card { background: transparent; border: 1px solid transparent; border-bottom: 1px solid rgba(255,255,255,0.08); transition: all 0.4s cubic-bezier(0.19, 1, 0.22, 1); padding: 2rem 1.5rem; margin-bottom: 1rem; border-radius: 12px; position: relative; }
+        .ticket-card:hover { background: rgba(255,255,255,0.02); }
+        .ticket-card.active { border: 1px solid rgba(255, 255, 255, 0.1); background: rgba(255, 255, 255, 0.03); box-shadow: 0 10px 40px -10px rgba(0,0,0,0.5); }
+        .ticket-card::before { content: ''; position: absolute; left: -1px; top: 1.5rem; bottom: 1.5rem; width: 3px; background: var(--pulse-color); border-radius: 0 4px 4px 0; opacity: 0; transition: opacity 0.3s; }
+        .ticket-card.active::before { opacity: 1; }
+
+        .details-panel { max-height: 0; overflow: hidden; transition: max-height 0.6s cubic-bezier(0.19, 1, 0.22, 1), opacity 0.4s; opacity: 0; }
+        .ticket-card.active .details-panel { max-height: 2000px; opacity: 1; padding-top: 2rem; }
+
+        /* 紧凑型经停面板 (防信息爆炸) */
+        .stops-panel { max-height: 0; overflow-y: auto; transition: max-height 0.4s ease; opacity: 0; margin-top: 0; }
+        .stops-panel.expanded { max-height: 160px; opacity: 1; margin-top: 1rem; background: rgba(0,0,0,0.3); border-radius: 8px; padding: 0.5rem 1rem; border: 1px solid rgba(255,255,255,0.05); }
+        .stops-panel::-webkit-scrollbar { width: 4px; }
+        .stops-panel::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); border-radius: 4px; }
+
+        /* 转场覆盖层 (结合v9带有文字和进度条的剧场级动画) */
+        .transition-overlay { 
+            position: fixed; top: 0; left: 0; width: 100%; height: 100vh; 
+            background: var(--bg-color); z-index: 9999; 
+            transform: translateY(100%); 
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            border-top: 1px solid rgba(255,255,255,0.1);
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+        }
+        .loading-text {
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 1.2rem;
+            color: var(--pulse-color);
+            letter-spacing: 0.2em;
+            text-transform: uppercase;
+            opacity: 0;
+        }
+
+        #results-dashboard { opacity: 1; }
+
+        /* 右侧列表区域粘性头部 */
+        .sticky-header {
+            position: sticky; top: 0; z-index: 40;
+            padding-bottom: 1.5rem; margin-bottom: 1.5rem;
+        }
+
+        /* 地图样式 */
+        .map-path { stroke-dasharray: 1000; stroke-dashoffset: 1000; transition: stroke-dashoffset 1.5s ease-in-out, stroke 1s; stroke: var(--path-color); stroke-width: 2; fill: none;}
+        .map-idle-path { stroke: rgba(255,255,255,0.05); stroke-width: 1; fill: none; stroke-dasharray: 4 4; animation: dash 20s linear infinite; }
+        .map-pulse { fill: var(--pulse-color); filter: drop-shadow(0 0 6px var(--pulse-color)); transition: fill 1s; }
+        
+        @keyframes dash { to { stroke-dashoffset: -100; } }
+
+        /* 高级侧边栏 */
+        #filter-drawer {
+            position: fixed; top: 0; right: -500px; width: 460px; height: 100vh;
+            background: rgba(10, 10, 12, 0.95); backdrop-filter: blur(40px);
+            border-left: 1px solid rgba(255,255,255,0.08); z-index: 150;
+            padding: 3rem; display: flex; flex-direction: column;
+            transition: right 0.5s cubic-bezier(0.19, 1, 0.22, 1);
+        }
+        #filter-drawer.open { right: 0; }
+
+        .custom-toggle { position: relative; width: 44px; height: 24px; background: rgba(255,255,255,0.1); border-radius: 12px; cursor: pointer; transition: background 0.3s; }
+        .custom-toggle::after { content: ''; position: absolute; top: 2px; left: 2px; width: 20px; height: 20px; background: #F5F5F7; border-radius: 50%; transition: transform 0.3s; }
+        .custom-toggle.active { background: var(--pulse-color); }
+        .custom-toggle.active::after { transform: translateX(20px); background: #030303; }
+
+        .time-theme-text { transition: color 1s; }
+        body:not(.night-mode) .time-theme-text { color: #E5C07B; }
+        body.night-mode .time-theme-text { color: #8B5CF6; }
+        body:not(.night-mode) .time-theme-bg { background-color: #E5C07B; }
+        body.night-mode .time-theme-bg { background-color: #8B5CF6; }
+        body:not(.night-mode) .hover-time-theme:hover { background-color: #E5C07B; color: #030303; }
+        body.night-mode .hover-time-theme:hover { background-color: #8B5CF6; color: #F5F5F7; }
+
+        /* ===== 页面路由系统 ===== */
+        .page { display: none; opacity: 0; }
+        .page.active { display: block; opacity: 1; }
+        /* results page 需要 flex 布局，覆盖 display:block */
+        #page-results.active { display: block; }
+        #results-dashboard { display: flex; opacity: 1; }
+    </style>
+</head>
+<body>
+    
+    <!-- ===== 全局背景层（跨页面保留）===== -->
+    <div class="noise"></div>
+    <div class="aura-container">
+        <div class="aura aura-1" id="aura-1"></div>
+        <div class="aura aura-2" id="aura-2"></div>
+    </div>
+
+    <!-- ===== 页面转场覆盖层 ===== -->
+    <div class="transition-overlay" id="transition-overlay">
+        <div class="loading-text" id="loading-text">环境感知中...</div>
+        <div class="w-48 h-[1px] bg-white/10 mt-6 relative overflow-hidden hidden" id="loading-bar-container">
+            <div class="absolute left-0 top-0 h-full w-1/3 time-theme-bg" id="loading-bar"></div>
+        </div>
+    </div>
+
+    <!-- ===== 全局导航栏（跨页面保留）===== -->
+    <nav class="fixed top-0 w-full p-8 md:p-12 flex justify-between items-center z-50 mix-blend-difference">
+        <div class="font-display font-medium text-xl tracking-[0.3em] uppercase text-white cursor-pointer" onclick="navigateTo('page-home')">VistaFlow</div>
+        <div class="flex items-center gap-8">
+            <!-- 面包屑导航：仅在结果页显示 -->
+            <div id="nav-breadcrumb" class="hidden items-center gap-3 text-xs font-display tracking-widest text-muted">
+                <span class="cursor-pointer hover:text-white transition-colors" onclick="navigateTo('page-home')">首页</span>
+                <span class="opacity-30">/</span>
+                <span class="time-theme-text" id="nav-breadcrumb-label">出行方案</span>
+            </div>
+            <button class="text-sm font-display tracking-widest hover:text-white text-gray-400 transition-colors flex items-center gap-2 cursor-pointer" onclick="toggleFilterDrawer()">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"></path></svg>
+                出行偏好
+            </button>
+        </div>
+    </nav>
+
+    <!-- ============================================================ -->
+    <!--  PAGE 1: 首页 / 搜索页                                        -->
+    <!-- ============================================================ -->
+    <div id="page-home" class="page active">
+
+    <!-- 英雄区 (Hero) -->
+    <section id="hero-section" class="relative h-screen flex flex-col items-center justify-center z-10 w-full px-6 overflow-hidden">
+        <div id="hero-content" class="text-center w-full max-w-6xl">
+            <h1 class="text-5xl md:text-7xl font-light tracking-widest mb-16 gs-reveal-up">
+                <span class="font-serif italic text-muted text-4xl block mb-6" id="time-greeting">Plan your journey.</span>
+                智能规划，<span class="font-serif italic time-theme-text">让出行更简单。</span>
+            </h1>
+            
+            <div class="text-2xl md:text-3xl font-light tracking-wide flex flex-wrap justify-center items-center gap-y-8 gs-reveal-up leading-relaxed">
+                <span class="text-muted">我想从</span>
+                <input type="text" id="origin-input" value="北京" class="nl-input mx-4">
+                <span class="text-muted">出发，前往</span>
+                <input type="text" id="dest-input" value="上海" class="nl-input mx-4">
+                <span class="text-muted">，</span>
+                <span class="text-muted w-full md:w-auto mt-4 md:mt-0">日期是</span>
+                <input type="text" id="date-input" value="3月25日" class="nl-input date-input mx-4">
+                <span class="text-muted">。</span>
+            </div>
+
+            <div class="mt-24 flex flex-col items-center gap-10 gs-reveal-up">
+                <button id="flow-btn" class="group relative bg-starlight text-void rounded-full px-12 py-5 text-sm font-medium tracking-[0.2em] uppercase overflow-hidden cursor-pointer">
+                    <span class="relative z-10 flex items-center gap-3">
+                        生成出行方案
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 8l4 4m0 0l-4 4m4-4H3"></path></svg>
+                    </span>
+                    <div class="absolute inset-0 time-theme-bg translate-y-full group-hover:translate-y-0 transition-transform duration-500"></div>
+                </button>
+            </div>
+        </div>
+    </section>
+
+    </div><!-- /page-home -->
+
+    <!-- ============================================================ -->
+    <!--  PAGE 2: 结果页 / 方案仪表盘                                   -->
+    <!-- ============================================================ -->
+    <div id="page-results" class="page">
+
+    <!-- 偏好与设定侧边栏 -->
+    <div id="filter-drawer" class="shadow-2xl">
+        <div class="flex justify-between items-center mb-16">
+            <div>
+                <div class="text-xs time-theme-text font-display tracking-[0.3em] uppercase mb-2">Preferences</div>
+                <h3 class="font-serif text-3xl italic text-starlight">出行偏好</h3>
+            </div>
+            <button class="text-muted hover:text-white p-2 cursor-pointer" onclick="toggleFilterDrawer()">
+                <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M6 18L18 6M6 6l12 12"></path></svg>
+            </button>
+        </div>
+
+        <div class="space-y-12 flex-1 overflow-y-auto pr-4" style="scrollbar-width: none;">
+            <div>
+                <div class="text-sm text-starlight mb-6 flex items-center justify-between">
+                    <span>仅看直达</span>
+                    <div class="custom-toggle" onclick="this.classList.toggle('active')"></div>
+                </div>
+                <p class="text-xs text-muted leading-relaxed font-light">只显示无需换乘的直达车次。</p>
+            </div>
+            
+            <div class="border-t border-white/10 pt-10">
+                <div class="text-xs text-muted tracking-widest uppercase mb-6">座位偏好</div>
+                <div class="space-y-6 text-sm text-starlight">
+                    <div class="flex items-center justify-between">
+                        <span>商务座 / 特等座</span>
+                        <div class="custom-toggle active" onclick="this.classList.toggle('active')"></div>
+                    </div>
+                    <div class="flex items-center justify-between">
+                        <span>一等座</span>
+                        <div class="custom-toggle active" onclick="this.classList.toggle('active')"></div>
+                    </div>
+                    <div class="flex items-center justify-between">
+                        <span>二等座</span>
+                        <div class="custom-toggle" onclick="this.classList.toggle('active')"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="pt-8 border-t border-white/10 mt-auto">
+            <button class="w-full bg-starlight text-void py-5 rounded-lg text-sm font-medium tracking-[0.2em] uppercase hover-time-theme transition-colors cursor-pointer" onclick="toggleFilterDrawer()">
+                保存设置
+            </button>
+        </div>
+    </div>
+
+    <!-- 结果仪表盘 -->
+    <section id="results-dashboard" class="fixed inset-0 z-40 pt-32 pb-10 px-8 lg:px-20 flex flex-col lg:flex-row gap-12">
+        
+        <!-- 左侧：地图脉冲 -->
+        <div class="hidden lg:flex w-4/12 h-full flex-col justify-between border-r border-white/10 pr-10">
+            <div>
+                <div class="text-xs time-theme-text font-display tracking-[0.3em] uppercase mb-4 opacity-80">Route Map</div>
+                <h2 class="font-serif text-5xl italic font-light text-starlight mb-2" id="route-display-title">北京 到 上海</h2>
+                <div class="text-sm text-muted" id="map-status-text">未选择具体方案，全览模式。</div>
+            </div>
+            
+            <div class="flex-1 flex items-center justify-center py-10 relative">
+                <svg class="w-full h-full max-h-[500px]" viewBox="0 0 200 400" id="map-svg"></svg>
+            </div>
+
+            <div class="text-xs text-muted font-light tracking-widest uppercase flex items-center gap-3">
+                <div class="w-1.5 h-1.5 time-theme-bg rounded-full animate-pulse" id="map-indicator"></div> 
+                <span id="map-footer-text">AI 宏观拓扑预演</span>
+            </div>
+        </div>
+
+        <!-- 右侧：详尽数据列表 -->
+        <div class="w-full lg:w-8/12 h-full flex flex-col pl-2 relative">
+            <div class="sticky-header flex justify-between items-end border-b border-white/10 shrink-0">
+                <div class="text-lg font-serif italic text-starlight" id="result-date-title">3月25日 出行方案</div>
+                <div class="flex gap-8 text-sm font-display tracking-[0.1em] uppercase text-muted">
+                    <button class="time-theme-text font-medium cursor-pointer">智能推荐</button>
+                    <button class="hover:text-starlight transition-colors cursor-pointer">耗时最短</button>
+                    <button class="hover:text-starlight transition-colors cursor-pointer">价格最低</button>
+                </div>
+            </div>
+
+            <div id="route-list" class="flex-1 overflow-y-auto pb-32 scroll-smooth pr-4" style="scrollbar-width: none;">
+                <!-- 动态数据渲染 -->
+            </div>
+        </div>
+    </section>
+
+    </div><!-- /page-results -->
+
+    <script>
+        gsap.registerPlugin(ScrollTrigger);
+
+        // ===================================================
+        // 页面路由系统
+        // ===================================================
+        const PAGE_CONFIG = {
+            'page-home':    { breadcrumb: null },
+            'page-results': { breadcrumb: '出行方案' },
+        };
+
+        function navigateTo(pageId) {
+            const pages = document.querySelectorAll('.page');
+            pages.forEach(p => { p.classList.remove('active'); });
+
+            const target = document.getElementById(pageId);
+            if (!target) return;
+            target.classList.add('active');
+
+            // 更新面包屑
+            const cfg = PAGE_CONFIG[pageId];
+            const breadcrumb = document.getElementById('nav-breadcrumb');
+            const breadcrumbLabel = document.getElementById('nav-breadcrumb-label');
+            if (cfg && cfg.breadcrumb) {
+                breadcrumbLabel.innerText = cfg.breadcrumb;
+                breadcrumb.classList.remove('hidden');
+                breadcrumb.classList.add('flex');
+            } else {
+                breadcrumb.classList.add('hidden');
+                breadcrumb.classList.remove('flex');
+            }
+
+            // 入场动画
+            gsap.fromTo(target, { opacity: 0 }, { opacity: 1, duration: 0.5, ease: 'power2.out' });
+
+            // 首页专属动画
+            if (pageId === 'page-home') {
+                gsap.from('.gs-reveal-up', { y: 40, opacity: 0, duration: 1.5, stagger: 0.2, ease: 'power3.out' });
+            }
+        }
+
+        // ===================================================
+        // 初始化
+        // ===================================================
+        function checkTime() {
+            const hour = new Date().getHours();
+            const greetingEl = document.getElementById('time-greeting');
+            if (hour >= 18 || hour < 6) {
+                document.body.classList.add('night-mode');
+                greetingEl.innerText = 'Good evening.';
+            } else {
+                document.body.classList.remove('night-mode');
+                greetingEl.innerText = 'Good morning.';
+            }
+        }
+        checkTime();
+        navigateTo('page-home'); // 默认显示首页
+
+        document.addEventListener('mousemove', (e) => {
+            gsap.to('#aura-1', { x: e.clientX * 0.05, y: e.clientY * 0.05, duration: 2 });
+            gsap.to('#aura-2', { x: -e.clientX * 0.05, y: -e.clientY * 0.05, duration: 2 });
+        });
+
+        function toggleFilterDrawer() { 
+            document.getElementById('filter-drawer').classList.toggle('open'); 
+        }
+
+        const generateStops = (count, startHour) => {
+            let stops = [];
+            let h = startHour;
+            for(let i=0; i<count; i++) {
+                h++;
+                stops.push(`站点${i+1} (${h < 10 ? '0'+h : h}:15) - 停留 2 分钟`);
+            }
+            return stops;
+        };
+
+        const routes = [
+            { id: 'R1', type: '最优直达', time: '08:00 — 12:35', dur: '4小时 35分', price: 860, isDirect: true, segs: [{ no: 'G1', dep: '北京南', arr: '上海虹桥', tDep: '08:00', tArr: '12:35', seats: [{t:'商务座', p:2980, s:'仅剩 1 席'}, {t:'二等座', p:860, s:'充足'}], stops: generateStops(3, 8) }] },
+            { id: 'R2', type: '最优直达', time: '09:00 — 13:40', dur: '4小时 40分', price: 860, isDirect: true, segs: [{ no: 'G3', dep: '北京南', arr: '上海虹桥', tDep: '09:00', tArr: '13:40', seats: [{t:'一等座', p:1376, s:'充足'}, {t:'二等座', p:860, s:'充足'}], stops: generateStops(4, 9) }] },
+            { id: 'R3', type: '省时中转 (1次)', time: '09:15 — 15:40', dur: '6小时 25分', price: 795, isDirect: false, segs: [
+                { no: 'G105', dep: '北京南', arr: '济南西', tDep: '09:15', tArr: '11:05', seats: [{t:'二等座', p:215, s:'充足'}], stops: [] },
+                { transfer: '济南西 同站换乘 • 预留 45 分钟' },
+                { no: 'G213', dep: '济南西', arr: '上海虹桥', tDep: '11:50', tArr: '15:40', seats: [{t:'一等座', p:920, s:'充足'}, {t:'二等座', p:580, s:'余 5 席'}], stops: generateStops(8, 12) } 
+            ]},
+            { id: 'R4', type: '夜间直达', time: '19:00 — 07:15 (+1)', dur: '12小时 15分', price: 420, isDirect: true, segs: [{ no: 'D701', dep: '北京站', arr: '上海站', tDep: '19:00', tArr: '07:15', seats: [{t:'动卧', p:680, s:'充足'}, {t:'二等座', p:420, s:'已售罄'}], stops: generateStops(5, 20) }] },
+            { id: 'R5', type: '经济中转 (1次)', time: '07:30 — 15:10', dur: '7小时 40分', price: 680, isDirect: false, segs: [
+                { no: 'G201', dep: '北京南', arr: '徐州东', tDep: '07:30', tArr: '10:00', seats: [{t:'二等座', p:280, s:'充足'}], stops: generateStops(2, 7) },
+                { transfer: '徐州东 同站换乘 • 预留 30 分钟' },
+                { no: 'G411', dep: '徐州东', arr: '上海虹桥', tDep: '10:30', tArr: '15:10', seats: [{t:'二等座', p:400, s:'充足'}], stops: generateStops(6, 10) }
+            ]},
+            { id: 'R6', type: '极速直达', time: '10:00 — 14:18', dur: '4小时 18分', price: 920, isDirect: true, segs: [{ no: 'G5', dep: '北京南', arr: '上海虹桥', tDep: '10:00', tArr: '14:18', seats: [{t:'商务座', p:3100, s:'余 2 席'}, {t:'二等座', p:920, s:'充足'}], stops: ['南京南 (13:10) - 停留 2 分钟'] }] },
+            { id: 'R7', type: '异站中转 (1次)', time: '11:00 — 18:30', dur: '7小时 30分', price: 710, isDirect: false, segs: [
+                { no: 'G305', dep: '北京南', arr: '南京南', tDep: '11:00', tArr: '15:30', seats: [{t:'二等座', p:510, s:'充足'}], stops: generateStops(5, 11) },
+                { transfer: '南京南 换乘至 南京站 (需搭乘地铁约40分钟) • 预留 90 分钟' },
+                { no: 'D221', dep: '南京站', arr: '上海站', tDep: '17:00', tArr: '18:30', seats: [{t:'二等座', p:200, s:'充足'}], stops: [] }
+            ]},
+            { id: 'R8', type: '深度中转 (2次)', time: '06:00 — 16:20', dur: '10小时 20分', price: 650, isDirect: false, segs: [
+                { no: 'G111', dep: '北京南', arr: '天津西', tDep: '06:00', tArr: '07:30', seats: [{t:'二等座', p:180, s:'充足'}], stops: [] },
+                { transfer: '天津西 同站换乘 • 预留 40 分钟' },
+                { no: 'G222', dep: '天津西', arr: '徐州东', tDep: '08:10', tArr: '11:00', seats: [{t:'二等座', p:210, s:'充足'}], stops: generateStops(3, 8) },
+                { transfer: '徐州东 同站换乘 • 预留 50 分钟' },
+                { no: 'D333', dep: '徐州东', arr: '上海虹桥', tDep: '11:50', tArr: '16:20', seats: [{t:'二等座', p:260, s:'充足'}], stops: generateStops(4, 12) }
+            ]},
+            { id: 'R9', type: '下午直达', time: '14:00 — 18:35', dur: '4小时 35分', price: 860, isDirect: true, segs: [{ no: 'G13', dep: '北京南', arr: '上海虹桥', tDep: '14:00', tArr: '18:35', seats: [{t:'一等座', p:1376, s:'已售罄'}, {t:'二等座', p:860, s:'充足'}], stops: generateStops(3, 14) }] },
+            { id: 'R10', type: '傍晚直达', time: '17:00 — 21:40', dur: '4小时 40分', price: 860, isDirect: true, segs: [{ no: 'G21', dep: '北京南', arr: '上海虹桥', tDep: '17:00', tArr: '21:40', seats: [{t:'商务座', p:2980, s:'充足'}, {t:'二等座', p:860, s:'充足'}], stops: generateStops(4, 17) }] },
+        ];
+
+        const listContainer = document.getElementById('route-list');
+        function renderRoutes() {
+            listContainer.innerHTML = '';
+            routes.forEach((rt, i) => {
+                const card = document.createElement('div');
+                card.className = `ticket-card cursor-pointer`;
+                card.id = `route-card-${i}`;
+                
+                card.onclick = function(e) { 
+                    if(!e.target.closest('.stop-trigger') && !e.target.closest('.book-btn') && !e.target.closest('.stops-panel')) {
+                        const isActive = this.classList.contains('active');
+                        document.querySelectorAll('.ticket-card').forEach(c => c.classList.remove('active'));
+                        
+                        if(!isActive) {
+                            this.classList.add('active');
+                            document.getElementById('map-status-text').innerText = `已选择方案: ${rt.id} (${rt.type})`;
+                            document.getElementById('map-footer-text').innerText = "AI 实时路线推演";
+                            drawFlowMap(i);
+                            
+                            setTimeout(() => {
+                                card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                            }, 300);
+                        } else {
+                            document.getElementById('map-status-text').innerText = "未选择具体方案，全览模式。";
+                            document.getElementById('map-footer-text').innerText = "AI 宏观拓扑预演";
+                            drawIdleMap();
+                        }
+                    }
+                };
+
+                let html = `
+                    <div class="flex justify-between items-start pr-4">
+                        <div>
+                            <div class="text-xs font-display tracking-[0.2em] time-theme-text mb-3 uppercase">${rt.type} • ${rt.dur}</div>
+                            <div class="font-serif text-3xl md:text-4xl font-light tracking-wide">${rt.time.split('—')[0]} <span class="text-muted font-sans text-xl px-3 font-light">→</span> ${rt.time.split('—')[1]}</div>
+                        </div>
+                        <div class="text-right">
+                            <div class="font-display text-2xl md:text-3xl font-light tracking-wider">¥${rt.price}</div>
+                            <div class="text-xs text-muted/80 font-medium tracking-widest uppercase mt-1">参考起价</div>
+                        </div>
+                    </div>
+                `;
+
+                let details = `<div class="details-panel pl-2 md:pl-6 mt-4">`;
+                rt.segs.forEach(seg => {
+                    if(seg.transfer) {
+                        details += `
+                            <div class="py-6 flex items-center gap-6 text-sm font-display tracking-wider time-theme-text opacity-80">
+                                <div class="w-1.5 h-1.5 rounded-full border border-current"></div>
+                                <span>${seg.transfer}</span>
+                                <div class="h-[1px] flex-1 bg-gradient-to-r from-current to-transparent opacity-20"></div>
+                            </div>`;
+                    } else {
+                        let seatsStr = seg.seats.map(s => `
+                            <div class="flex justify-between p-3 border border-white/5 rounded-lg text-sm font-light bg-black/20">
+                                <span><span class="text-muted mr-3">${s.t}</span>¥${s.p}</span>
+                                <span class="${s.s === '无票' || s.s === '已售罄' ? 'text-red-400' : 'time-theme-text'}">${s.s}</span>
+                            </div>`).join('');
+                            
+                        let stopsStr = seg.stops.map(st => `
+                            <div class="text-xs text-muted py-1.5 relative pl-4 border-l border-white/5 ml-1">
+                                <div class="absolute w-1 h-1 bg-muted rounded-full -left-[2.5px] top-2.5"></div>
+                                ${st}
+                            </div>`).join('');
+                        
+                        details += `
+                            <div class="relative pl-6 py-4 border-l border-white/10 ml-[3px] mb-2 group">
+                                <div class="absolute w-2 h-2 rounded-full bg-starlight -left-[4.5px] top-6 shadow-[0_0_8px_rgba(255,255,255,0.4)]"></div>
+                                
+                                <div class="flex items-end justify-between mb-4 pr-2">
+                                    <div>
+                                        <div class="font-display text-lg mb-1">${seg.no}</div>
+                                        <div class="text-sm font-light tracking-wide text-starlight">${seg.dep} <span class="text-muted text-xs mx-1">${seg.tDep}</span> <span class="text-muted mx-1">→</span> ${seg.arr} <span class="text-muted text-xs mx-1">${seg.tArr}</span></div>
+                                    </div>
+                                    ${seg.stops.length > 0 ? `<div class="stop-trigger text-xs font-display tracking-widest text-muted hover:text-white transition-colors uppercase cursor-pointer border-b border-muted/30 pb-0.5" onclick="this.parentElement.nextElementSibling.classList.toggle('expanded')">查看 ${seg.stops.length} 个经停站</div>` : ''}
+                                </div>
+                                
+                                ${seg.stops.length > 0 ? `<div class="stops-panel mb-4">${stopsStr}</div>` : ''}
+                                
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mt-4">
+                                    ${seatsStr}
+                                </div>
+                            </div>
+                        `;
+                    }
+                });
+                
+                details += `
+                    <div class="mt-8 pt-6 border-t border-white/5 flex flex-col md:flex-row items-center justify-between gap-4">
+                        <div class="text-[11px] text-muted font-light leading-relaxed">VistaFlow 仅提供行程规划参考，<br>实际购票请前往官方渠道。</div>
+                        <button class="book-btn hover-time-theme bg-starlight text-void px-6 py-3 rounded-full text-xs font-bold tracking-[0.1em] transition-all w-full md:w-auto flex items-center justify-center gap-2 cursor-pointer" onclick="window.open('https://www.12306.cn', '_blank')">
+                            前往 12306 购票
+                            <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path></svg>
+                        </button>
+                    </div></div>`;
+                
+                card.innerHTML = html + details;
+                listContainer.appendChild(card);
+            });
+            
+            drawIdleMap();
+        }
+
+        // --- 剧场级转场：首页 → 结果页 ---
+        document.getElementById('flow-btn').addEventListener('click', () => {
+            const dateVal = document.getElementById('date-input').value;
+            const originVal = document.getElementById('origin-input').value;
+            const destVal = document.getElementById('dest-input').value;
+            
+            document.getElementById('result-date-title').innerText = `${dateVal} 出行方案`;
+            document.getElementById('route-display-title').innerText = `${originVal} 到 ${destVal}`;
+            document.getElementById('nav-breadcrumb-label').innerText = `${originVal} → ${destVal}`;
+
+            const overlay = document.getElementById('transition-overlay');
+            const loadingText = document.getElementById('loading-text');
+            const loadingBarContainer = document.getElementById('loading-bar-container');
+            const loadingBar = document.getElementById('loading-bar');
+            
+            // 幕布升起
+            gsap.to(overlay, { 
+                y: '0%', 
+                duration: 0.8, 
+                ease: "expo.inOut",
+                onComplete: () => {
+                    // 切换到结果页（被幕布遮住，用户看不到切换）
+                    navigateTo('page-results');
+                    renderRoutes();
+                    
+                    // 加载动画
+                    gsap.to(loadingText, {opacity: 1, duration: 0.3});
+                    loadingBarContainer.classList.remove('hidden');
+                    
+                    setTimeout(() => loadingText.innerText = "智能重组中...", 400);
+                    gsap.to(loadingBar, {width: '60%', duration: 0.4});
+                    
+                    setTimeout(() => loadingText.innerText = "绘制方案...", 800);
+                    gsap.to(loadingBar, {width: '100%', duration: 0.4, delay: 0.4});
+                    
+                    // 幕布向上拉走，露出结果页
+                    gsap.to(overlay, { 
+                        y: '-100%', 
+                        duration: 0.8, 
+                        ease: "expo.inOut", 
+                        delay: 1.2,
+                        onComplete: () => { 
+                            gsap.set(overlay, {y: '100%'}); 
+                            loadingText.style.opacity = 0;
+                            loadingText.innerText = "环境感知中...";
+                            loadingBarContainer.classList.add('hidden');
+                            loadingBar.style.width = '33%';
+                        } 
+                    });
+                    
+                    // 结果页内容淡入
+                    gsap.fromTo("#results-dashboard", { opacity: 0 }, { opacity: 1, duration: 0.8, delay: 1.2 });
+                    gsap.fromTo(".ticket-card", { y: 20, opacity: 0 }, { y: 0, opacity: 1, duration: 0.5, stagger: 0.1, delay: 1.4, ease: "power2.out" });
+                }
+            });
+        });
+
+        // --- 动态地图生成 (选中方案) ---
+        function drawFlowMap(index) {
+            const svg = document.getElementById('map-svg');
+            svg.innerHTML = '';
+            const rt = routes[index];
+            
+            let nodesCount = 2;
+            if(!rt.isDirect) {
+                const transfers = rt.segs.filter(s => s.transfer).length;
+                nodesCount = 2 + transfers;
+            }
+            
+            let pathD = "M 100 20 ";
+            for(let i=0; i<nodesCount; i++) {
+                const y = 20 + i * (460/(nodesCount-1));
+                const x = 100 + (Math.sin(i * 1.8) * 30);
+                if(i > 0) {
+                    const prevY = 20 + (i-1) * (460/(nodesCount-1));
+                    const prevX = 100 + (Math.sin((i-1) * 1.8) * 30);
+                    pathD += `C ${prevX} ${prevY + 50}, ${x} ${y - 50}, ${x} ${y} `;
+                }
+                
+                const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+                circle.setAttribute("cx", x); circle.setAttribute("cy", y); circle.setAttribute("r", 4);
+                circle.setAttribute("class", "map-pulse");
+                svg.appendChild(circle);
+            }
+
+            const pathNode = document.createElementNS("http://www.w3.org/2000/svg", "path");
+            pathNode.setAttribute("d", pathD);
+            pathNode.setAttribute("class", "map-path");
+            svg.prepend(pathNode);
+
+            setTimeout(() => { pathNode.style.strokeDashoffset = "0"; }, 50);
+        }
+
+        // --- 闲置全局概览地图生成 (未选中状态) ---
+        function drawIdleMap() {
+            const svg = document.getElementById('map-svg');
+            svg.innerHTML = '';
+            
+            for(let j=0; j<4; j++) {
+                let pathD = "M 100 20 ";
+                const offset = (j - 1.5) * 15; 
+                
+                for(let i=0; i<3; i++) {
+                    const y = 20 + i * 230;
+                    const x = 100 + offset + (Math.sin(i * 2 + j) * 40);
+                    if(i > 0) {
+                        const prevY = 20 + (i-1) * 230;
+                        const prevX = 100 + offset + (Math.sin((i-1) * 2 + j) * 40);
+                        pathD += `C ${prevX} ${prevY + 50}, ${x} ${y - 50}, ${x} ${y} `;
+                    }
+                }
+                
+                const pathNode = document.createElementNS("http://www.w3.org/2000/svg", "path");
+                pathNode.setAttribute("d", pathD);
+                pathNode.setAttribute("class", "map-idle-path");
+                svg.appendChild(pathNode);
+            }
+            
+            const startDot = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+            startDot.setAttribute("cx", 100); startDot.setAttribute("cy", 20); startDot.setAttribute("r", 3);
+            startDot.setAttribute("fill", "rgba(255,255,255,0.2)");
+            svg.appendChild(startDot);
+
+            const endDot = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+            endDot.setAttribute("cx", 100); endDot.setAttribute("cy", 480); endDot.setAttribute("r", 3);
+            endDot.setAttribute("fill", "rgba(255,255,255,0.2)");
+            svg.appendChild(endDot);
+        }
+    </script>
+</body>
+</html>
