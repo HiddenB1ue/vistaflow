@@ -1,0 +1,656 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VistaFlow | 运营控制台</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: { void: '#030303', starlight: '#F5F5F7', dawn: '#E5C07B', dusk: '#8B5CF6', muted: '#8A8A8E' },
+                    fontFamily: { sans: ['Inter', 'sans-serif'], display: ['"Space Grotesk"', 'sans-serif'], serif: ['"Cormorant Garamond"', 'serif'] }
+                }
+            }
+        }
+    </script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;1,400&family=Inter:wght@300;400;500&family=Space+Grotesk:wght@300;400;500&display=swap');
+        
+        body { background-color: #030303; color: #F5F5F7; overflow-x: hidden; }
+        ::-webkit-scrollbar { width: 4px; height: 4px; }
+        ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); border-radius: 4px; }
+
+        :root { --pulse-color: #8B5CF6; }
+
+        /* 背景光晕 */
+        .aura-container { position: fixed; inset: 0; z-index: 0; pointer-events: none; }
+        .aura { position: absolute; border-radius: 50%; filter: blur(120px); opacity: 0.2; }
+        .aura-1 { width: 60vw; height: 60vw; background: radial-gradient(circle, #110e24 0%, transparent 70%); top: -10%; left: -10%; }
+        .aura-2 { width: 40vw; height: 40vw; background: radial-gradient(circle, rgba(139, 92, 246, 0.15) 0%, transparent 70%); bottom: -10%; right: -5%; }
+        .noise { position: fixed; inset: 0; z-index: 5; pointer-events: none; opacity: 0.03; background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E"); }
+
+        /* 布局与面板 */
+        .glass-panel { background: rgba(255,255,255,0.03); backdrop-filter: blur(20px); border: 1px solid rgba(255,255,255,0.08); border-radius: 16px; transition: border-color 0.3s; }
+        .glass-panel:hover { border-color: rgba(255,255,255,0.15); }
+        .view-section { display: none; opacity: 0; }
+        .view-section.active { display: block; opacity: 1; }
+
+        /* 状态指示灯 */
+        .status-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; transition: all 0.3s; }
+        .status-running { background: #4ADE80; box-shadow: 0 0 8px #4ADE80; animation: pulse 2s infinite; }
+        .status-pending { background: #FACC15; box-shadow: 0 0 8px #FACC15; }
+        .status-idle { background: #60A5FA; box-shadow: 0 0 8px transparent; }
+        .status-error { background: #F87171; box-shadow: 0 0 8px #F87171; }
+        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.5; } 100% { opacity: 1; } }
+
+        /* ================= 统一组件库 ================= */
+        
+        /* 表单输入框 & 下拉框 */
+        .input-box { background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; padding: 10px 16px; color: #fff; outline: none; transition: border-color 0.3s, background 0.3s; font-family: 'Inter', sans-serif; }
+        .input-box:focus { border-color: var(--pulse-color); background: rgba(0,0,0,0.5); }
+        select.input-box { appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='rgba(255,255,255,0.5)'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 12px center; background-size: 16px; padding-right: 40px; cursor: pointer; }
+        select.input-box option { background: #111; color: #fff; }
+
+        /* 按钮体系 */
+        .btn { display: inline-flex; items: center; justify-content: center; gap: 8px; border-radius: 8px; font-size: 0.75rem; font-weight: 500; tracking: 0.1em; text-transform: uppercase; transition: all 0.3s ease; cursor: pointer; outline: none; }
+        
+        .btn-primary { background: var(--pulse-color); color: #fff; padding: 10px 24px; box-shadow: 0 4px 15px rgba(139,92,246,0.3); border: 1px solid transparent; }
+        .btn-primary:hover { background: #7C3AED; box-shadow: 0 6px 20px rgba(139,92,246,0.5); transform: translateY(-1px); }
+        
+        .btn-outline { background: rgba(255,255,255,0.05); color: #F5F5F7; padding: 8px 16px; border: 1px solid rgba(255,255,255,0.1); }
+        .btn-outline:hover { background: rgba(255,255,255,0.1); border-color: rgba(255,255,255,0.2); }
+        
+        .btn-danger { background: rgba(248,113,113,0.1); color: #F87171; padding: 8px 16px; border: 1px solid rgba(248,113,113,0.2); }
+        .btn-danger:hover { background: rgba(248,113,113,0.2); border-color: rgba(248,113,113,0.4); }
+
+        .btn-warning { background: #FACC15; color: #000; padding: 8px 24px; box-shadow: 0 4px 15px rgba(250,204,21,0.3); font-weight: 600; }
+        .btn-warning:hover { background: #EAB308; box-shadow: 0 6px 20px rgba(250,204,21,0.5); }
+
+        /* 数据表格样式 */
+        .data-table th { font-family: 'Space Grotesk', sans-serif; letter-spacing: 0.1em; text-transform: uppercase; font-size: 0.75rem; color: var(--muted); border-bottom: 1px solid rgba(255,255,255,0.1); padding: 12px 16px; text-align: left; }
+        .data-table td { padding: 12px 16px; border-bottom: 1px solid rgba(255,255,255,0.03); font-size: 0.875rem; }
+
+        /* 弹窗与抽屉 */
+        .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.8); backdrop-filter: blur(10px); z-index: 200; display: none; align-items: center; justify-content: center; opacity: 0; transition: opacity 0.3s; }
+        .modal-overlay.show { display: flex; opacity: 1; }
+        
+        #task-drawer { position: fixed; top: 0; right: -500px; width: 460px; height: 100vh; background: rgba(10, 10, 12, 0.95); backdrop-filter: blur(40px); border-left: 1px solid rgba(255,255,255,0.08); z-index: 150; padding: 3rem; display: flex; flex-direction: column; transition: right 0.5s cubic-bezier(0.19, 1, 0.22, 1); }
+        #task-drawer.open { right: 0; box-shadow: -20px 0 50px rgba(0,0,0,0.5); }
+
+        .custom-toggle { position: relative; width: 44px; height: 24px; background: rgba(255,255,255,0.1); border-radius: 12px; cursor: pointer; transition: background 0.3s; }
+        .custom-toggle::after { content: ''; position: absolute; top: 2px; left: 2px; width: 20px; height: 20px; background: #F5F5F7; border-radius: 50%; transition: transform 0.3s; }
+        .custom-toggle.active { background: var(--pulse-color); }
+        .custom-toggle.active::after { transform: translateX(20px); background: #030303; }
+
+        /* 全局 Toast 提示 */
+        #toast-container { position: fixed; bottom: 2rem; right: 2rem; z-index: 9999; display: flex; flex-direction: column; gap: 10px; pointer-events: none; }
+        .toast { padding: 12px 20px; border-radius: 8px; backdrop-filter: blur(10px); font-family: 'Space Grotesk', sans-serif; font-size: 0.875rem; display: flex; align-items: center; gap: 10px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); pointer-events: auto; }
+        .toast-success { background: rgba(74, 222, 128, 0.15); border: 1px solid rgba(74, 222, 128, 0.3); color: #4ADE80; }
+        .toast-error { background: rgba(248, 113, 113, 0.15); border: 1px solid rgba(248, 113, 113, 0.3); color: #F87171; }
+        .toast-info { background: rgba(139, 92, 246, 0.15); border: 1px solid rgba(139, 92, 246, 0.3); color: #C4B5FD; }
+
+        /* ================= 自定义下拉框 ================= */
+        .custom-select-wrapper { position: relative; display: inline-block; }
+        .custom-select-trigger {
+            display: flex; align-items: center; justify-content: space-between; gap: 12px;
+            background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 8px; padding: 10px 16px; color: #F5F5F7;
+            cursor: pointer; outline: none; transition: border-color 0.25s, background 0.25s;
+            font-family: 'Inter', sans-serif; font-size: 0.875rem; user-select: none;
+            white-space: nowrap;
+        }
+        .custom-select-trigger:hover { border-color: rgba(255,255,255,0.2); background: rgba(0,0,0,0.4); }
+        .custom-select-trigger.open { border-color: var(--pulse-color); background: rgba(0,0,0,0.5); }
+        .custom-select-trigger svg { flex-shrink: 0; color: rgba(255,255,255,0.4); transition: transform 0.25s; }
+        .custom-select-trigger.open svg { transform: rotate(180deg); color: var(--pulse-color); }
+
+        .custom-select-dropdown {
+            position: absolute; top: calc(100% + 6px); left: 0; min-width: 100%;
+            background: rgba(12, 10, 20, 0.97); backdrop-filter: blur(24px);
+            border: 1px solid rgba(255,255,255,0.1); border-radius: 10px;
+            box-shadow: 0 16px 48px rgba(0,0,0,0.6), 0 0 0 1px rgba(139,92,246,0.08);
+            z-index: 1000; overflow: hidden;
+            opacity: 0; transform: translateY(-6px) scale(0.98);
+            pointer-events: none; transition: opacity 0.2s ease, transform 0.2s ease;
+        }
+        .custom-select-dropdown.open {
+            opacity: 1; transform: translateY(0) scale(1); pointer-events: auto;
+        }
+        .custom-select-option {
+            padding: 10px 16px; font-size: 0.875rem; font-family: 'Inter', sans-serif;
+            color: rgba(245,245,247,0.7); cursor: pointer;
+            transition: background 0.15s, color 0.15s;
+            display: flex; align-items: center; gap: 10px;
+        }
+        .custom-select-option:not(:last-child) { border-bottom: 1px solid rgba(255,255,255,0.04); }
+        .custom-select-option:hover { background: rgba(139,92,246,0.12); color: #F5F5F7; }
+        .custom-select-option.selected {
+            color: #C4B5FD; background: rgba(139,92,246,0.1);
+        }
+        .custom-select-option.selected::after {
+            content: ''; margin-left: auto; width: 6px; height: 6px; border-radius: 50%;
+            background: var(--pulse-color); flex-shrink: 0;
+        }
+        /* 小号变体（用于 modal 内） */
+        .custom-select-trigger.sm { padding: 8px 14px; font-size: 0.8125rem; }
+    </style>
+</head>
+<body class="flex h-screen overflow-hidden text-starlight">
+    
+    <div class="noise"></div>
+    <div class="aura-container"><div class="aura aura-1"></div><div class="aura aura-2"></div></div>
+    
+    <div id="toast-container"></div>
+
+    <div id="task-drawer">
+        <div class="flex justify-between items-center mb-12">
+            <div>
+                <div class="text-xs text-[#8B5CF6] font-display tracking-[0.3em] uppercase mb-2">New Allocation</div>
+                <h3 class="font-serif text-3xl italic text-starlight">配置调度任务</h3>
+            </div>
+            <button class="text-muted hover:text-white p-2 cursor-pointer transition-colors" onclick="toggleTaskDrawer()">
+                <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M6 18L18 6M6 6l12 12"></path></svg>
+            </button>
+        </div>
+
+        <div class="space-y-8 flex-1 overflow-y-auto pr-4" style="scrollbar-width: none;">
+            <div>
+                <label class="block text-xs text-muted tracking-widest uppercase mb-3">任务名称</label>
+                <input type="text" class="input-box w-full" placeholder="例如: 核心线路票源同步">
+            </div>
+            <div>
+                <label class="block text-xs text-muted tracking-widest uppercase mb-3">任务类型</label>
+                <div class="custom-select-wrapper w-full" data-value="基础车站数据抓取">
+                    <div class="custom-select-trigger w-full" tabindex="0" onclick="toggleCustomSelect(this)">
+                        <span class="select-label">基础车站数据抓取</span>
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+                    </div>
+                    <div class="custom-select-dropdown">
+                        <div class="custom-select-option selected" data-value="基础车站数据抓取">基础车站数据抓取</div>
+                        <div class="custom-select-option" data-value="站点经纬度补全">站点经纬度补全</div>
+                        <div class="custom-select-option" data-value="车次实时状态同步">车次实时状态同步</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="border-t border-white/10 pt-8">
+                <div class="flex items-center justify-between mb-4">
+                    <span class="text-sm text-starlight">定时自动执行</span>
+                    <div class="custom-toggle active" onclick="this.classList.toggle('active')"></div>
+                </div>
+                <div class="space-y-4">
+                    <label class="block text-xs text-muted tracking-widest uppercase mb-2">Cron 表达式</label>
+                    <input type="text" class="input-box w-full font-mono text-sm text-[#8B5CF6]" value="0 0/15 * * * ?" placeholder="* * * * * *">
+                </div>
+            </div>
+        </div>
+
+        <div class="pt-8 border-t border-white/10 mt-auto flex gap-4">
+            <button class="btn btn-outline flex-1 py-4" onclick="toggleTaskDrawer()">取消</button>
+            <button class="btn btn-primary flex-1 py-4" onclick="submitNewTask()">部署任务</button>
+        </div>
+    </div>
+
+    <aside class="w-64 border-r border-white/10 flex flex-col z-20 bg-[#030303]/80 backdrop-blur-xl shrink-0">
+        <div class="p-8">
+            <div class="font-display font-medium text-xl tracking-[0.2em] uppercase text-white">VistaFlow</div>
+            <div class="text-[10px] text-muted tracking-widest uppercase mt-1">Admin Console</div>
+        </div>
+        <nav class="flex-1 px-4 space-y-2 mt-4">
+            <button onclick="switchView('view-tasks')" id="nav-tasks" class="w-full flex items-center gap-3 px-4 py-3 text-sm tracking-wide transition-all border-l-2 border-[#8B5CF6] bg-white/5 text-white rounded-r-lg cursor-pointer">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"></path></svg>
+                任务中心
+            </button>
+            <button onclick="switchView('view-config')" id="nav-config" class="w-full flex items-center gap-3 px-4 py-3 text-sm tracking-wide transition-all border-l-2 border-transparent text-muted hover:text-white hover:bg-white/5 rounded-r-lg cursor-pointer">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+                系统配置
+            </button>
+        </nav>
+    </aside>
+
+    <main class="flex-1 relative z-10 overflow-y-auto h-full">
+        <header class="sticky top-0 z-30 bg-[#030303]/80 backdrop-blur-md border-b border-white/10 px-10 py-6 flex justify-between items-center">
+            <h1 class="font-serif text-3xl italic text-white" id="header-title">任务调度中心</h1>
+            <div id="header-actions">
+                <button class="btn btn-primary" onclick="toggleTaskDrawer()">
+                    <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+                    新建任务
+                </button>
+            </div>
+        </header>
+
+        <div class="p-10">
+            <div id="view-tasks" class="view-section active gs-reveal">
+                
+                <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-10">
+                    <div class="glass-panel p-6">
+                        <div class="text-xs text-muted tracking-widest uppercase mb-2">活跃/总任务</div>
+                        <div class="text-3xl font-display font-light">3 <span class="text-lg text-muted">/ 12</span></div>
+                    </div>
+                    <div class="glass-panel p-6 border-l-[3px] border-l-[#4ADE80]">
+                        <div class="text-xs text-muted tracking-widest uppercase mb-2">执行中</div>
+                        <div class="text-3xl font-display font-light text-[#4ADE80]">1</div>
+                    </div>
+                    <div class="glass-panel p-6 border-l-[3px] border-l-[#FACC15]">
+                        <div class="text-xs text-muted tracking-widest uppercase mb-2 flex items-center gap-2">待人工处理 <span class="w-2 h-2 rounded-full bg-[#FACC15] animate-ping"></span></div>
+                        <div class="text-3xl font-display font-light text-[#FACC15]">1</div>
+                    </div>
+                    <div class="glass-panel p-6 border-l-[3px] border-l-[#F87171]">
+                        <div class="text-xs text-muted tracking-widest uppercase mb-2">异常中断</div>
+                        <div class="text-3xl font-display font-light text-[#F87171]">0</div>
+                    </div>
+                </div>
+
+                <div class="flex gap-4 mb-8">
+                    <input type="text" placeholder="搜索任务名称..." class="input-box flex-1 max-w-md">
+                    <div class="custom-select-wrapper" data-value="all" style="width:192px;">
+                        <div class="custom-select-trigger w-full" tabindex="0" onclick="toggleCustomSelect(this)">
+                            <span class="select-label">所有状态</span>
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+                        </div>
+                        <div class="custom-select-dropdown">
+                            <div class="custom-select-option selected" data-value="all">所有状态</div>
+                            <div class="custom-select-option" data-value="running">执行中</div>
+                            <div class="custom-select-option" data-value="pending">待人工确认</div>
+                            <div class="custom-select-option" data-value="completed">已完成</div>
+                        </div>
+                    </div>
+                    <div class="custom-select-wrapper" data-value="all" style="width:192px;">
+                        <div class="custom-select-trigger w-full" tabindex="0" onclick="toggleCustomSelect(this)">
+                            <span class="select-label">所有类型</span>
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+                        </div>
+                        <div class="custom-select-dropdown">
+                            <div class="custom-select-option selected" data-value="all">所有类型</div>
+                            <div class="custom-select-option" data-value="t1">基础车站抓取</div>
+                            <div class="custom-select-option" data-value="t2">经纬度补全</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="space-y-4">
+                    
+                    <div class="glass-panel p-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-6" id="task-card-1">
+                        <div class="flex-1">
+                            <div class="flex items-center gap-2 mb-2">
+                                <span class="status-dot status-running" id="dot-1"></span>
+                                <span class="text-[10px] font-display tracking-[0.2em] text-[#4ADE80] uppercase border border-[#4ADE80]/30 px-2 py-0.5 rounded" id="label-1">Running</span>
+                            </div>
+                            <h3 class="font-serif text-2xl tracking-wide mb-1">抓取指定日期车次状态</h3>
+                            <div class="text-xs text-muted">Target: Fetch-Train-Status-T+15</div>
+                        </div>
+                        <div class="flex-1 grid grid-cols-2 gap-4 border-l border-white/10 pl-6">
+                            <div><div class="text-[10px] text-muted tracking-widest uppercase mb-1">进度与产出</div><div class="text-sm">已抓取 4,250 条</div></div>
+                            <div><div class="text-[10px] text-muted tracking-widest uppercase mb-1">执行时间</div><div class="text-sm font-mono text-[#4ADE80]">00:15:22</div></div>
+                        </div>
+                        <div class="flex items-center gap-2 shrink-0">
+                            <button class="btn btn-danger" onclick="stopTask(this, 'task-card-1', 'dot-1', 'label-1')">终止</button>
+                            <button class="btn btn-outline" onclick="showToast('任务详情面板开发中', 'info')">详情</button>
+                        </div>
+                    </div>
+
+                    <div class="glass-panel p-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-6 border border-[#FACC15]/30 bg-[#FACC15]/5">
+                        <div class="flex-1">
+                            <div class="flex items-center gap-2 mb-2">
+                                <span class="status-dot status-pending"></span>
+                                <span class="text-[10px] font-display tracking-[0.2em] text-[#FACC15] uppercase border border-[#FACC15]/30 px-2 py-0.5 rounded">Pending Confirm</span>
+                            </div>
+                            <h3 class="font-serif text-2xl tracking-wide mb-1 text-white">站点经纬度补全任务</h3>
+                            <div class="text-xs text-muted">策略: 先预览后落库</div>
+                        </div>
+                        <div class="flex-1 border-l border-white/10 pl-6">
+                            <div class="text-[10px] text-muted tracking-widest uppercase mb-1">待确认数据</div>
+                            <div class="text-sm font-bold text-[#FACC15]">18 个站点坐标缺失</div>
+                        </div>
+                        <div class="flex items-center shrink-0">
+                            <button class="btn btn-warning" onclick="openPreviewModal()">预览并确认</button>
+                        </div>
+                    </div>
+
+                    <div class="glass-panel p-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-6 opacity-80" id="task-card-3">
+                        <div class="flex-1">
+                            <div class="flex items-center gap-2 mb-2">
+                                <span class="status-dot status-idle" id="dot-3"></span>
+                                <span class="text-[10px] font-display tracking-[0.2em] text-blue-400 uppercase border border-blue-400/30 px-2 py-0.5 rounded" id="label-3">Completed</span>
+                            </div>
+                            <h3 class="font-serif text-2xl tracking-wide mb-1">基础车站静态数据全量抓取</h3>
+                            <div class="text-xs text-muted">耗时: 2m 14s</div>
+                        </div>
+                        <div class="flex-1 border-l border-white/10 pl-6">
+                            <div class="text-[10px] text-muted tracking-widest uppercase mb-1">成功落库</div>
+                            <div class="text-sm">3,412 条记录</div>
+                        </div>
+                        <div class="flex items-center shrink-0">
+                            <button class="btn btn-outline" onclick="restartTask('task-card-3', 'dot-3', 'label-3')">重新执行</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="view-config" class="view-section gs-reveal">
+                <div class="mb-8 text-sm text-muted max-w-2xl leading-relaxed">
+                    系统配置模块用于管理后台运行所依赖的关键外部参数。修改配置将实时生效，请确保提供的凭证和密钥有效。点击“连通性检测”可测试配置健康度。
+                </div>
+
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    <div class="glass-panel p-6 flex flex-col">
+                        <div class="flex justify-between items-start mb-6">
+                            <div>
+                                <div class="flex items-center gap-2 mb-1">
+                                    <h3 class="font-display text-lg tracking-wide text-white">后端地图服务接口配置</h3>
+                                    <span class="text-[10px] bg-green-500/20 text-green-400 px-2 py-0.5 rounded border border-green-500/30">正常可用</span>
+                                </div>
+                                <div class="text-xs text-muted">用于经纬度解析、路线距离计算</div>
+                            </div>
+                        </div>
+                        <div class="bg-black/30 p-4 rounded-lg border border-white/5 mb-6 font-mono text-sm text-muted/80 break-all">
+                            API_KEY: sk_live_8f92************************3a1c
+                        </div>
+                        <div class="mt-auto flex gap-3 border-t border-white/10 pt-4">
+                            <button class="btn btn-outline flex-1" onclick="showToast('调起配置编辑面板...', 'info')">修改配置</button>
+                            <button class="btn btn-outline flex-1 border-[#8B5CF6]/30 text-[#8B5CF6] hover:bg-[#8B5CF6]/10" onclick="testConnection(this)">连通性检测</button>
+                        </div>
+                    </div>
+
+                    <div class="glass-panel p-6 flex flex-col border border-red-500/20 bg-red-500/5">
+                        <div class="flex justify-between items-start mb-6">
+                            <div>
+                                <div class="flex items-center gap-2 mb-1">
+                                    <h3 class="font-display text-lg tracking-wide text-white">票务查询代理凭证</h3>
+                                    <span class="text-[10px] bg-red-500/20 text-red-400 px-2 py-0.5 rounded border border-red-500/30">检测失败</span>
+                                </div>
+                                <div class="text-xs text-muted">第三方代理 Token (来自数据库覆盖)</div>
+                            </div>
+                        </div>
+                        <div class="bg-black/30 p-4 rounded-lg border border-white/5 mb-6 font-mono text-sm text-red-400/80 break-all">
+                            TOKEN: eyJhbGciOiJIUzI1... (已过期)
+                        </div>
+                        <div class="mt-auto flex gap-3 border-t border-red-500/20 pt-4">
+                            <button class="btn btn-outline flex-1" onclick="showToast('正在打开更新面板', 'info')">更新凭证</button>
+                            <button class="btn btn-danger flex-1" onclick="clearOverride(this)">清除覆盖(回退)</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </main>
+
+    <div id="preview-modal" class="modal-overlay">
+        <div class="bg-[#0a0a0c] border border-white/10 rounded-2xl shadow-2xl w-11/12 max-w-5xl max-h-[85vh] flex flex-col transform scale-95 transition-transform duration-300" id="preview-modal-content">
+            
+            <div class="p-6 border-b border-white/10 flex justify-between items-center bg-white/5 rounded-t-2xl">
+                <div>
+                    <div class="text-[10px] text-[#FACC15] tracking-[0.2em] uppercase mb-1">Manual Action Required</div>
+                    <h2 class="font-serif text-2xl text-white">补全经纬度 - 数据预览与确认</h2>
+                </div>
+                <button onclick="closePreviewModal()" class="text-muted hover:text-white p-2 cursor-pointer transition-colors">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M6 18L18 6M6 6l12 12"></path></svg>
+                </button>
+            </div>
+
+            <div class="p-6 flex gap-4 border-b border-white/5 shrink-0 bg-black/20">
+                <input type="text" placeholder="搜索站点名称..." class="input-box flex-1 text-sm">
+                <div class="custom-select-wrapper" data-value="missing" style="width:220px;">
+                    <div class="custom-select-trigger sm w-full" tabindex="0" onclick="toggleCustomSelect(this)">
+                        <span class="select-label">仅显示解析成功项</span>
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+                    </div>
+                    <div class="custom-select-dropdown">
+                        <div class="custom-select-option selected" data-value="missing">仅显示解析成功项</div>
+                        <div class="custom-select-option" data-value="fail">解析失败/异常项</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="flex-1 overflow-y-auto" style="scrollbar-width: thin; scrollbar-color: rgba(255,255,255,0.2) transparent;">
+                <table class="w-full data-table">
+                    <thead class="bg-black/40 sticky top-0 z-10 backdrop-blur-md">
+                        <tr>
+                            <th class="w-12 text-center"><input type="checkbox" checked class="accent-[#8B5CF6] cursor-pointer"></th>
+                            <th>站点名称</th>
+                            <th>预解析经度 (Lng)</th>
+                            <th>预解析纬度 (Lat)</th>
+                            <th>置信度</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr class="hover:bg-white/5 transition-colors">
+                            <td class="text-center"><input type="checkbox" checked class="accent-[#8B5CF6] cursor-pointer"></td>
+                            <td class="font-medium text-white">上饶站</td>
+                            <td class="font-mono text-[#4ADE80]">117.986821</td>
+                            <td class="font-mono text-[#4ADE80]">28.423456</td>
+                            <td><span class="text-[10px] bg-green-500/20 text-green-400 px-2 py-0.5 rounded">High (98%)</span></td>
+                        </tr>
+                        <tr class="bg-red-500/5 hover:bg-red-500/10 transition-colors">
+                            <td class="text-center"><input type="checkbox" class="accent-[#8B5CF6] cursor-pointer"></td>
+                            <td class="font-medium text-white">未知测试站</td>
+                            <td class="font-mono text-red-400">0.000000</td>
+                            <td class="font-mono text-red-400">0.000000</td>
+                            <td><span class="text-[10px] bg-red-500/20 text-red-400 px-2 py-0.5 rounded">Failed</span></td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="p-6 border-t border-white/10 flex justify-between items-center bg-[#0a0a0c] rounded-b-2xl">
+                <div class="text-sm text-muted">已选中 <span class="text-white font-bold">1</span> 项待落库</div>
+                <div class="flex gap-4">
+                    <button onclick="closePreviewModal()" class="btn btn-outline">取消</button>
+                    <button onclick="confirmData()" class="btn btn-primary shadow-[0_0_15px_rgba(139,92,246,0.4)]">确认并落库</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ================= 自定义下拉组件 =================
+        function toggleCustomSelect(trigger) {
+            const wrapper = trigger.closest('.custom-select-wrapper');
+            const dropdown = wrapper.querySelector('.custom-select-dropdown');
+            const isOpen = trigger.classList.contains('open');
+
+            // 先关闭所有其他已打开的下拉
+            document.querySelectorAll('.custom-select-trigger.open').forEach(t => {
+                if (t !== trigger) {
+                    t.classList.remove('open');
+                    t.closest('.custom-select-wrapper').querySelector('.custom-select-dropdown').classList.remove('open');
+                }
+            });
+
+            trigger.classList.toggle('open', !isOpen);
+            dropdown.classList.toggle('open', !isOpen);
+        }
+
+        // 点击选项
+        document.addEventListener('click', function(e) {
+            const option = e.target.closest('.custom-select-option');
+            if (option) {
+                const dropdown = option.closest('.custom-select-dropdown');
+                const wrapper = dropdown.closest('.custom-select-wrapper');
+                const trigger = wrapper.querySelector('.custom-select-trigger');
+                const label = trigger.querySelector('.select-label');
+
+                // 更新选中项
+                dropdown.querySelectorAll('.custom-select-option').forEach(o => o.classList.remove('selected'));
+                option.classList.add('selected');
+
+                // 更新显示文字和 value
+                label.textContent = option.textContent.trim();
+                wrapper.dataset.value = option.dataset.value;
+
+                // 关闭
+                trigger.classList.remove('open');
+                dropdown.classList.remove('open');
+                return;
+            }
+
+            // 点击外部关闭
+            if (!e.target.closest('.custom-select-wrapper')) {
+                document.querySelectorAll('.custom-select-trigger.open').forEach(t => {
+                    t.classList.remove('open');
+                    t.closest('.custom-select-wrapper').querySelector('.custom-select-dropdown').classList.remove('open');
+                });
+            }
+        });
+
+        // 键盘支持
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') {
+                document.querySelectorAll('.custom-select-trigger.open').forEach(t => {
+                    t.classList.remove('open');
+                    t.closest('.custom-select-wrapper').querySelector('.custom-select-dropdown').classList.remove('open');
+                });
+            }
+        });
+        function showToast(message, type = 'success') {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            
+            // 根据类型设定图标和样式
+            let icon = '';
+            let styleClass = '';
+            if(type === 'success') {
+                icon = `<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>`;
+                styleClass = 'toast-success';
+            } else if(type === 'error') {
+                icon = `<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>`;
+                styleClass = 'toast-error';
+            } else {
+                icon = `<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>`;
+                styleClass = 'toast-info';
+            }
+
+            toast.className = `toast ${styleClass}`;
+            toast.innerHTML = `${icon} <span>${message}</span>`;
+            
+            container.appendChild(toast);
+            
+            // 入场动画
+            gsap.fromTo(toast, { y: 20, opacity: 0 }, { y: 0, opacity: 1, duration: 0.3, ease: 'power2.out' });
+            
+            // 3秒后销毁
+            setTimeout(() => {
+                gsap.to(toast, { y: 20, opacity: 0, duration: 0.3, onComplete: () => toast.remove() });
+            }, 3000);
+        }
+
+        // ================= 视图与侧边栏 =================
+        function switchView(viewId) {
+            const navTasks = document.getElementById('nav-tasks');
+            const navConfig = document.getElementById('nav-config');
+            
+            // 重置导航样式
+            [navTasks, navConfig].forEach(el => {
+                el.classList.remove('border-[#8B5CF6]', 'bg-white/5', 'text-white');
+                el.classList.add('border-transparent', 'text-muted');
+            });
+
+            if(viewId === 'view-tasks') {
+                navTasks.classList.remove('border-transparent', 'text-muted');
+                navTasks.classList.add('border-[#8B5CF6]', 'bg-white/5', 'text-white');
+                document.getElementById('header-title').innerText = '任务调度中心';
+                document.getElementById('header-actions').style.display = 'block';
+            } else {
+                navConfig.classList.remove('border-transparent', 'text-muted');
+                navConfig.classList.add('border-[#8B5CF6]', 'bg-white/5', 'text-white');
+                document.getElementById('header-title').innerText = '系统参数配置';
+                document.getElementById('header-actions').style.display = 'none';
+            }
+
+            document.querySelectorAll('.view-section').forEach(el => { el.classList.remove('active'); el.style.opacity = 0; });
+            const target = document.getElementById(viewId);
+            target.classList.add('active');
+            gsap.to(target, { opacity: 1, duration: 0.4, ease: "power2.out" });
+        }
+
+        function toggleTaskDrawer() { 
+            document.getElementById('task-drawer').classList.toggle('open'); 
+        }
+
+        // ================= 任务动作逻辑 =================
+        function submitNewTask() {
+            toggleTaskDrawer();
+            showToast('任务已成功下发调度中心', 'success');
+        }
+
+        function stopTask(btn, cardId, dotId, labelId) {
+            btn.innerText = "已终止";
+            btn.disabled = true;
+            btn.classList.replace('btn-danger', 'btn-outline');
+            
+            const dot = document.getElementById(dotId);
+            dot.className = "status-dot status-error";
+            
+            const label = document.getElementById(labelId);
+            label.innerText = "Terminated";
+            label.className = "text-[10px] font-display tracking-[0.2em] text-[#F87171] uppercase border border-[#F87171]/30 px-2 py-0.5 rounded";
+            
+            showToast('任务已强制终止', 'error');
+        }
+
+        function restartTask(cardId, dotId, labelId) {
+            const card = document.getElementById(cardId);
+            card.classList.remove('opacity-80');
+            
+            const dot = document.getElementById(dotId);
+            dot.className = "status-dot status-running";
+            
+            const label = document.getElementById(labelId);
+            label.innerText = "Running";
+            label.className = "text-[10px] font-display tracking-[0.2em] text-[#4ADE80] uppercase border border-[#4ADE80]/30 px-2 py-0.5 rounded";
+            
+            showToast('任务已重新加入执行队列', 'success');
+        }
+
+        // ================= 配置动作逻辑 =================
+        function testConnection(btn) {
+            const originalText = btn.innerHTML;
+            btn.innerHTML = `<svg class="animate-spin w-4 h-4 mr-1" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" stroke-dasharray="32" stroke-linecap="round" class="opacity-50"></circle></svg> 检测中...`;
+            
+            setTimeout(() => {
+                btn.innerHTML = originalText;
+                showToast('接口连通性测试通过', 'success');
+            }, 1500);
+        }
+
+        function clearOverride(btn) {
+            showToast('已清除数据库配置，回退至系统默认', 'success');
+            btn.parentElement.parentElement.classList.remove('border-red-500/20', 'bg-red-500/5');
+            btn.parentElement.parentElement.classList.add('border-white/8', 'bg-white/3');
+        }
+
+        // ================= 弹窗逻辑 =================
+        const modal = document.getElementById('preview-modal');
+        const modalContent = document.getElementById('preview-modal-content');
+
+        function openPreviewModal() {
+            modal.classList.add('show');
+            gsap.to(modal, { opacity: 1, duration: 0.2 });
+            gsap.to(modalContent, { scale: 1, duration: 0.3, ease: "back.out(1.5)" });
+        }
+
+        function closePreviewModal() {
+            gsap.to(modalContent, { scale: 0.95, duration: 0.2, ease: "power2.in" });
+            gsap.to(modal, { opacity: 0, duration: 0.2, onComplete: () => { modal.classList.remove('show'); }});
+        }
+
+        function confirmData() {
+            closePreviewModal();
+            showToast('数据已确认并成功写入系统', 'success');
+            // 模拟原卡片状态变更
+            setTimeout(() => {
+                document.querySelector('.status-pending').className = "status-dot status-idle";
+                document.querySelector('.border-[#FACC15]\\/30').className = "text-[10px] font-display tracking-[0.2em] text-blue-400 uppercase border border-blue-400/30 px-2 py-0.5 rounded";
+                document.querySelector('.border-[#FACC15]\\/30').innerText = "Completed";
+            }, 500);
+        }
+
+        // 初始入场动画
+        gsap.from('.gs-reveal', { y: 20, opacity: 0, duration: 0.8, stagger: 0.1, ease: 'power3.out' });
+    </script>
+</body>
+</html>
