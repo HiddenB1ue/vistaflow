@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { DatePicker } from '@/components/ui/DatePicker';
+import { StationInput } from '@/components/ui/StationInput';
 import { AuraBackground } from '@/components/background/AuraBackground';
 import { NoiseTexture } from '@/components/background/NoiseTexture';
 import { Navbar } from '@/components/layout/Navbar';
@@ -77,24 +78,18 @@ export function SearchPage() {
             className="text-2xl md:text-3xl font-light tracking-wide flex flex-wrap justify-center items-center gap-y-8 leading-relaxed"
           >
             <span className="text-muted">我想从</span>
-            <input
-              type="text"
+            <StationInput
               value={params.origin}
-              onChange={(e) => setOrigin(e.target.value)}
+              onChange={setOrigin}
               placeholder="出发地"
               aria-label="出发地"
-              maxLength={20}
-              className="nl-input mx-4"
             />
             <span className="text-muted">出发，前往</span>
-            <input
-              type="text"
+            <StationInput
               value={params.destination}
-              onChange={(e) => setDestination(e.target.value)}
+              onChange={setDestination}
               placeholder="目的地"
               aria-label="目的地"
-              maxLength={20}
-              className="nl-input mx-4"
             />
             <span className="text-muted">，</span>
             <span className="text-muted w-full md:w-auto mt-4 md:mt-0">

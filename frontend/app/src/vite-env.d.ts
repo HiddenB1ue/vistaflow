@@ -1,3 +1,14 @@
 /// <reference types="vite/client" />
 /// <reference types="react" />
 /// <reference types="react-dom" />
+
+interface ImportMetaEnv {
+  readonly VITE_AMAP_KEY: string;
+  readonly VITE_AMAP_STYLE_ID: string;
+  readonly VITE_API_BASE_URL: string;
+  readonly VITE_USE_MOCK: string;
+}
+
+interface ImportMeta {
+  readonly env: ImportMetaEnv;
+}
