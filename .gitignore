@@ -1,1 +1,36 @@
 .claude/
+
+# JavaScript / frontend workspaces
+node_modules/
+dist/
+dist-ssr/
+.pnpm-store/
+pnpm-debug.log*
+package-lock.json
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.uv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+coverage.xml
+
+# Environment files
+.env.local
+.env.production
+
+# Editor / OS
+.idea/
+.vscode/
+.DS_Store
+*.swp
+*.swo
+
+# Local leftover migration caches from previous layout
+backend/pytest-cache-files-*/
+frontend/app/.vite/
