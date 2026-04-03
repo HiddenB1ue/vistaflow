@@ -1,10 +1,7 @@
 import { useState } from 'react';
 import type { Task } from '@/types/task';
 import type { ToastType } from '@/stores/uiStore';
-import { KpiCard } from '@/components/ui/KpiCard';
-import { InputBox } from '@/components/ui/InputBox';
-import { CustomSelect } from '@/components/ui/CustomSelect';
-import { Button } from '@/components/ui/Button';
+import { KpiCard, InputBox, CustomSelect, Button } from '@vistaflow/ui';
 import { TaskCard } from '@/components/ui/TaskCard';
 
 interface TasksViewProps {

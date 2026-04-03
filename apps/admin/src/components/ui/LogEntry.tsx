@@ -1,5 +1,5 @@
 import type { LogSeverity } from '@/types/log';
-import { Badge } from './Badge';
+import { Badge } from '@vistaflow/ui';
 import type { ReactNode } from 'react';
 
 interface LogEntryProps {

@@ -1,9 +1,5 @@
 import { usePanelReveal } from '@/hooks/usePanelReveal';
-import { KpiCard } from '@/components/ui/KpiCard';
-import { SparklineChart } from '@/components/ui/SparklineChart';
-import { DonutChart } from '@/components/ui/DonutChart';
-import { StatusDot } from '@/components/ui/StatusDot';
-import { Badge } from '@/components/ui/Badge';
+import { KpiCard, SparklineChart, DonutChart, StatusDot, Badge } from '@vistaflow/ui';
 import { MOCK_SPARKLINE_DATA, MOCK_API_QUOTA } from '@/services/mock/overview.mock';
 
 interface OverviewViewProps {

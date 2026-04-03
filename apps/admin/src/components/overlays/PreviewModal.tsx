@@ -1,11 +1,7 @@
 import { useState } from 'react';
 import type { StationPreview } from '@/types/station';
 import { MOCK_STATION_PREVIEWS } from '@/services/mock/stations.mock';
-import { InputBox } from '@/components/ui/InputBox';
-import { CustomSelect } from '@/components/ui/CustomSelect';
-import { Badge } from '@/components/ui/Badge';
-import { DataTable } from '@/components/ui/DataTable';
-import { Button } from '@/components/ui/Button';
+import { InputBox, CustomSelect, Badge, DataTable, Button } from '@vistaflow/ui';
 
 interface PreviewModalProps {
   isOpen: boolean;

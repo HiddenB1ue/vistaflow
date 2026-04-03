@@ -1,4 +1,4 @@
-interface DrawerBackdropProps {
+export interface DrawerBackdropProps {
   isActive: boolean;
   onClick: () => void;
 }

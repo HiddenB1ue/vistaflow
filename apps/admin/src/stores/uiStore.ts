@@ -1,13 +1,8 @@
 import { create } from 'zustand';
 import type { Station } from '@/types/station';
+import type { ToastType, ToastItem } from '@vistaflow/ui';
 
-export type ToastType = 'success' | 'error' | 'info' | 'warn';
-
-export interface ToastItem {
-  id: string;
-  message: string;
-  type: ToastType;
-}
+export type { ToastType, ToastItem };
 
 interface UiState {
   taskDrawerOpen: boolean;

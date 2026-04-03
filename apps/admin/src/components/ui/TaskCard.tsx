@@ -1,7 +1,5 @@
 import type { Task } from '@/types/task';
-import { StatusDot } from './StatusDot';
-import { Badge } from './Badge';
-import { Button } from './Button';
+import { StatusDot, Badge, Button } from '@vistaflow/ui';
 
 interface TaskCardProps {
   task: Task;

@@ -1,8 +1,5 @@
 import { useState } from 'react';
-import { InputBox } from '@/components/ui/InputBox';
-import { CustomSelect } from '@/components/ui/CustomSelect';
-import { ToggleSwitch } from '@/components/ui/ToggleSwitch';
-import { Button } from '@/components/ui/Button';
+import { InputBox, CustomSelect, ToggleSwitch, Button } from '@vistaflow/ui';
 
 interface TaskDrawerProps {
   isOpen: boolean;

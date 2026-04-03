@@ -1,7 +1,9 @@
-type ButtonVariant = 'primary' | 'outline' | 'danger' | 'warning' | 'success';
-type ButtonSize = 'default' | 'sm';
+import type React from 'react';
 
-interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
+export type ButtonVariant = 'primary' | 'outline' | 'danger' | 'warning' | 'success';
+export type ButtonSize = 'default' | 'sm';
+
+export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: ButtonVariant;
   size?: ButtonSize;
   children: React.ReactNode;

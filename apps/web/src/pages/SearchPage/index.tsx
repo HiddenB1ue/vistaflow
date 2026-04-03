@@ -1,8 +1,7 @@
 import { useEffect } from 'react';
 import { DatePicker } from '@/components/ui/DatePicker';
 import { StationInput } from '@/components/ui/StationInput';
-import { AuraBackground } from '@/components/background/AuraBackground';
-import { NoiseTexture } from '@/components/background/NoiseTexture';
+import { AuraBackground, NoiseTexture } from '@vistaflow/ui';
 import { Navbar } from '@/components/layout/Navbar';
 import { FilterDrawer } from '@/components/overlays/FilterDrawer';
 import { useSearchStore } from '@/stores/searchStore';
@@ -34,7 +33,7 @@ export function SearchPage() {
 
   return (
     <div className="relative min-h-screen overflow-hidden flex items-center justify-center">
-      <AuraBackground />
+      <AuraBackground enableMouseTracking={true} />
       <NoiseTexture />
       <Navbar onFilterOpen={() => setSearchFilterOpen(!isSearchFilterOpen)} />
 

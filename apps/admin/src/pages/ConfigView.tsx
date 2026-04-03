@@ -1,9 +1,7 @@
 import { useState } from 'react';
 import type { ToastType } from '@/stores/uiStore';
 import { MOCK_CREDENTIALS, MOCK_TOGGLES } from '@/services/mock/config.mock';
-import { Badge } from '@/components/ui/Badge';
-import { Button } from '@/components/ui/Button';
-import { ToggleSwitch } from '@/components/ui/ToggleSwitch';
+import { Badge, Button, ToggleSwitch } from '@vistaflow/ui';
 
 interface ConfigViewProps {
   addToast: (message: string, type: ToastType) => void;

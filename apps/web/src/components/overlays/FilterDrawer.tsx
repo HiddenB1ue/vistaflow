@@ -1,3 +1,5 @@
+import { ToggleSwitch } from '@vistaflow/ui';
+
 interface FilterDrawerProps {
   isOpen: boolean;
   directOnly: boolean;
@@ -52,9 +54,9 @@ export function FilterDrawer({
         <div>
           <div className="text-sm text-starlight mb-6 flex items-center justify-between">
             <span>仅看直达</span>
-            <div
-              className={`custom-toggle${directOnly ? ' active' : ''}`}
-              onClick={() => onDirectOnlyChange(!directOnly)}
+            <ToggleSwitch
+              checked={directOnly}
+              onChange={onDirectOnlyChange}
             />
           </div>
           <p className="text-xs text-muted font-light leading-relaxed">
@@ -75,10 +77,7 @@ export function FilterDrawer({
             ] as const).map(({ label, value, onChange }) => (
               <div key={label} className="flex items-center justify-between">
                 <span>{label}</span>
-                <div
-                  className={`custom-toggle${value ? ' active' : ''}`}
-                  onClick={() => onChange(!value)}
-                />
+                <ToggleSwitch checked={value} onChange={onChange} />
               </div>
             ))}
           </div>

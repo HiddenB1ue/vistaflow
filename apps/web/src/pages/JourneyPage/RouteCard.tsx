@@ -1,8 +1,7 @@
 import { useState } from 'react';
 import type { Route, TrainSegment } from '@/types/route';
 import { isTransfer } from '@/types/route';
-import { formatDuration } from '@/utils/duration';
-import { formatPrice } from '@/utils/price';
+import { formatDuration, formatPrice } from '@vistaflow/utils';
 import { getLowestAvailablePrice } from '@/utils/seat';
 
 interface RouteCardProps {

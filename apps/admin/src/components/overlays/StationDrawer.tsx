@@ -1,9 +1,6 @@
 import { useState, useEffect } from 'react';
 import type { Station } from '@/types/station';
-import { InputBox } from '@/components/ui/InputBox';
-import { CustomSelect } from '@/components/ui/CustomSelect';
-import { ProgressBar } from '@/components/ui/ProgressBar';
-import { Button } from '@/components/ui/Button';
+import { InputBox, CustomSelect, ProgressBar, Button } from '@vistaflow/ui';
 
 interface StationDrawerProps {
   isOpen: boolean;

@@ -1,2 +1,4 @@
-// 第一阶段占位：后续在这里导出共享工具函数。
-export {}
+export { formatDuration, formatPrice } from './format';
+export { useMouseAura } from './hooks/useMouseAura';
+export { useTheme } from './hooks/useTheme';
+export type { UseThemeOptions } from './hooks/useTheme';

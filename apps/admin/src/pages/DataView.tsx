@@ -2,11 +2,7 @@ import { useState } from 'react';
 import type { Station } from '@/types/station';
 import type { ToastType } from '@/stores/uiStore';
 import { MOCK_STATIONS } from '@/services/mock/stations.mock';
-import { InputBox } from '@/components/ui/InputBox';
-import { CustomSelect } from '@/components/ui/CustomSelect';
-import { Button } from '@/components/ui/Button';
-import { Badge } from '@/components/ui/Badge';
-import { DataTable } from '@/components/ui/DataTable';
+import { InputBox, CustomSelect, Button, Badge, DataTable } from '@vistaflow/ui';
 
 interface DataViewProps {
   onEditStation: (station: Station) => void;

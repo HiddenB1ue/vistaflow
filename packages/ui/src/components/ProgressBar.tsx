@@ -1,5 +1,5 @@
-interface ProgressBarProps {
-  value: number; // 0-100
+export interface ProgressBarProps {
+  value: number;
   color?: string;
 }
 

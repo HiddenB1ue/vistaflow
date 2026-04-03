@@ -1,6 +1,8 @@
-type BadgeVariant = 'green' | 'yellow' | 'blue' | 'red' | 'purple';
+import type React from 'react';
 
-interface BadgeProps {
+export type BadgeVariant = 'green' | 'yellow' | 'blue' | 'red' | 'purple';
+
+export interface BadgeProps {
   variant: BadgeVariant;
   children: React.ReactNode;
 }

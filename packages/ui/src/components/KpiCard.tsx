@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 
-interface KpiCardProps {
+export interface KpiCardProps {
   label: string;
   value: string | number | ReactNode;
   accentColor?: string;

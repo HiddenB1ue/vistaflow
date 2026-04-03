@@ -1,8 +1,15 @@
 import { useEffect, useRef, useCallback } from 'react';
 import gsap from 'gsap';
-import type { ToastType, ToastItem } from '@/stores/uiStore';
 
-interface ToastContainerProps {
+export type ToastType = 'success' | 'error' | 'info' | 'warn';
+
+export interface ToastItem {
+  id: string;
+  message: string;
+  type: ToastType;
+}
+
+export interface ToastContainerProps {
   toasts: ToastItem[];
   onDismiss: (id: string) => void;
 }
@@ -30,7 +37,7 @@ const toastIcons: Record<ToastType, React.ReactNode> = {
   ),
 };
 
-function ToastItem({ toast, onDismiss }: { toast: ToastItem; onDismiss: (id: string) => void }) {
+function ToastItemComponent({ toast, onDismiss }: { toast: ToastItem; onDismiss: (id: string) => void }) {
   const elRef = useRef<HTMLDivElement>(null);
   const dismissedRef = useRef(false);
 
@@ -71,7 +78,7 @@ export function ToastContainer({ toasts, onDismiss }: ToastContainerProps) {
       style={{ position: 'fixed', bottom: '2rem', right: '2rem', zIndex: 9999, display: 'flex', flexDirection: 'column', gap: '10px', pointerEvents: 'none' }}
     >
       {toasts.map((t) => (
-        <ToastItem key={t.id} toast={t} onDismiss={onDismiss} />
+        <ToastItemComponent key={t.id} toast={t} onDismiss={onDismiss} />
       ))}
     </div>
   );

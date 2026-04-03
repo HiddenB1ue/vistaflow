@@ -1,4 +1,6 @@
-interface GlassPanelProps {
+import type React from 'react';
+
+export interface GlassPanelProps {
   children: React.ReactNode;
   className?: string;
 }

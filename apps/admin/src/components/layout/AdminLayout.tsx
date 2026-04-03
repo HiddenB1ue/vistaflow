@@ -6,12 +6,9 @@ import { VIEW_CONFIGS } from '@/types/view';
 import type { ViewId } from '@/types/view';
 import { useViewTransition } from '@/hooks/useViewTransition';
 
-import { AuraBackground } from '@/components/background/AuraBackground';
-import { NoiseTexture } from '@/components/background/NoiseTexture';
+import { AuraBackground, NoiseTexture, ToastContainer, DrawerBackdrop } from '@vistaflow/ui';
 import { Sidebar } from './Sidebar';
 import { Header } from './Header';
-import { ToastContainer } from '@/components/ui/ToastContainer';
-import { DrawerBackdrop } from '@/components/overlays/DrawerBackdrop';
 import { TaskDrawer } from '@/components/overlays/TaskDrawer';
 import { StationDrawer } from '@/components/overlays/StationDrawer';
 import { PreviewModal } from '@/components/overlays/PreviewModal';
@@ -161,7 +158,7 @@ export function AdminLayout() {
   return (
     <>
       <AuraBackground />
-      <NoiseTexture />
+      <NoiseTexture opacity={0.03} />
       <ToastContainer toasts={toasts} onDismiss={removeToast} />
       <DrawerBackdrop isActive={taskDrawerOpen || stationDrawerOpen} onClick={handleCloseBackdrop} />
       <TaskDrawer isOpen={taskDrawerOpen} onClose={closeTaskDrawer} onSubmit={handleTaskDrawerSubmit} />

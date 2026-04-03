@@ -4,6 +4,19 @@
   "version": "0.1.0",
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./styles": "./src/styles/components.css"
+  },
+  "dependencies": {
+    "@vistaflow/design-tokens": "workspace:*",
+    "@vistaflow/utils": "workspace:*"
+  },
+  "peerDependencies": {
+    "gsap": "^3.12.0",
+    "react": "^19.0.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.0.0",
+    "react": "^19.0.0"
   }
 }

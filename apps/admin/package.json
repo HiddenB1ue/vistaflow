@@ -9,6 +9,9 @@
     "preview": "vite preview --port 4174"
   },
   "dependencies": {
+    "@vistaflow/design-tokens": "workspace:*",
+    "@vistaflow/ui": "workspace:*",
+    "@vistaflow/utils": "workspace:*",
     "@radix-ui/react-dialog": "^1.1.15",
     "@radix-ui/react-select": "^2.2.6",
     "@radix-ui/react-switch": "^1.2.6",

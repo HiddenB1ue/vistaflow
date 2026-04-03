@@ -1,8 +1,7 @@
 import { useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Navbar } from '@/components/layout/Navbar';
-import { AuraBackground } from '@/components/background/AuraBackground';
-import { NoiseTexture } from '@/components/background/NoiseTexture';
+import { AuraBackground, NoiseTexture } from '@vistaflow/ui';
 import { AmapContainer } from '@/components/map/AmapContainer';
 import { FilterDrawer } from '@/components/overlays/FilterDrawer';
 import { RouteListPanel } from './RouteListPanel';
@@ -51,7 +50,7 @@ export function JourneyPage() {
       className="relative min-h-screen"
       style={{ backgroundColor: 'var(--color-bg)' }}
     >
-      <AuraBackground />
+      <AuraBackground enableMouseTracking={true} />
       <NoiseTexture />
       <Navbar onFilterOpen={() => setJourneyFilterOpen(!isJourneyFilterOpen)} />
 

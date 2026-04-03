@@ -1,6 +1,6 @@
-type StatusDotVariant = 'running' | 'pending' | 'idle' | 'error';
+export type StatusDotVariant = 'running' | 'pending' | 'idle' | 'error';
 
-interface StatusDotProps {
+export interface StatusDotProps {
   variant: StatusDotVariant;
 }
 

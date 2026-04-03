@@ -1,0 +1,8 @@
+[data-theme="dawn"] {
+  --color-pulse: #E5C07B;
+  --color-pulse-dim: rgba(229, 192, 123, 0.3);
+  --color-pulse-glow: rgba(229, 192, 123, 0.15);
+  --aura-color-1: #1a2a40;
+  --aura-color-2: rgba(229, 192, 123, 0.15);
+  --path-color: rgba(229, 192, 123, 0.3);
+}

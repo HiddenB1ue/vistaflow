@@ -1,4 +1,6 @@
-interface InputBoxProps extends React.InputHTMLAttributes<HTMLInputElement> {
+import type React from 'react';
+
+export interface InputBoxProps extends React.InputHTMLAttributes<HTMLInputElement> {
   className?: string;
 }
 

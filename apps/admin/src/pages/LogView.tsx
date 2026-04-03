@@ -1,9 +1,7 @@
 import { useState } from 'react';
 import type { ToastType } from '@/stores/uiStore';
 import { MOCK_LOGS } from '@/services/mock/logs.mock';
-import { InputBox } from '@/components/ui/InputBox';
-import { CustomSelect } from '@/components/ui/CustomSelect';
-import { Button } from '@/components/ui/Button';
+import { InputBox, CustomSelect, Button } from '@vistaflow/ui';
 import { LogEntry } from '@/components/ui/LogEntry';
 
 interface LogViewProps {
