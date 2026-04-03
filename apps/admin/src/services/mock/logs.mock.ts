@@ -1,0 +1,86 @@
+import type { LogRecord } from '@/types/log';
+
+export const MOCK_LOGS: LogRecord[] = [
+  {
+    id: 'log-01',
+    timestamp: '12:04:21',
+    severity: 'SUCCESS',
+    message: '[TaskEngine] 任务 Fetch-Train-Status-T+15 执行成功，写入 4,250 条，耗时 922s',
+    highlightedTerms: ['Fetch-Train-Status-T+15'],
+  },
+  {
+    id: 'log-02',
+    timestamp: '12:04:18',
+    severity: 'INFO',
+    message: '[Scheduler] 触发 Cron 任务 Fetch-Train-Status-T+15，下次执行 12:19',
+    highlightedTerms: ['Fetch-Train-Status-T+15'],
+  },
+  {
+    id: 'log-03',
+    timestamp: '11:47:03',
+    severity: 'ERROR',
+    message: '[ProxyClient] Token 校验失败：401 Unauthorized · 任务 Price-Matrix-BJ-SH 已终止，触发重试队列（0/3）',
+    highlightedTerms: ['Price-Matrix-BJ-SH'],
+  },
+  {
+    id: 'log-04',
+    timestamp: '11:47:00',
+    severity: 'INFO',
+    message: '[TaskEngine] 任务 Price-Matrix-BJ-SH 开始执行，代理 endpoint: proxy.vistaflow.app:8080',
+    highlightedTerms: ['Price-Matrix-BJ-SH'],
+  },
+  {
+    id: 'log-05',
+    timestamp: '11:30:00',
+    severity: 'INFO',
+    message: '[Scheduler] 触发 Cron 任务 Price-Matrix-BJ-SH',
+    highlightedTerms: ['Price-Matrix-BJ-SH'],
+  },
+  {
+    id: 'log-06',
+    timestamp: '10:12:45',
+    severity: 'WARN',
+    message: '[GeoResolver] 站点"新余北站"坐标置信度低（71%），已标记为待核实，建议人工复查',
+    highlightedTerms: ['新余北站'],
+  },
+  {
+    id: 'log-07',
+    timestamp: '10:11:22',
+    severity: 'WARN',
+    message: '[GeoResolver] 站点"测试站点 A"坐标解析失败，返回 (0, 0)，已跳过落库',
+    highlightedTerms: ['测试站点 A'],
+  },
+  {
+    id: 'log-08',
+    timestamp: '10:09:05',
+    severity: 'SUCCESS',
+    message: '[GeoResolver] 经纬度补全预览生成完成：18 个缺失站点，16 个解析成功，2 个失败，等待人工确认',
+  },
+  {
+    id: 'log-09',
+    timestamp: '10:08:50',
+    severity: 'INFO',
+    message: '[TaskEngine] 任务 Geocode-Missing-Stations 开始执行，目标：18 个坐标缺失站点',
+    highlightedTerms: ['Geocode-Missing-Stations'],
+  },
+  {
+    id: 'log-10',
+    timestamp: '09:15:14',
+    severity: 'SUCCESS',
+    message: '[TaskEngine] 任务 Fetch-Stations-Full 执行完成，成功写入 3,412 条，耗时 134s，成功率 100%',
+    highlightedTerms: ['Fetch-Stations-Full'],
+  },
+  {
+    id: 'log-11',
+    timestamp: '09:13:00',
+    severity: 'INFO',
+    message: '[Admin] 用户 admin@vistaflow.app 手动触发任务 Fetch-Stations-Full',
+    highlightedTerms: ['admin@vistaflow.app', 'Fetch-Stations-Full'],
+  },
+  {
+    id: 'log-12',
+    timestamp: '09:00:01',
+    severity: 'SYSTEM',
+    message: '[System] VistaFlow Admin Console v2.1.0 启动完成，数据库连接正常，任务调度器就绪',
+  },
+];

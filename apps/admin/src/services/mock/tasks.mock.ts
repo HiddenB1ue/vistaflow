@@ -1,0 +1,46 @@
+import type { Task } from '@/types/task';
+
+export const MOCK_TASKS: Task[] = [
+  {
+    id: 'task-1',
+    name: '抓取指定日期车次状态 T+15',
+    type: 'fetch-status',
+    typeLabel: '车次状态抓取',
+    status: 'running',
+    description: '每 15 分钟抓取一次 12306 车次状态数据，写入数据库并更新缓存',
+    cron: '0 0/15 * * * ?',
+    metrics: { label: '已抓取', value: '4,250 条' },
+    timing: { label: '已运行', value: '00:15:22' },
+  },
+  {
+    id: 'task-2',
+    name: '站点经纬度补全任务',
+    type: 'geocode',
+    typeLabel: '经纬度补全',
+    status: 'pending',
+    description: '对坐标缺失的站点调用高德地图 API 进行经纬度解析',
+    metrics: { label: '待处理', value: '18 个站点坐标缺失' },
+    timing: { label: '预计耗时', value: '~3 min' },
+  },
+  {
+    id: 'task-3',
+    name: '基础车站静态数据全量抓取',
+    type: 'fetch-station',
+    typeLabel: '车站数据抓取',
+    status: 'completed',
+    description: '全量抓取 12306 车站基础信息（站名、编码、城市）',
+    metrics: { label: '写入记录', value: '3,412 条' },
+    timing: { label: '耗时', value: '2m 14s' },
+  },
+  {
+    id: 'task-4',
+    name: '北京-上海 票价矩阵同步',
+    type: 'price',
+    typeLabel: '票价矩阵',
+    status: 'error',
+    description: '同步北京南 → 上海虹桥全席别票价数据',
+    metrics: { label: '失败原因', value: '代理凭证过期' },
+    timing: { label: '失败时间', value: '11:47:03' },
+    errorMessage: '代理 Token 已过期，请先在系统配置中更新凭证',
+  },
+];
