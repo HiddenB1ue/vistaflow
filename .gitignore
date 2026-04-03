@@ -35,4 +35,4 @@ coverage.xml
 backend/pytest-cache-files-*/
 frontend/app/.vite/
 
-.kiro\
+.kiro/
