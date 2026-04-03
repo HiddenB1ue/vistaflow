@@ -34,3 +34,5 @@ coverage.xml
 # Local leftover migration caches from previous layout
 backend/pytest-cache-files-*/
 frontend/app/.vite/
+
+.kiro\
