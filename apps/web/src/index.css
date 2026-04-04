@@ -1,6 +1,8 @@
 @import '@vistaflow/design-tokens';
 @import '@vistaflow/ui/styles';
 @import 'tailwindcss';
+@source '../../../packages/ui/src';
+@source '../../../packages/utils/src';
 
 @theme {
   --color-void: #030303;
