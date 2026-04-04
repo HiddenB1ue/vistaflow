@@ -1,18 +1,19 @@
 import { create } from 'zustand';
 import type { Task, TaskStatus } from '@/types/task';
-import { MOCK_TASKS } from '@/services/mock/tasks.mock';
 
 interface TaskState {
   tasks: Task[];
+  setTasks: (tasks: Task[]) => void;
   updateTaskStatus: (taskId: string, status: TaskStatus) => void;
 }
 
 export const useTaskStore = create<TaskState>()((set) => ({
-  tasks: [...MOCK_TASKS],
+  tasks: [],
+  setTasks: (tasks) => set({ tasks }),
   updateTaskStatus: (taskId, status) =>
     set((state) => ({
-      tasks: state.tasks.map((t) =>
-        t.id === taskId ? { ...t, status } : t
+      tasks: state.tasks.map((task) =>
+        task.id === taskId ? { ...task, status } : task,
       ),
     })),
 }));

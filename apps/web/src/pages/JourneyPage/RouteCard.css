@@ -1,0 +1,74 @@
+/* ====== ticket-card: 方案卡片 ====== */
+.ticket-card {
+  background: transparent;
+  border: 1px solid transparent;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  transition: background 0.4s cubic-bezier(0.19, 1, 0.22, 1), border-color 0.4s cubic-bezier(0.19, 1, 0.22, 1), box-shadow 0.4s cubic-bezier(0.19, 1, 0.22, 1);
+  padding: 2rem 1.5rem;
+  margin-bottom: 1rem;
+  border-radius: 12px;
+  position: relative;
+  contain: layout;
+}
+.ticket-card:hover {
+  background: rgba(255, 255, 255, 0.02);
+}
+.ticket-card.active {
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.03);
+  box-shadow: 0 10px 40px -10px rgba(0, 0, 0, 0.5);
+}
+.ticket-card::before {
+  content: '';
+  position: absolute;
+  left: -1px;
+  top: 1.5rem;
+  bottom: 1.5rem;
+  width: 3px;
+  background: var(--color-pulse);
+  border-radius: 0 4px 4px 0;
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+.ticket-card.active::before {
+  opacity: 1;
+}
+
+/* ====== details-panel: 卡片展开详情 ====== */
+.details-panel {
+  max-height: 0;
+  overflow: hidden;
+  transition: max-height 0.7s cubic-bezier(0.19, 1, 0.22, 1), opacity 0.5s ease;
+  opacity: 0;
+  will-change: max-height, opacity;
+}
+.ticket-card.active .details-panel {
+  max-height: 3000px;
+  opacity: 1;
+  padding-top: 2rem;
+}
+
+/* ====== stops-panel: 经停站折叠 ====== */
+.stops-panel {
+  max-height: 0;
+  overflow-y: auto;
+  transition: max-height 0.4s ease;
+  opacity: 0;
+  margin-top: 0;
+}
+.stops-panel.expanded {
+  max-height: 160px;
+  opacity: 1;
+  margin-top: 1rem;
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 8px;
+  padding: 0.5rem 1rem;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+.stops-panel::-webkit-scrollbar {
+  width: 4px;
+}
+.stops-panel::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 4px;
+}

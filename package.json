@@ -8,6 +8,11 @@
     "build:web": "pnpm --filter @vistaflow/web build",
     "lint:web": "pnpm --filter @vistaflow/web lint",
     "dev:admin": "pnpm --filter @vistaflow/admin dev",
-    "build:admin": "pnpm --filter @vistaflow/admin build"
+    "build:admin": "pnpm --filter @vistaflow/admin build",
+    "build:packages": "pnpm --filter @vistaflow/types build && pnpm --filter @vistaflow/utils build && pnpm --filter @vistaflow/ui build && pnpm --filter @vistaflow/api-client build",
+    "test": "pnpm -r --parallel run test",
+    "test:web": "pnpm --filter @vistaflow/web test",
+    "test:admin": "pnpm --filter @vistaflow/admin test",
+    "generate:types": "pnpm --filter @vistaflow/api-types generate"
   }
 }

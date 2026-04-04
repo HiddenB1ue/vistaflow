@@ -36,3 +36,6 @@ backend/pytest-cache-files-*/
 frontend/app/.vite/
 
 .kiro/
+
+# Archived prototypes
+_archive/

@@ -1,0 +1,24 @@
+/* ====== map 动画 ====== */
+.map-path {
+  stroke-dasharray: 1000;
+  stroke-dashoffset: 1000;
+  transition: stroke-dashoffset 1.5s ease-in-out, stroke 1s;
+  stroke: var(--path-color);
+  stroke-width: 2;
+  fill: none;
+}
+.map-idle-path {
+  stroke: rgba(255, 255, 255, 0.05);
+  stroke-width: 1;
+  fill: none;
+  stroke-dasharray: 4 4;
+  animation: dash 20s linear infinite;
+}
+.map-pulse {
+  fill: var(--color-pulse);
+  filter: drop-shadow(0 0 6px var(--color-pulse));
+  transition: fill 1s;
+}
+@keyframes dash {
+  to { stroke-dashoffset: -100; }
+}

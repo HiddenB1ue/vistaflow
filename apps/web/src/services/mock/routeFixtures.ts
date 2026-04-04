@@ -1,0 +1,223 @@
+import type { RouteList, SeatClass, Station, TrainStop } from '@/types/route';
+import { getSeatLabel } from '@/utils/seat';
+
+const createStation = (name: string, code: string, city: string, lng: number, lat: number): Station => ({
+  name,
+  code,
+  city,
+  lng,
+  lat,
+});
+
+const createSeat = (
+  type: SeatClass['type'],
+  price: number,
+  available: boolean,
+  availabilityText?: string,
+): SeatClass => ({
+  type,
+  label: getSeatLabel(type),
+  price,
+  available,
+  availabilityText,
+});
+
+const createStop = (station: Station, arrivalTime: string, departureTime: string, stopDuration: number): TrainStop => ({
+  station,
+  arrivalTime,
+  departureTime,
+  stopDuration,
+});
+
+const stations = {
+  beijingSouth: createStation('北京南', 'BJP', '北京', 116.3783, 39.8654),
+  shanghaiHongqiao: createStation('上海虹桥', 'SHH', '上海', 121.322, 31.1945),
+  jinanWest: createStation('济南西', 'JNX', '济南', 116.82, 36.6757),
+  nanjingSouth: createStation('南京南', 'NJN', '南京', 118.7647, 31.9571),
+  xuzhouEast: createStation('徐州东', 'XZD', '徐州', 117.3089, 34.2658),
+  tianjinSouth: createStation('天津南', 'TNP', '天津', 117.2008, 39.0842),
+  ziboNorth: createStation('淄博北', 'ZRK', '淄博', 118.7969, 37.4567),
+  qingdaoWest: createStation('青岛西', 'QDK', '青岛', 120.3856, 36.0671),
+};
+
+export const routeFixtures: RouteList = [
+  {
+    id: 'G1',
+    trainNo: 'G1',
+    type: '优选直达',
+    origin: stations.beijingSouth,
+    destination: stations.shanghaiHongqiao,
+    departureTime: '07:00',
+    arrivalTime: '11:38',
+    durationMinutes: 278,
+    segs: [
+      {
+        no: 'G1',
+        origin: stations.beijingSouth,
+        destination: stations.shanghaiHongqiao,
+        departureTime: '07:00',
+        arrivalTime: '11:38',
+        stops: [],
+        seats: [
+          createSeat('business', 1748, true, '仅剩 1 席'),
+          createSeat('first', 933, true),
+          createSeat('second', 553, true),
+        ],
+      },
+    ],
+    pathPoints: [stations.beijingSouth, stations.tianjinSouth, stations.ziboNorth, stations.qingdaoWest, stations.shanghaiHongqiao].map(({ lng, lat }) => ({ lng, lat })),
+  },
+  {
+    id: 'G101',
+    trainNo: 'G101',
+    type: '优选直达',
+    origin: stations.beijingSouth,
+    destination: stations.shanghaiHongqiao,
+    departureTime: '08:00',
+    arrivalTime: '12:28',
+    durationMinutes: 268,
+    segs: [
+      {
+        no: 'G101',
+        origin: stations.beijingSouth,
+        destination: stations.shanghaiHongqiao,
+        departureTime: '08:00',
+        arrivalTime: '12:28',
+        stops: [
+          createStop(stations.jinanWest, '09:24', '09:26', 2),
+          createStop(stations.nanjingSouth, '11:10', '11:12', 2),
+        ],
+        seats: [
+          createSeat('business', 1748, false),
+          createSeat('first', 933, true),
+          createSeat('second', 553, true),
+        ],
+      },
+    ],
+    pathPoints: [stations.beijingSouth, stations.jinanWest, stations.nanjingSouth, stations.shanghaiHongqiao].map(({ lng, lat }) => ({ lng, lat })),
+  },
+  {
+    id: 'G103',
+    trainNo: 'G103',
+    type: '极速直达',
+    origin: stations.beijingSouth,
+    destination: stations.shanghaiHongqiao,
+    departureTime: '09:30',
+    arrivalTime: '14:28',
+    durationMinutes: 298,
+    segs: [
+      {
+        no: 'G103',
+        origin: stations.beijingSouth,
+        destination: stations.shanghaiHongqiao,
+        departureTime: '09:30',
+        arrivalTime: '14:28',
+        stops: [
+          createStop(stations.jinanWest, '10:52', '10:54', 2),
+          createStop(stations.xuzhouEast, '12:08', '12:10', 2),
+          createStop(stations.nanjingSouth, '13:10', '13:12', 2),
+        ],
+        seats: [
+          createSeat('business', 1748, true),
+          createSeat('first', 933, true),
+          createSeat('second', 553, false),
+        ],
+      },
+    ],
+    pathPoints: [stations.beijingSouth, stations.jinanWest, stations.xuzhouEast, stations.nanjingSouth, stations.shanghaiHongqiao].map(({ lng, lat }) => ({ lng, lat })),
+  },
+  {
+    id: 'G105-R',
+    trainNo: 'G105 / G213',
+    type: '省时中转',
+    origin: stations.beijingSouth,
+    destination: stations.shanghaiHongqiao,
+    departureTime: '09:15',
+    arrivalTime: '15:40',
+    durationMinutes: 385,
+    segs: [
+      {
+        no: 'G105',
+        origin: stations.beijingSouth,
+        destination: stations.jinanWest,
+        departureTime: '09:15',
+        arrivalTime: '11:05',
+        stops: [],
+        seats: [createSeat('second', 215, true)],
+      },
+      { transfer: '济南西同站换乘 · 预留 45 分钟' },
+      {
+        no: 'G213',
+        origin: stations.jinanWest,
+        destination: stations.shanghaiHongqiao,
+        departureTime: '11:50',
+        arrivalTime: '15:40',
+        stops: [createStop(stations.nanjingSouth, '13:45', '13:47', 2)],
+        seats: [createSeat('first', 920, true), createSeat('second', 580, true)],
+      },
+    ],
+    pathPoints: [stations.beijingSouth, stations.jinanWest, stations.nanjingSouth, stations.shanghaiHongqiao].map(({ lng, lat }) => ({ lng, lat })),
+  },
+  {
+    id: 'G21',
+    trainNo: 'G21',
+    type: '傍晚直达',
+    origin: stations.beijingSouth,
+    destination: stations.shanghaiHongqiao,
+    departureTime: '17:00',
+    arrivalTime: '21:40',
+    durationMinutes: 280,
+    segs: [
+      {
+        no: 'G21',
+        origin: stations.beijingSouth,
+        destination: stations.shanghaiHongqiao,
+        departureTime: '17:00',
+        arrivalTime: '21:40',
+        stops: [createStop(stations.nanjingSouth, '19:22', '19:24', 2)],
+        seats: [
+          createSeat('business', 2980, true),
+          createSeat('first', 933, true),
+          createSeat('second', 553, false),
+        ],
+      },
+    ],
+    pathPoints: [stations.beijingSouth, stations.nanjingSouth, stations.shanghaiHongqiao].map(({ lng, lat }) => ({ lng, lat })),
+  },
+  {
+    id: 'G107',
+    trainNo: 'G201 / G411',
+    type: '经济中转',
+    origin: stations.beijingSouth,
+    destination: stations.shanghaiHongqiao,
+    departureTime: '11:00',
+    arrivalTime: '15:58',
+    durationMinutes: 298,
+    segs: [
+      {
+        no: 'G201',
+        origin: stations.beijingSouth,
+        destination: stations.xuzhouEast,
+        departureTime: '11:00',
+        arrivalTime: '13:10',
+        stops: [],
+        seats: [createSeat('second', 280, true)],
+      },
+      { transfer: '徐州东同站换乘 · 预留 30 分钟' },
+      {
+        no: 'G411',
+        origin: stations.xuzhouEast,
+        destination: stations.shanghaiHongqiao,
+        departureTime: '13:40',
+        arrivalTime: '15:58',
+        stops: [createStop(stations.nanjingSouth, '14:48', '14:50', 2)],
+        seats: [
+          createSeat('business', 1748, true),
+          createSeat('first', 933, false),
+          createSeat('second', 400, true),
+        ],
+      },
+    ],
+    pathPoints: [stations.beijingSouth, stations.tianjinSouth, stations.xuzhouEast, stations.nanjingSouth, stations.shanghaiHongqiao].map(({ lng, lat }) => ({ lng, lat })),
+  },
+];

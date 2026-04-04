@@ -1,4 +1,4 @@
-export type CredentialHealth = 'healthy' | 'expired';
+type CredentialHealth = 'healthy' | 'expired';
 
 export interface ApiCredential {
   id: string;

@@ -1,5 +1,7 @@
+
 import type { Task } from '@/types/task';
-import { StatusDot, Badge, Button } from '@vistaflow/ui';
+import { TASK_LABELS } from '@/constants/labels';
+import { Badge, Button, PanelCard, StatusDot } from '@vistaflow/ui';
 
 interface TaskCardProps {
   task: Task;
@@ -27,11 +29,11 @@ const badgeVariantMap: Record<string, 'green' | 'yellow' | 'blue' | 'red'> = {
 };
 
 const badgeLabelMap: Record<string, string> = {
-  running: 'Running',
-  pending: 'Pending Confirm',
-  completed: 'Completed',
-  error: 'Error',
-  terminated: 'Terminated',
+  running: TASK_LABELS.statusRunning,
+  pending: TASK_LABELS.statusPending,
+  completed: TASK_LABELS.statusDone,
+  error: TASK_LABELS.statusError,
+  terminated: TASK_LABELS.statusTerminated,
 };
 
 export function TaskCard({ task, onStop, onRestart, onPreview, onNavigateToConfig, onShowDetails }: TaskCardProps) {
@@ -40,59 +42,51 @@ export function TaskCard({ task, onStop, onRestart, onPreview, onNavigateToConfi
   const isCompleted = task.status === 'completed';
   const isRunning = task.status === 'running';
 
-  let cardClassName = 'glass-panel p-5 flex flex-col lg:flex-row justify-between items-start lg:items-center gap-5';
+  let cardClassName = '';
   if (isPending) cardClassName += ' border border-[#FACC15]/25 bg-[#FACC15]/[0.04]';
   if (isError) cardClassName += ' border border-[#F87171]/20 bg-[#F87171]/[0.03] opacity-80';
   if (isCompleted) cardClassName += ' opacity-70';
 
   return (
-    <div className={cardClassName}>
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2 mb-2 flex-wrap">
-          <StatusDot variant={dotVariantMap[task.status] ?? 'idle'} />
-          <Badge variant={badgeVariantMap[task.status] ?? 'blue'}>{badgeLabelMap[task.status] ?? task.status}</Badge>
-          <span className="text-[10px] text-[#8A8A8E] font-display tracking-widest uppercase">{task.typeLabel}</span>
+    <PanelCard className={cardClassName.trim()}>
+      <div className="grid gap-5 md:grid-cols-[minmax(0,1fr)_auto] md:gap-6 lg:grid-cols-[minmax(0,1fr)_auto_auto] lg:items-center">
+        <div className="min-w-0">
+          <div className="mb-2 flex flex-wrap items-center gap-2">
+            <StatusDot variant={dotVariantMap[task.status] ?? 'idle'} />
+            <Badge variant={badgeVariantMap[task.status] ?? 'blue'}>{badgeLabelMap[task.status] ?? task.status}</Badge>
+            <span className="text-[10px] font-display uppercase tracking-widest text-[#8A8A8E]">{task.typeLabel}</span>
+          </div>
+          <h3 className="mb-1 truncate font-serif text-xl tracking-wide">{task.name}</h3>
+          <div className="text-xs text-[#8A8A8E]">
+            {task.errorMessage ? <span className="text-red-400/70">{task.errorMessage}</span> : task.description}
+          </div>
         </div>
-        <h3 className="font-serif text-xl tracking-wide mb-1 truncate">{task.name}</h3>
-        <div className="text-xs text-[#8A8A8E]">
-          {task.errorMessage ? (
-            <span className="text-red-400/70">{task.errorMessage}</span>
-          ) : (
-            task.description
+
+        <div className={`grid shrink-0 gap-4 border-t border-white/[0.08] pt-5 sm:grid-cols-2 md:min-w-[220px] md:border-l md:border-t-0 md:pl-6 md:pt-0 md:grid-cols-1 lg:min-w-[260px] lg:grid-cols-2 ${isPending ? 'sm:grid-cols-1 lg:grid-cols-1' : ''}`}>
+          <div>
+            <div className="mb-1 text-[10px] uppercase tracking-widest text-[#8A8A8E]">{task.metrics.label}</div>
+            <div className={`text-sm font-display ${isPending ? 'font-medium text-[#FACC15]' : ''}`}>{task.metrics.value}</div>
+          </div>
+          {!isPending && (
+            <div>
+              <div className="mb-1 text-[10px] uppercase tracking-widest text-[#8A8A8E]">{task.timing.label}</div>
+              <div className={`text-sm font-mono ${isRunning ? 'text-[#4ADE80]' : isError ? 'text-[#F87171]' : ''}`}>{task.timing.value}</div>
+            </div>
           )}
         </div>
-      </div>
 
-      <div className={`${isPending ? '' : 'flex gap-6'} border-l border-white/[0.08] pl-6 shrink-0`}>
-        <div>
-          <div className="text-[10px] text-[#8A8A8E] tracking-widest uppercase mb-1">{task.metrics.label}</div>
-          <div className={`text-sm font-display ${isPending ? 'text-[#FACC15] font-medium' : ''}`}>{task.metrics.value}</div>
+        <div className="flex shrink-0 flex-wrap items-center gap-2 md:col-span-2 md:justify-end lg:col-span-1">
+          {isRunning && (
+            <>
+              <Button variant="danger" size="sm" onClick={() => onStop?.(task.id)}>{TASK_LABELS.stop}</Button>
+              <Button variant="outline" size="sm" onClick={() => onShowDetails?.(task.id)}>{TASK_LABELS.details}</Button>
+            </>
+          )}
+          {isPending && <Button variant="warning" size="sm" onClick={() => onPreview?.(task.id)}>{TASK_LABELS.previewConfirm}</Button>}
+          {isCompleted && <Button variant="outline" size="sm" onClick={() => onRestart?.(task.id)}>{TASK_LABELS.restart}</Button>}
+          {isError && <Button variant="outline" size="sm" onClick={() => onNavigateToConfig?.()}>{TASK_LABELS.goFix}</Button>}
         </div>
-        {!isPending && (
-          <div>
-            <div className="text-[10px] text-[#8A8A8E] tracking-widest uppercase mb-1">{task.timing.label}</div>
-            <div className={`text-sm font-mono ${isRunning ? 'text-[#4ADE80]' : isError ? 'text-[#F87171]' : ''}`}>{task.timing.value}</div>
-          </div>
-        )}
       </div>
-
-      <div className="flex items-center gap-2 shrink-0">
-        {isRunning && (
-          <>
-            <Button variant="danger" size="sm" onClick={() => onStop?.(task.id)}>终止</Button>
-            <Button variant="outline" size="sm" onClick={() => onShowDetails?.(task.id)}>详情</Button>
-          </>
-        )}
-        {isPending && (
-          <Button variant="warning" onClick={() => onPreview?.(task.id)}>预览并确认</Button>
-        )}
-        {isCompleted && (
-          <Button variant="outline" size="sm" onClick={() => onRestart?.(task.id)}>重新执行</Button>
-        )}
-        {isError && (
-          <Button variant="outline" size="sm" onClick={() => onNavigateToConfig?.()}>去修复</Button>
-        )}
-      </div>
-    </div>
+    </PanelCard>
   );
 }

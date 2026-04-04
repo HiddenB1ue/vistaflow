@@ -1,0 +1,25 @@
+/* ====== 主题色工具类（dawn=金色 / dusk=紫色）====== */
+.time-theme-text { transition: color 1s; }
+:root .time-theme-text,
+[data-theme="dawn"] .time-theme-text {
+  color: #E5C07B;
+}
+[data-theme="dusk"] .time-theme-text {
+  color: #8B5CF6;
+}
+[data-theme="dawn"] .time-theme-bg,
+:root .time-theme-bg {
+  background-color: #E5C07B;
+}
+[data-theme="dusk"] .time-theme-bg {
+  background-color: #8B5CF6;
+}
+[data-theme="dawn"] .hover-time-theme:hover,
+:root .hover-time-theme:hover {
+  background-color: #E5C07B;
+  color: #030303;
+}
+[data-theme="dusk"] .hover-time-theme:hover {
+  background-color: #8B5CF6;
+  color: #F5F5F7;
+}

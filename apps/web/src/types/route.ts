@@ -1,7 +1,6 @@
-export interface Station {
-  name: string;
-  code: string;
-  city: string;
+import type { BaseStation } from '@vistaflow/types';
+
+export interface Station extends BaseStation {
   /** GCJ-02 坐标（已在 services 层转换） */
   lng: number;
   lat: number;
@@ -33,7 +32,7 @@ export interface TrainSegment {
   seats: SeatClass[];
 }
 
-export interface TransferSegment {
+interface TransferSegment {
   transfer: string;
 }
 

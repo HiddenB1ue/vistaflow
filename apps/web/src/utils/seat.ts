@@ -1,3 +1,4 @@
+
 import type { SeatClass } from '@/types/route';
 
 const SEAT_LABELS: Record<SeatClass['type'], string> = {
@@ -11,7 +12,7 @@ export function getSeatLabel(type: SeatClass['type']): string {
 }
 
 export function getLowestAvailablePrice(seats: SeatClass[]): number | null {
-  const available = seats.filter((s) => s.available);
+  const available = seats.filter((seat) => seat.available);
   if (available.length === 0) return null;
-  return Math.min(...available.map((s) => s.price));
+  return Math.min(...available.map((seat) => seat.price));
 }

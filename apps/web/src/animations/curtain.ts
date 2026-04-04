@@ -1,6 +1,6 @@
 import gsap from 'gsap';
 
-export type CurtainDirection = 'up' | 'down';
+type CurtainDirection = 'up' | 'down';
 
 /**
  * 剧场级幕布转场动画

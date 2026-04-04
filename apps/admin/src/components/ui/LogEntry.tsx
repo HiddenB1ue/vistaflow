@@ -1,5 +1,5 @@
 import type { LogSeverity } from '@/types/log';
-import { Badge } from '@vistaflow/ui';
+import { Badge, LogRow } from '@vistaflow/ui';
 import type { ReactNode } from 'react';
 
 interface LogEntryProps {
@@ -18,10 +18,11 @@ const severityBadgeMap: Record<LogSeverity, 'green' | 'blue' | 'yellow' | 'red' 
 
 export function LogEntry({ timestamp, severity, message }: LogEntryProps) {
   return (
-    <div className="log-line">
-      <span className="log-time">{timestamp}</span>
-      <Badge variant={severityBadgeMap[severity]}>{severity}</Badge>
-      <span className="text-starlight/80 text-xs leading-relaxed">{message}</span>
-    </div>
+    <LogRow
+      timestamp={timestamp}
+      badge={<Badge variant={severityBadgeMap[severity]}>{severity}</Badge>}
+    >
+      {message}
+    </LogRow>
   );
 }

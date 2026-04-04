@@ -1,12 +1,19 @@
 # VistaFlow Admin
 
-管理端前端占位应用。
+管理端前端应用。
 
-本阶段仅提供可安装、可启动的最小骨架，用于承接后续管理端页面与共享组件接入。
+当前包含：
 
-## 开发
+- 管理控制台布局与路由
+- Overview / Tasks / Data / Config / Log 页面
+- 基于 `@vistaflow/ui` 的共享组件接入
+- 基于 service 层的 mock / API 双模式数据访问
+
+## 常用命令
 
 ```bash
 pnpm install
 pnpm --filter @vistaflow/admin dev
+pnpm --filter @vistaflow/admin build
+pnpm --filter @vistaflow/admin test
 ```

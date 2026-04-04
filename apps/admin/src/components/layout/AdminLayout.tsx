@@ -1,163 +1,127 @@
-import { useEffect, useCallback } from 'react';
-import { useViewStore } from '@/stores/viewStore';
-import { useTaskStore } from '@/stores/taskStore';
-import { useUiStore } from '@/stores/uiStore';
-import { VIEW_CONFIGS } from '@/types/view';
-import type { ViewId } from '@/types/view';
-import { useViewTransition } from '@/hooks/useViewTransition';
-
-import { AuraBackground, NoiseTexture, ToastContainer, DrawerBackdrop } from '@vistaflow/ui';
-import { Sidebar } from './Sidebar';
-import { Header } from './Header';
-import { TaskDrawer } from '@/components/overlays/TaskDrawer';
-import { StationDrawer } from '@/components/overlays/StationDrawer';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { Outlet, useLocation } from 'react-router-dom';
+import { AuraBackground, DrawerBackdrop, ErrorBoundary, NoiseTexture, ToastContainer } from '@vistaflow/ui';
 import { PreviewModal } from '@/components/overlays/PreviewModal';
+import { StationDrawer } from '@/components/overlays/StationDrawer';
+import { TaskDrawer } from '@/components/overlays/TaskDrawer';
+import { ROUTE_META_LABELS, TOAST_MESSAGES } from '@/constants/labels';
+import { fetchTasks } from '@/services/taskService';
+import { useDrawerStore } from '@/stores/drawerStore';
+import { useModalStore } from '@/stores/modalStore';
+import { useTaskStore } from '@/stores/taskStore';
+import { useToastStore } from '@/stores/toastStore';
+import { Header } from './Header';
+import { Sidebar } from './Sidebar';
 
-import { OverviewView } from '@/pages/OverviewView';
-import { TasksView } from '@/pages/TasksView';
-import { DataView } from '@/pages/DataView';
-import { ConfigView } from '@/pages/ConfigView';
-import { LogView } from '@/pages/LogView';
+const ROUTE_META = {
+  '/': ROUTE_META_LABELS.overview,
+  '/tasks': ROUTE_META_LABELS.tasks,
+  '/data': ROUTE_META_LABELS.data,
+  '/config': ROUTE_META_LABELS.config,
+  '/log': ROUTE_META_LABELS.log,
+} as const;
+
+function formatTimestamp(date: Date) {
+  return new Intl.DateTimeFormat('zh-CN', {
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  }).format(date).replace(/\//g, '-');
+}
 
 export function AdminLayout() {
-  const activeView = useViewStore((s) => s.activeView);
-  const switchView = useViewStore((s) => s.switchView);
-  const tasks = useTaskStore((s) => s.tasks);
-  const updateTaskStatus = useTaskStore((s) => s.updateTaskStatus);
-  const toasts = useUiStore((s) => s.toasts);
-  const removeToast = useUiStore((s) => s.removeToast);
-  const addToast = useUiStore((s) => s.addToast);
-  const taskDrawerOpen = useUiStore((s) => s.taskDrawerOpen);
-  const stationDrawerOpen = useUiStore((s) => s.stationDrawerOpen);
-  const stationDrawerData = useUiStore((s) => s.stationDrawerData);
-  const previewModalOpen = useUiStore((s) => s.previewModalOpen);
-  const openTaskDrawer = useUiStore((s) => s.openTaskDrawer);
-  const closeTaskDrawer = useUiStore((s) => s.closeTaskDrawer);
-  const closeStationDrawer = useUiStore((s) => s.closeStationDrawer);
-  const openStationDrawer = useUiStore((s) => s.openStationDrawer);
-  const openPreviewModal = useUiStore((s) => s.openPreviewModal);
-  const closePreviewModal = useUiStore((s) => s.closePreviewModal);
+  const mainRef = useRef<HTMLElement | null>(null);
+  const location = useLocation();
+  const [headerScrolled, setHeaderScrolled] = useState(false);
+  const tasks = useTaskStore((state) => state.tasks);
+  const setTasks = useTaskStore((state) => state.setTasks);
+  const toasts = useToastStore((state) => state.toasts);
+  const removeToast = useToastStore((state) => state.removeToast);
+  const addToast = useToastStore((state) => state.addToast);
+  const taskDrawerOpen = useDrawerStore((state) => state.taskDrawerOpen);
+  const stationDrawerOpen = useDrawerStore((state) => state.stationDrawerOpen);
+  const stationDrawerData = useDrawerStore((state) => state.stationDrawerData);
+  const previewModalOpen = useModalStore((state) => state.previewModalOpen);
+  const closeTaskDrawer = useDrawerStore((state) => state.closeTaskDrawer);
+  const closeStationDrawer = useDrawerStore((state) => state.closeStationDrawer);
+  const closePreviewModal = useModalStore((state) => state.closePreviewModal);
 
-  const { containerRef, animateIn } = useViewTransition();
+  const meta = ROUTE_META[location.pathname as keyof typeof ROUTE_META] ?? ROUTE_META['/'];
+  const pendingTaskCount = tasks.filter((task) => task.status === 'pending').length;
+  const timestamp = useMemo(() => formatTimestamp(new Date()), []);
 
-  const viewConfig = VIEW_CONFIGS[activeView];
-  const pendingTaskCount = tasks.filter((t) => t.status === 'pending').length;
-
-  const handleNavigate = useCallback(
-    (viewId: ViewId) => {
-      switchView(viewId);
-    },
-    [switchView],
-  );
+  const { data: taskData } = useQuery({
+    queryKey: ['admin', 'tasks'],
+    queryFn: fetchTasks,
+  });
 
   useEffect(() => {
-    animateIn();
-  }, [activeView, animateIn]);
+    if (taskData) {
+      setTasks(taskData);
+    }
+  }, [setTasks, taskData]);
 
   const handleRefresh = useCallback(() => {
-    addToast('数据已刷新', 'info');
+    addToast(TOAST_MESSAGES.dataRefreshed, 'info');
   }, [addToast]);
 
-  const handleStopTask = useCallback(
-    (taskId: string) => {
-      updateTaskStatus(taskId, 'terminated');
-      addToast('任务已强制终止', 'error');
-    },
-    [updateTaskStatus, addToast],
-  );
-
-  const handleRestartTask = useCallback(
-    (taskId: string) => {
-      updateTaskStatus(taskId, 'running');
-      addToast('任务已重新加入执行队列', 'success');
-    },
-    [updateTaskStatus, addToast],
-  );
-
-  const handlePreviewTask = useCallback(() => {
-    openPreviewModal();
-  }, [openPreviewModal]);
-
-  const handleNewTask = useCallback(() => {
-    openTaskDrawer();
-  }, [openTaskDrawer]);
-
-  const handleTaskDrawerSubmit = useCallback(
-    (taskName: string) => {
-      closeTaskDrawer();
-      addToast(`任务「${taskName}」已成功下发`, 'success');
-    },
-    [closeTaskDrawer, addToast],
-  );
+  const handleTaskDrawerSubmit = useCallback((taskName: string) => {
+    closeTaskDrawer();
+    addToast(TOAST_MESSAGES.taskCreated(taskName), 'success');
+  }, [addToast, closeTaskDrawer]);
 
   const handleStationSave = useCallback(() => {
     closeStationDrawer();
-    addToast('站点信息已保存', 'success');
-  }, [closeStationDrawer, addToast]);
+    addToast(TOAST_MESSAGES.stationSaved, 'success');
+  }, [addToast, closeStationDrawer]);
 
   const handleStationDelete = useCallback(() => {
     closeStationDrawer();
-    addToast('站点数据已删除', 'error');
-  }, [closeStationDrawer, addToast]);
+    addToast(TOAST_MESSAGES.stationDeleted, 'error');
+  }, [addToast, closeStationDrawer]);
 
-  const handlePreviewConfirm = useCallback(() => {
+  const handlePreviewConfirm = useCallback((_selectedIds: string[]) => {
     closePreviewModal();
-    addToast('3条数据已确认写入', 'success');
-  }, [closePreviewModal, addToast]);
-
-  const handleNavigateToConfig = useCallback(() => {
-    switchView('view-config');
-    addToast('请先更新代理凭证', 'warn');
-  }, [switchView, addToast]);
+    addToast(TOAST_MESSAGES.previewConfirmed, 'success');
+  }, [addToast, closePreviewModal]);
 
   const handleCloseBackdrop = useCallback(() => {
     closeTaskDrawer();
     closeStationDrawer();
-  }, [closeTaskDrawer, closeStationDrawer]);
+  }, [closeStationDrawer, closeTaskDrawer]);
 
-  // Escape key handler for drawers
   useEffect(() => {
-    function handleKeyDown(e: KeyboardEvent) {
-      if (e.key === 'Escape') {
-        if (taskDrawerOpen) closeTaskDrawer();
-        if (stationDrawerOpen) closeStationDrawer();
-        if (previewModalOpen) closePreviewModal();
-      }
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key !== 'Escape') return;
+      if (taskDrawerOpen) closeTaskDrawer();
+      if (stationDrawerOpen) closeStationDrawer();
+      if (previewModalOpen) closePreviewModal();
     }
+
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [taskDrawerOpen, stationDrawerOpen, previewModalOpen, closeTaskDrawer, closeStationDrawer, closePreviewModal]);
+  }, [closePreviewModal, closeStationDrawer, closeTaskDrawer, previewModalOpen, stationDrawerOpen, taskDrawerOpen]);
 
-  const renderView = () => {
-    switch (activeView) {
-      case 'view-overview':
-        return <OverviewView onNavigateToTasks={() => handleNavigate('view-tasks')} onNavigateToLog={() => handleNavigate('view-log')} />;
-      case 'view-tasks':
-        return (
-          <TasksView
-            tasks={tasks}
-            onStop={handleStopTask}
-            onRestart={handleRestartTask}
-            onPreview={handlePreviewTask}
-            onNewTask={handleNewTask}
-            onNavigateToConfig={handleNavigateToConfig}
-            addToast={addToast}
-          />
-        );
-      case 'view-data':
-        return <DataView onEditStation={openStationDrawer} addToast={addToast} />;
-      case 'view-config':
-        return <ConfigView addToast={addToast} />;
-      case 'view-log':
-        return <LogView addToast={addToast} />;
-      default:
-        return null;
-    }
-  };
+  useEffect(() => {
+    const main = mainRef.current;
+    if (!main) return;
+
+    const handleScroll = () => {
+      setHeaderScrolled(main.scrollTop > 12);
+    };
+
+    handleScroll();
+    main.addEventListener('scroll', handleScroll, { passive: true });
+    return () => main.removeEventListener('scroll', handleScroll);
+  }, []);
 
   return (
     <>
-      <AuraBackground />
+      <AuraBackground enableMouseTracking />
       <NoiseTexture opacity={0.03} />
       <ToastContainer toasts={toasts} onDismiss={removeToast} />
       <DrawerBackdrop isActive={taskDrawerOpen || stationDrawerOpen} onClick={handleCloseBackdrop} />
@@ -172,11 +136,15 @@ export function AdminLayout() {
       <PreviewModal isOpen={previewModalOpen} onClose={closePreviewModal} onConfirm={handlePreviewConfirm} />
 
       <div className="flex h-screen overflow-hidden text-starlight">
-        <Sidebar activeView={activeView} pendingTaskCount={pendingTaskCount} onNavigate={handleNavigate} />
-        <main className="flex-1 relative z-10 overflow-y-auto h-full">
-          <Header title={viewConfig.title} subtitle={viewConfig.subtitle} onRefresh={handleRefresh} timestamp="03-30 12:04:32" />
-          <div className="p-8" ref={containerRef}>
-            {renderView()}
+        <Sidebar pendingTaskCount={pendingTaskCount} />
+        <main ref={mainRef} className="relative z-10 h-full flex-1 overflow-y-auto">
+          <Header title={meta.title} subtitle={meta.subtitle} onRefresh={handleRefresh} timestamp={timestamp} scrolled={headerScrolled} />
+          <div className="vf-page-frame">
+            <div className="vf-content-section vf-content-section--default vf-content-section--width-wide">
+              <ErrorBoundary>
+                <Outlet />
+              </ErrorBoundary>
+            </div>
           </div>
         </main>
       </div>

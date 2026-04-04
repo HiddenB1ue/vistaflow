@@ -1,30 +1,22 @@
-import { useTimeGreeting } from '@/hooks/useTimeGreeting';
+
+import type { RefObject } from 'react';
+import { SEARCH_LABELS } from '@/constants/labels';
 
 interface GreetingHeaderProps {
-  greetingRef: React.RefObject<HTMLElement | null>;
-  headlineRef: React.RefObject<HTMLElement | null>;
+  greeting: string;
+  greetingRef: RefObject<HTMLSpanElement | null>;
+  headlineRef: RefObject<HTMLSpanElement | null>;
 }
 
-export function GreetingHeader({ greetingRef, headlineRef }: GreetingHeaderProps) {
-  const greeting = useTimeGreeting();
-
+export function GreetingHeader({ greeting, greetingRef, headlineRef }: GreetingHeaderProps) {
   return (
-    <h1
-      className="text-5xl md:text-7xl font-light tracking-widest mb-16"
-      style={{ color: 'var(--color-text-primary)' }}
-    >
-      <span
-        ref={greetingRef as React.RefObject<HTMLSpanElement>}
-        className="font-serif italic text-4xl block mb-6"
-        style={{ color: 'var(--color-text-secondary)' }}
-      >
-        {greeting}，旅行者。
+    <h1 className="mb-16 text-5xl font-light tracking-widest md:text-7xl">
+      <span ref={greetingRef} className="mb-6 block font-serif text-4xl italic text-muted">
+        {greeting}
       </span>
-      <span ref={headlineRef as React.RefObject<HTMLSpanElement>}>
-        智能规划，
-        <span className="font-serif italic" style={{ color: 'var(--color-pulse)' }}>
-          让出行更简单。
-        </span>
+      {SEARCH_LABELS.headline}
+      <span ref={headlineRef} className="font-serif italic time-theme-text">
+        {SEARCH_LABELS.headlineAccent}
       </span>
     </h1>
   );

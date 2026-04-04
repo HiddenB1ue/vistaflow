@@ -9,7 +9,14 @@ export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElemen
   children: React.ReactNode;
 }
 
-export function Button({ variant = 'outline', size = 'default', children, className = '', ...rest }: ButtonProps) {
+export function Button({
+  variant = 'outline',
+  size = 'default',
+  type = 'button',
+  children,
+  className = '',
+  ...rest
+}: ButtonProps) {
   const cls = `btn btn-${variant} ${size === 'sm' ? 'btn-sm' : ''} ${className}`;
-  return <button className={cls} {...rest}>{children}</button>;
+  return <button type={type} className={cls} {...rest}>{children}</button>;
 }

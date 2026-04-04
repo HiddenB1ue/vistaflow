@@ -1,3 +1,11 @@
+/**
+ * Web 专属坐标转换服务
+ *
+ * 提供 WGS-84 → GCJ-02（火星坐标系）坐标转换。
+ * 仅用于地图渲染场景（高德地图要求 GCJ-02 坐标）。
+ * 当前主要被 mock 数据使用；真实 API 返回的坐标已是 GCJ-02，无需转换。
+ * Admin 应用不需要此服务。
+ */
 import type { Route, RouteList } from '@/types/route';
 
 /** WGS-84 坐标转 GCJ-02（火星坐标系） */
@@ -23,7 +31,7 @@ function transformLng(lng: number, lat: number): number {
   return ret;
 }
 
-export function wgs84ToGcj02(lng: number, lat: number): { lng: number; lat: number } {
+function wgs84ToGcj02(lng: number, lat: number): { lng: number; lat: number } {
   const dLat = transformLat(lng - 105.0, lat - 35.0);
   const dLng = transformLng(lng - 105.0, lat - 35.0);
   const radLat = (lat / 180.0) * PI;
@@ -35,7 +43,7 @@ export function wgs84ToGcj02(lng: number, lat: number): { lng: number; lat: numb
 }
 
 /** 将 Route 中的所有坐标从 WGS-84 批量转换为 GCJ-02 */
-export function convertRouteCoordinates(route: Route): Route {
+function convertRouteCoordinates(route: Route): Route {
   return {
     ...route,
     origin: { ...route.origin, ...wgs84ToGcj02(route.origin.lng, route.origin.lat) },

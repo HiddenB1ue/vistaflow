@@ -6,6 +6,9 @@
   "exports": {
     ".": "./src/index.css",
     "./fonts": "./src/fonts.css",
+    "./reset": "./src/reset.css",
+    "./theme": "./src/theme.css",
+    "./utilities": "./src/utilities.css",
     "./themes/*": "./src/themes/*.css"
   }
 }

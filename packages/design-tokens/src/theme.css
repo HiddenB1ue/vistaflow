@@ -1,0 +1,9 @@
+@theme {
+  --color-void: #030303;
+  --color-starlight: #F5F5F7;
+  --color-dawn: #E5C07B;
+  --color-dusk: #8B5CF6;
+  --color-muted: #8A8A8E;
+  --font-display: "Space Grotesk", sans-serif;
+  --font-serif: "Cormorant Garamond", serif;
+}

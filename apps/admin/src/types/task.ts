@@ -1,5 +1,5 @@
 export type TaskStatus = 'running' | 'pending' | 'completed' | 'error' | 'terminated';
-export type TaskType = 'fetch-status' | 'fetch-station' | 'geocode' | 'price' | 'cleanup';
+type TaskType = 'fetch-status' | 'fetch-station' | 'geocode' | 'price' | 'cleanup';
 
 export interface Task {
   id: string;

@@ -5,59 +5,8 @@
 @source '../../../packages/utils/src';
 
 @theme {
-  --color-void: #030303;
-  --color-starlight: #F5F5F7;
-  --color-dawn: #E5C07B;
-  --color-dusk: #8B5CF6;
-  --color-muted: #8A8A8E;
   --color-pulse: #8B5CF6;
-  --font-display: "Space Grotesk", sans-serif;
-  --font-serif: "Cormorant Garamond", serif;
 }
-
-*, *::before, *::after { box-sizing: border-box; }
-
-body {
-  margin: 0;
-  background-color: var(--color-bg);
-  color: var(--color-text-primary);
-  font-family: 'Inter', system-ui, sans-serif;
-  overflow-x: hidden;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-}
-
-#root { min-height: 100vh; }
 
 ::-webkit-scrollbar { width: 4px; height: 4px; }
 ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 4px; }
-
-/* === View Section (admin-specific) === */
-.view-section { display: none; opacity: 0; }
-.view-section.active { display: block; opacity: 1; }
-
-/* === Nav Item (admin-specific) === */
-.nav-item {
-  width: 100%; display: flex; align-items: center; gap: 12px;
-  padding: 11px 16px; font-size: 0.8125rem; letter-spacing: 0.04em;
-  transition: all 0.25s; border-left: 2px solid transparent;
-  color: var(--color-text-secondary); border-radius: 0 8px 8px 0;
-  cursor: pointer; font-family: 'Inter', sans-serif;
-}
-.nav-item:hover { color: #F5F5F7; background: rgba(255,255,255,0.04); }
-.nav-item.active { border-left-color: var(--color-pulse); background: rgba(139,92,246,0.08); color: #F5F5F7; }
-.nav-section-label {
-  font-family: 'Space Grotesk', sans-serif; font-size: 0.65rem;
-  letter-spacing: 0.2em; text-transform: uppercase;
-  color: rgba(138,138,142,0.5); padding: 20px 20px 6px;
-}
-
-/* === Tab Button (admin-specific) === */
-.tab-btn {
-  font-family: 'Space Grotesk', sans-serif; font-size: 0.75rem;
-  letter-spacing: 0.1em; text-transform: uppercase;
-  padding: 8px 16px; border-radius: 6px; cursor: pointer;
-  transition: all 0.2s; color: var(--color-text-secondary);
-}
-.tab-btn:hover { color: #F5F5F7; background: rgba(255,255,255,0.05); }
-.tab-btn.active { color: #F5F5F7; background: rgba(255,255,255,0.08); }

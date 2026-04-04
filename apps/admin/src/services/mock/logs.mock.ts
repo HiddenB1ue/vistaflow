@@ -19,7 +19,7 @@ export const MOCK_LOGS: LogRecord[] = [
     id: 'log-03',
     timestamp: '11:47:03',
     severity: 'ERROR',
-    message: '[ProxyClient] Token 校验失败：401 Unauthorized · 任务 Price-Matrix-BJ-SH 已终止，触发重试队列（0/3）',
+    message: '[ProxyClient] Token 校验失败，401 Unauthorized · 任务 Price-Matrix-BJ-SH 已终止，已加入重试队列（1/3）',
     highlightedTerms: ['Price-Matrix-BJ-SH'],
   },
   {
@@ -40,21 +40,21 @@ export const MOCK_LOGS: LogRecord[] = [
     id: 'log-06',
     timestamp: '10:12:45',
     severity: 'WARN',
-    message: '[GeoResolver] 站点"新余北站"坐标置信度低（71%），已标记为待核实，建议人工复查',
+    message: '[GeoResolver] 站点“新余北站”坐标置信度偏低（71%），已标记为待核实，建议人工复查',
     highlightedTerms: ['新余北站'],
   },
   {
     id: 'log-07',
     timestamp: '10:11:22',
     severity: 'WARN',
-    message: '[GeoResolver] 站点"测试站点 A"坐标解析失败，返回 (0, 0)，已跳过落库',
+    message: '[GeoResolver] 站点“测试站点 A”坐标解析失败，返回 (0, 0)，已跳过落库',
     highlightedTerms: ['测试站点 A'],
   },
   {
     id: 'log-08',
     timestamp: '10:09:05',
     severity: 'SUCCESS',
-    message: '[GeoResolver] 经纬度补全预览生成完成：18 个缺失站点，16 个解析成功，2 个失败，等待人工确认',
+    message: '[GeoResolver] 经纬度补全预览生成完成：18 个缺失站点中 16 个解析成功，2 个失败，等待人工确认',
   },
   {
     id: 'log-09',

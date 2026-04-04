@@ -1,6 +1,19 @@
-import { useState, useEffect } from 'react';
+
+import { useEffect, useState } from 'react';
 import type { Station } from '@/types/station';
-import { InputBox, CustomSelect, ProgressBar, Button } from '@vistaflow/ui';
+import {
+  Button,
+  CustomSelect,
+  DrawerBody,
+  DrawerFooter,
+  DrawerHeader,
+  DrawerShell,
+  InputBox,
+  PanelCard,
+  ProgressBar,
+  Textarea,
+} from '@vistaflow/ui';
+import { COMMON_LABELS, STATION_DRAWER_LABELS } from '@/constants/labels';
 
 interface StationDrawerProps {
   isOpen: boolean;
@@ -11,9 +24,9 @@ interface StationDrawerProps {
 }
 
 const dataSourceOptions = [
-  { value: 'amap', label: '高德地图 API' },
-  { value: 'manual', label: '人工录入' },
-  { value: 'scraped', label: '爬虫抓取' },
+  { value: 'amap', label: STATION_DRAWER_LABELS.dataSources.amap },
+  { value: 'manual', label: STATION_DRAWER_LABELS.dataSources.manual },
+  { value: 'scraped', label: STATION_DRAWER_LABELS.dataSources.scraped },
 ];
 
 export function StationDrawer({ isOpen, station, onClose, onSave, onDelete }: StationDrawerProps) {
@@ -34,80 +47,104 @@ export function StationDrawer({ isOpen, station, onClose, onSave, onDelete }: St
       setLat(station.latitude.toFixed(6));
       setDataSource(station.dataSource);
       setNotes(station.notes ?? '');
+      return;
     }
+
+    setName('');
+    setCode('');
+    setCity('');
+    setLng('');
+    setLat('');
+    setDataSource('amap');
+    setNotes('');
   }, [station]);
 
   const confidence = station?.confidence ?? 98;
 
+  const handleSave = () => {
+    if (!station) return;
+
+    onSave({
+      ...station,
+      name,
+      code,
+      city,
+      longitude: Number(lng) || station.longitude,
+      latitude: Number(lat) || station.latitude,
+      dataSource: dataSource as Station['dataSource'],
+      notes,
+    });
+  };
+
   return (
-    <div className={`side-drawer ${isOpen ? 'open' : ''}`}>
-      <div className="flex justify-between items-center mb-10">
-        <div>
-          <div className="text-[10px] text-[#8B5CF6] font-display tracking-[0.3em] uppercase mb-2">Station Edit</div>
-          <h3 className="font-serif text-3xl italic">编辑站点：{station?.name ?? ''}</h3>
-        </div>
-        <button className="text-muted hover:text-white p-2 cursor-pointer transition-colors" onClick={onClose}>
-          <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.2} d="M6 18L18 6M6 6l12 12" />
-          </svg>
-        </button>
-      </div>
+    <DrawerShell open={isOpen}>
+      <DrawerHeader
+        eyebrow={STATION_DRAWER_LABELS.eyebrow}
+        title={STATION_DRAWER_LABELS.title}
+        subtitle={STATION_DRAWER_LABELS.subtitle(station?.name)}
+        onClose={onClose}
+        closeLabel="关闭站点编辑"
+      />
 
-      <div className="space-y-6 flex-1 overflow-y-auto pr-2" style={{ scrollbarWidth: 'none' }}>
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <label className="block text-[10px] text-muted tracking-widest uppercase mb-3">站点名称</label>
-            <InputBox className="w-full" value={name} onChange={(e) => setName(e.target.value)} />
-          </div>
-          <div>
-            <label className="block text-[10px] text-muted tracking-widest uppercase mb-3">站点编码</label>
-            <InputBox className="w-full font-mono" value={code} onChange={(e) => setCode(e.target.value)} />
-          </div>
-        </div>
-        <div>
-          <label className="block text-[10px] text-muted tracking-widest uppercase mb-3">所属城市</label>
-          <InputBox className="w-full" value={city} onChange={(e) => setCity(e.target.value)} />
-        </div>
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <label className="block text-[10px] text-muted tracking-widest uppercase mb-3">经度 (Lng)</label>
-            <InputBox className="w-full font-mono text-[#4ADE80]" value={lng} onChange={(e) => setLng(e.target.value)} />
-          </div>
-          <div>
-            <label className="block text-[10px] text-muted tracking-widest uppercase mb-3">纬度 (Lat)</label>
-            <InputBox className="w-full font-mono text-[#4ADE80]" value={lat} onChange={(e) => setLat(e.target.value)} />
-          </div>
-        </div>
-        <div className="glass-panel p-4">
-          <div className="text-[10px] text-muted tracking-widest uppercase mb-3">经纬度置信度</div>
-          <div className="flex items-center gap-4">
-            <div className="flex-1">
-              <ProgressBar value={confidence} color="#4ADE80" />
+      <DrawerBody>
+        <section className="vf-drawer-group">
+          <div className="vf-drawer-grid-2">
+            <div>
+              <label className="vf-drawer-label">{STATION_DRAWER_LABELS.name}</label>
+              <InputBox className="w-full" value={name} onChange={(event) => setName(event.target.value)} />
             </div>
-            <span className="text-sm text-[#4ADE80] font-display">{confidence}%</span>
+            <div>
+              <label className="vf-drawer-label">{STATION_DRAWER_LABELS.code}</label>
+              <InputBox className="w-full font-mono" value={code} onChange={(event) => setCode(event.target.value)} />
+            </div>
           </div>
-          <div className="text-xs text-muted mt-2">来源：高德地图 API · 2026-03-28 自动解析</div>
-        </div>
-        <div>
-          <label className="block text-[10px] text-muted tracking-widest uppercase mb-3">数据来源标记</label>
-          <CustomSelect options={dataSourceOptions} value={dataSource} onChange={setDataSource} className="w-full" />
-        </div>
-        <div className="border-t border-white/8 pt-6">
-          <label className="block text-[10px] text-muted tracking-widest uppercase mb-3">备注</label>
-          <textarea
-            className="input-box w-full h-24 resize-none leading-relaxed"
-            placeholder="添加备注…"
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-          />
-        </div>
-      </div>
+          <div>
+            <label className="vf-drawer-label">{STATION_DRAWER_LABELS.city}</label>
+            <InputBox className="w-full" value={city} onChange={(event) => setCity(event.target.value)} />
+          </div>
+          <div className="vf-drawer-grid-2">
+            <div>
+              <label className="vf-drawer-label">{STATION_DRAWER_LABELS.longitude}</label>
+              <InputBox className="w-full font-mono text-[#4ADE80]" value={lng} onChange={(event) => setLng(event.target.value)} />
+            </div>
+            <div>
+              <label className="vf-drawer-label">{STATION_DRAWER_LABELS.latitude}</label>
+              <InputBox className="w-full font-mono text-[#4ADE80]" value={lat} onChange={(event) => setLat(event.target.value)} />
+            </div>
+          </div>
+        </section>
 
-      <div className="pt-7 border-t border-white/8 mt-auto flex gap-4">
-        <Button variant="danger" className="flex-1 py-3" size="sm" onClick={() => station && onDelete(station.id)}>删除</Button>
-        <Button variant="outline" className="flex-1 py-3" onClick={onClose}>取消</Button>
-        <Button variant="primary" className="flex-1 py-3" onClick={() => station && onSave(station)}>保存</Button>
-      </div>
-    </div>
+        <section className="vf-drawer-group">
+          <PanelCard className="gap-3">
+            <div className="vf-drawer-label mb-3">{STATION_DRAWER_LABELS.confidence}</div>
+            <div className="flex items-center gap-4">
+              <div className="flex-1">
+                <ProgressBar value={confidence} color="#4ADE80" />
+              </div>
+              <span className="font-display text-sm text-[#4ADE80]">{confidence}%</span>
+            </div>
+            <div className="vf-drawer-meta mt-3">{STATION_DRAWER_LABELS.confidenceSource}</div>
+          </PanelCard>
+
+          <div>
+            <label className="vf-drawer-label">{STATION_DRAWER_LABELS.dataSource}</label>
+            <CustomSelect options={dataSourceOptions} value={dataSource} onChange={setDataSource} className="w-full" />
+          </div>
+        </section>
+
+        <section className="vf-drawer-group">
+          <div>
+            <label className="vf-drawer-label">{STATION_DRAWER_LABELS.notes}</label>
+            <Textarea className="h-24 w-full resize-none leading-relaxed" placeholder={STATION_DRAWER_LABELS.notesPlaceholder} value={notes} onChange={(event) => setNotes(event.target.value)} />
+          </div>
+        </section>
+      </DrawerBody>
+
+      <DrawerFooter>
+        <Button variant="danger" size="sm" onClick={() => station && onDelete(station.id)}>{COMMON_LABELS.delete}</Button>
+        <Button variant="outline" onClick={onClose}>{COMMON_LABELS.cancel}</Button>
+        <Button variant="primary" onClick={handleSave}>{COMMON_LABELS.save}</Button>
+      </DrawerFooter>
+    </DrawerShell>
   );
 }

@@ -1,5 +1,9 @@
-import { useRef, useEffect } from 'react';
+
+import './TransitionOverlay.css';
+import { useEffect, useRef } from 'react';
 import { Outlet } from 'react-router-dom';
+import { ErrorBoundary } from '@vistaflow/ui';
+import { TRANSITION_LABELS } from '@/constants/labels';
 import { usePageTransition } from '@/hooks/usePageTransition';
 
 export function AppLayout() {
@@ -10,19 +14,12 @@ export function AppLayout() {
     const el = curtainRef.current;
     if (!el) return;
     setCurtainRef(el);
-    // 不在 AppLayout 触发 revealPage，由各页面自行在 mount 后调用
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [setCurtainRef]);
 
   return (
     <div className="relative min-h-screen" style={{ backgroundColor: 'var(--color-bg)' }}>
-      {/* 剧场级转场幕布 */}
-      <div
-        ref={curtainRef}
-        className="transition-overlay"
-        style={{ display: 'none' }}
-      >
-        <div className="loading-text">环境感知中...</div>
+      <div ref={curtainRef} className="transition-overlay" style={{ display: 'none' }}>
+        <div className="loading-text">{TRANSITION_LABELS.loading}</div>
         <div
           className="loading-bar-container hidden"
           style={{
@@ -34,15 +31,12 @@ export function AppLayout() {
             overflow: 'hidden',
           }}
         >
-          <div
-            className="loading-bar absolute left-0 top-0 h-full time-theme-bg"
-            style={{
-              width: '33.333%',
-            }}
-          />
+          <div className="loading-bar absolute left-0 top-0 h-full time-theme-bg" style={{ width: '33.333%' }} />
         </div>
       </div>
-      <Outlet />
+      <ErrorBoundary>
+        <Outlet />
+      </ErrorBoundary>
     </div>
   );
 }

@@ -4,9 +4,13 @@
   "version": "0.1.0",
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./src/index.ts"
+    }
   },
   "scripts": {
+    "build": "tsup",
     "test": "vitest run"
   },
   "peerDependencies": {
@@ -15,7 +19,10 @@
   },
   "devDependencies": {
     "@types/react": "^19.0.0",
+    "gsap": "~3.12.7",
     "react": "^19.0.0",
+    "tsup": "^8.0.0",
+    "typescript": "~5.9.3",
     "vitest": "^4.1.2"
   }
 }

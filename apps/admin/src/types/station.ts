@@ -1,10 +1,9 @@
-export type CoordinateStatus = 'complete' | 'low-confidence' | 'missing';
+import type { BaseStation } from '@vistaflow/types';
 
-export interface Station {
+type CoordinateStatus = 'complete' | 'low-confidence' | 'missing';
+
+export interface Station extends BaseStation {
   id: string;
-  name: string;
-  code: string;
-  city: string;
   longitude: number;
   latitude: number;
   coordinateStatus: CoordinateStatus;
