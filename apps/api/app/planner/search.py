@@ -1,7 +1,6 @@
 from __future__ import annotations
 
-from app.domain.models import Segment
-from app.domain.types import StationIndex, Timetable
+from app.models import Segment, StationIndex, Timetable
 from app.planner.filters import (
     get_boardable_trains,
     is_departure_time_allowed,

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from app.domain.models import SeatInfo
+from app.models import SeatInfo
 
 
 @dataclass(frozen=True)

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from app.domain.types import StationIndex, Timetable
+from app.models import StationIndex, Timetable
 
 
 def build_station_index(timetable: Timetable) -> StationIndex:

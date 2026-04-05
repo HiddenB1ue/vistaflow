@@ -1,7 +1,6 @@
 from __future__ import annotations
 
-from app.domain.models import Segment
-from app.domain.types import StationIndex, Timetable
+from app.models import Segment, StationIndex, Timetable
 
 MINUTES_PER_DAY = 1440
 

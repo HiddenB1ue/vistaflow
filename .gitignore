@@ -39,3 +39,6 @@ frontend/app/.vite/
 
 # Archived prototypes
 _archive/
+
+.agents/
+.specify/

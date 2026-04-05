@@ -2,8 +2,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from app.domain.models import SeatInfo, Segment
-from app.domain.types import SeatLookupKey
+from app.models import SeatInfo, Segment, SeatLookupKey
 
 
 def route_duration(route: list[Segment]) -> int:

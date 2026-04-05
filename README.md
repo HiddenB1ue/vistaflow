@@ -62,3 +62,14 @@ uv run pytest
 uv run ruff check .
 uv run mypy app tests
 ```
+
+## Engineering Constitution
+
+The constitution in `.specify/memory/constitution.md` currently governs backend
+planning and delivery only, primarily `apps/api` and supporting `infra/` assets.
+Backend feature specs, plans, and task lists are expected to satisfy that
+constitution before implementation begins.
+
+Backend-specific architecture guidance:
+
+- `apps/api/ARCHITECTURE.md`

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from app.domain.models import SeatInfo
+from app.models import SeatInfo
 
 LEFT_TICKET_BASE = "https://kyfw.12306.cn/otn/leftTicket"
 

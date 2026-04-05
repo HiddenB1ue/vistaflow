@@ -6,7 +6,7 @@ from typing import Any
 
 import httpx
 
-from app.domain.types import SeatLookupKey
+from app.models import SeatLookupKey
 from app.integrations.ticket_12306.models import TicketSegmentData
 from app.integrations.ticket_12306.parser import (
     BASE_HEADERS,

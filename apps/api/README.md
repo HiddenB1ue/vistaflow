@@ -1,5 +1,10 @@
 # VistaFlow Backend
 
+
+Repo-wide governance for backend delivery lives in
+`.specify/memory/constitution.md`. `ARCHITECTURE.md` may be stricter, but it does
+not replace the backend constitution.
+
 Python 3.12 + FastAPI + asyncpg 后端服务。
 
 ## 快速开始
