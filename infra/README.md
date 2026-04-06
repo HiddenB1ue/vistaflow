@@ -2,23 +2,42 @@
 
 ## 目录结构
 
-```
+```text
 infra/sql/
-├── schema.sql          # 完整 schema（一次性初始化用）
-└── migrations/         # 增量变更脚本
+├── schema.sql          # 完整初始化脚本
+└── migrations/         # 按表拆分的建表脚本
     ├── 0001_stations.sql
-    ├── 0002_trains_and_stops.sql
-    └── 0003_train_runs.sql
+    ├── 0002_trains.sql
+    ├── 0003_train_stops.sql
+    ├── 0004_train_runs.sql
+    ├── 0005_task.sql
+    ├── 0006_credential.sql
+    ├── 0007_log.sql
+    ├── 0008_task_run.sql
+    └── 0009_task_run_log.sql
 ```
 
-## 表说明
+## 当前约定
 
-| 表 | 必须 | 说明 |
-|---|------|------|
-| `stations` | 是 | 站点主数据，含 GCJ-02 坐标和电报码 |
-| `trains` | 是 | 车次主表 |
-| `train_stops` | 是 | 车次经停明细（时刻表核心数据）|
-| `train_runs` | 否 | 按日开行状态，仅 `filter_running_only=true` 时查询 |
+- 每个 SQL 文件只对应一张表
+- 外键约束已移除，表间仅保留逻辑关联字段
+- 索引暂不创建
+- 字段定义直接写在 `CREATE TABLE` 中，不再通过额外 `ALTER TABLE` 补列
+- 每张表和每个字段都要求有中文注释
+
+## 主要表
+
+| 表名 | 说明 |
+|---|---|
+| `stations` | 车站主数据 |
+| `trains` | 车次主数据 |
+| `train_stops` | 车次经停明细 |
+| `train_runs` | 车次按日运行事实 |
+| `task` | 任务定义 |
+| `task_run` | 任务执行记录 |
+| `task_run_log` | 任务执行日志 |
+| `credential` | 外部凭证 |
+| `log` | 系统日志 |
 
 ## 初始化
 
@@ -35,8 +54,3 @@ psql -U postgres -d postgres -c "ALTER DATABASE vistaflow OWNER TO vistaflow;"
 # 执行 schema
 psql -U vistaflow -d vistaflow -f infra/sql/schema.sql
 ```
-
-## 数据来源
-
-时刻表数据（`trains` + `train_stops`）来自 12306，需通过数据导入脚本填充（待实现）。
-站点坐标（`stations.longitude/latitude`）来自高德地图 Geocoding API。

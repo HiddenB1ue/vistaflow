@@ -1,7 +1,6 @@
 from __future__ import annotations
 
-from app.domain.models import StopEvent
-from app.domain.types import Timetable
+from app.models import StopEvent, Timetable
 from app.planner.index import build_station_index
 
 

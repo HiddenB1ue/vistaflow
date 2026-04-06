@@ -2,8 +2,7 @@ from __future__ import annotations
 
 from typing import cast
 
-from app.domain.models import Segment, StopEvent
-from app.domain.types import Timetable
+from app.models import Segment, StopEvent, Timetable
 from app.planner.index import build_station_index
 from app.planner.search import search_journeys
 

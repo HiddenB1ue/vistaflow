@@ -2,12 +2,6 @@ from __future__ import annotations
 
 from app.exceptions import BusinessError
 from app.integrations.ticket_12306.client import AbstractTicketClient
-from app.models import SeatInfo, SeatLookupKey
-from app.planner.index import build_station_index
-from app.planner.ranking import apply_display_limit, group_and_rank
-from app.planner.search import search_journeys
-from app.railway.repository import StationRepository, TimetableRepository
-
 from app.journeys.schemas import (
     JourneySearchRequest,
     JourneySearchResponse,
@@ -17,6 +11,11 @@ from app.journeys.utils import (
     _is_cross_day,
     _time_to_abs_min,
 )
+from app.models import SeatInfo, SeatLookupKey
+from app.planner.index import build_station_index
+from app.planner.ranking import apply_display_limit, group_and_rank
+from app.planner.search import search_journeys
+from app.railway.repository import StationRepository, TimetableRepository
 
 
 class JourneyService:

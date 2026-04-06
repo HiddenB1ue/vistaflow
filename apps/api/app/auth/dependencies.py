@@ -1,15 +1,18 @@
 from __future__ import annotations
 
+from typing import Annotated
+
 from fastapi import Depends, HTTPException
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from app.auth.config import auth_settings
 
 bearer_scheme = HTTPBearer()
+BearerCredentials = Annotated[HTTPAuthorizationCredentials, Depends(bearer_scheme)]
 
 
 async def require_admin_auth(
-    credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme),
+    credentials: BearerCredentials,
 ) -> None:
     if not auth_settings.ADMIN_TOKEN:
         raise HTTPException(status_code=503, detail="Admin 服务未就绪")

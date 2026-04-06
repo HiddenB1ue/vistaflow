@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from pydantic import BaseModel
 
-
 # --- Station schemas (from schemas/station.py) ---
 
 

@@ -1,8 +1,8 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Literal
+from typing import Any, Literal
 
 
 @dataclass(frozen=True)
@@ -12,14 +12,14 @@ class StopEvent:
     train_no: str
     stop_number: int
     station_name: str
-    train_code: str  # 如 "G1"（station_train_code）
-    arrive_abs_min: int | None  # 到站绝对分钟数（跨天累加）
-    depart_abs_min: int | None  # 出站绝对分钟数
+    train_code: str
+    arrive_abs_min: int | None
+    depart_abs_min: int | None
 
 
 @dataclass(frozen=True)
 class Segment:
-    """行程中的一段（单趟列车）。"""
+    """行程中的一段单趟列车。"""
 
     train_no: str
     train_code: str
@@ -33,46 +33,47 @@ class Segment:
 class SeatInfo:
     """席别余票信息。"""
 
-    seat_type: str  # "zy"（一等座）/ "ze"（二等座）等
-    status: str  # 显示用状态文字
+    seat_type: str
+    status: str
     price: float | None
     available: bool
 
 
-# 车次号 → 经停事件列表
 Timetable = dict[str, list["StopEvent"]]
-
-# 站名 → [(车次号, 在该车次中的索引)]
 StationIndex = dict[str, list[tuple[str, int]]]
-
-# (train_no, from_station, to_station) → 席别列表
 SeatLookupKey = tuple[str, str, str]
 
 
-# ---------------------------------------------------------------------------
-# 任务/凭证/日志 类型别名
-# ---------------------------------------------------------------------------
-
-TaskType = Literal["fetch-station", "geocode", "fetch-status", "price", "cleanup"]
-TaskStatus = Literal["running", "pending", "completed", "error", "terminated"]
+TaskType = Literal[
+    "fetch-station",
+    "fetch-trains",
+    "fetch-train-stops",
+    "fetch-train-runs",
+    "price",
+]
+TaskStatus = Literal["idle", "running", "completed", "error", "terminated"]
+TaskRunStatus = Literal["pending", "running", "completed", "error", "terminated"]
+TaskTriggerMode = Literal["manual"]
 LogSeverity = Literal["SUCCESS", "INFO", "WARN", "ERROR", "SYSTEM"]
 CredentialHealth = Literal["healthy", "expired"]
 
 
-# ---------------------------------------------------------------------------
-# 任务/凭证/日志 领域模型
-# ---------------------------------------------------------------------------
-
-
 @dataclass
-class CrawlTask:
+class TaskDefinition:
     id: int
     name: str
     type: str
     type_label: str
-    status: str
     description: str | None
+    enabled: bool
     cron: str | None
+    payload: dict[str, Any]
+    status: str
+    latest_run_id: int | None
+    latest_run_status: str | None
+    latest_run_started_at: datetime | None
+    latest_run_finished_at: datetime | None
+    latest_error_message: str | None
     metrics_label: str
     metrics_value: str
     timing_label: str
@@ -80,6 +81,37 @@ class CrawlTask:
     error_message: str | None
     created_at: datetime
     updated_at: datetime
+
+
+CrawlTask = TaskDefinition
+
+
+@dataclass
+class TaskRun:
+    id: int
+    task_id: int
+    task_name: str
+    task_type: str
+    trigger_mode: str
+    status: str
+    requested_by: str
+    summary: str | None
+    metrics_value: str
+    error_message: str | None
+    termination_reason: str | None
+    started_at: datetime | None
+    finished_at: datetime | None
+    created_at: datetime
+    updated_at: datetime
+
+
+@dataclass
+class TaskRunLog:
+    id: int
+    run_id: int
+    severity: str
+    message: str
+    created_at: datetime
 
 
 @dataclass

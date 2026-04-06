@@ -2,10 +2,9 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 
-from app.schemas import APIResponse
-
 from app.journeys.dependencies import JourneyServiceDep
 from app.journeys.schemas import JourneySearchRequest, JourneySearchResponse
+from app.schemas import APIResponse
 
 router = APIRouter(prefix="/journeys", tags=["journeys"])
 

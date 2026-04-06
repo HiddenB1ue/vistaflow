@@ -1,43 +1,136 @@
-# VistaFlow Backend
-
+﻿# VistaFlow Backend
 
 Repo-wide governance for backend delivery lives in
 `.specify/memory/constitution.md`. `ARCHITECTURE.md` may be stricter, but it does
 not replace the backend constitution.
 
-Python 3.12 + FastAPI + asyncpg 后端服务。
+All backend feature work MUST preserve domain boundaries, document API/data/ops
+impact during specification, and pass `uv run ruff check .`,
+`uv run mypy app tests`, and `uv run pytest --cov=app --cov-report=term-missing`
+before merge.
 
-## 快速开始
+## Tech Stack
+
+Python 3.12 + FastAPI + asyncpg backend service.
+
+## Quick Start
 
 ```bash
 cd apps/api
 
-# 安装依赖
+# Install dependencies
 uv sync
 
-# 复制环境变量
+# Copy environment variables
 cp .env.example .env.development
-# 编辑 .env.development 填写数据库连接等配置
+# Edit .env.development and fill in database / external service configuration
 
-# 启动开发服务器
+# Start the dev server
 uv run uvicorn app.main:app --reload --port 8000
 ```
 
-API 文档：http://localhost:8000/docs
+API docs: http://localhost:8000/docs
 
-## 开发
+## Development
 
 ```bash
 # Lint
 uv run ruff check .
 
-# 类型检查
+# Type check
 uv run mypy app tests
 
-# 测试
+# Test
 uv run pytest --cov=app --cov-report=term-missing
 ```
 
-## 架构
+## Task Module
 
-见 [ARCHITECTURE.md](./ARCHITECTURE.md)
+The backend task API currently supports the following management endpoints:
+
+- `GET /task-types`: list supported task types and execution metadata
+- `GET /tasks` / `POST /tasks`: query and create task definitions
+- `GET /tasks/{id}` / `PATCH /tasks/{id}` / `DELETE /tasks/{id}`: view, update, or delete a task
+- `POST /tasks/{id}/run`: manually trigger a task run
+- `GET /tasks/{id}/runs`: query task run history
+- `GET /task-runs/{id}`: inspect one run
+- `GET /task-runs/{id}/logs`: inspect run logs
+- `POST /task-runs/{id}/terminate`: terminate an active run
+
+Implemented executable task types:
+
+- `fetch-station`
+- `fetch-trains`
+- `fetch-train-stops`
+- `fetch-train-runs`
+
+Reserved but not yet implemented task type:
+
+- `price`
+
+### Railway Crawl Tasks
+
+The railway task feature extends the existing task domain and keeps the 12306
+request parameters, request method, and response parsing contract unchanged.
+Administrators can define and manually execute these task types through the same
+`/tasks` API surface.
+
+#### 1. `fetch-trains`
+
+Payload:
+
+```json
+{
+  "date": "2026-04-05",
+  "keyword": "G"
+}
+```
+
+Behavior:
+
+- query train catalog data for one date and keyword
+- normalize the payload date to `YYYY-MM-DD`
+- idempotently upsert matching rows into `trains`
+- write processed counts into task run summary and logs
+
+#### 2. `fetch-train-stops`
+
+Payload:
+
+```json
+{
+  "date": "2026-04-05",
+  "train_code": "G1"
+}
+```
+
+Behavior:
+
+- search the train first to resolve the stable `train_no`
+- fetch stop details with the unchanged 12306 query contract
+- derive parent train rows from stop data
+- idempotently upsert into `trains` and `train_stops`
+- fail the run when no stop data is returned
+
+#### 3. `fetch-train-runs`
+
+Payload:
+
+```json
+{
+  "date": "2026-04-05",
+  "train_code": "G1"
+}
+```
+
+Behavior:
+
+- query the train search endpoint for the specific date/train
+- preserve the upstream 12306 request and response contract
+- derive one-day run facts and normalize run status
+- idempotently upsert into `trains` and `train_runs`
+- fail the run when no matching run fact is returned
+
+## Architecture
+
+See [ARCHITECTURE.md](./ARCHITECTURE.md)

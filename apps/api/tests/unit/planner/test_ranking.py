@@ -1,8 +1,12 @@
 from __future__ import annotations
 
-from app.domain.models import SeatInfo, Segment
-from app.domain.types import SeatLookupKey
-from app.planner.ranking import apply_display_limit, group_and_rank, route_duration, route_min_price
+from app.models import SeatInfo, SeatLookupKey, Segment
+from app.planner.ranking import (
+    apply_display_limit,
+    group_and_rank,
+    route_duration,
+    route_min_price,
+)
 
 
 def seg(train_no: str, depart: int, arrive: int, from_s: str = "A", to_s: str = "B") -> Segment:

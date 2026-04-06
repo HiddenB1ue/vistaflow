@@ -6,7 +6,6 @@ from typing import Any
 
 import httpx
 
-from app.models import SeatLookupKey
 from app.integrations.ticket_12306.models import TicketSegmentData
 from app.integrations.ticket_12306.parser import (
     BASE_HEADERS,
@@ -15,6 +14,7 @@ from app.integrations.ticket_12306.parser import (
     parse_result_row,
     segment_min_price,
 )
+from app.models import SeatLookupKey
 
 
 @dataclass(frozen=True)

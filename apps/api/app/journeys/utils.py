@@ -4,14 +4,13 @@ import hashlib
 import json
 from datetime import time
 
-from app.models import SeatInfo, SeatLookupKey, Segment
-from app.planner.time_utils import abs_min_to_hhmm
-
 from app.journeys.schemas import (
     JourneyResult,
     JourneySegment,
     SeatSchema,
 )
+from app.models import SeatInfo, SeatLookupKey, Segment
+from app.planner.time_utils import abs_min_to_hhmm
 
 
 def _time_to_abs_min(t: time | None) -> int | None:

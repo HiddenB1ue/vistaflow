@@ -11,9 +11,7 @@ from fastapi.responses import JSONResponse
 
 from app.config import get_settings
 from app.exceptions import BusinessError
-from app.integrations.crawler.client import (
-    Live12306CrawlerClient,
-)
+from app.integrations.crawler.client import Live12306CrawlerClient
 from app.integrations.geo.client import AmapGeoClient, NullGeoClient
 from app.integrations.ticket_12306.client import (
     Live12306TicketClient,
@@ -24,7 +22,9 @@ from app.journeys.router import router as journeys_router
 from app.railway.router import router as railway_router
 from app.schemas import APIResponse
 from app.system.router import router as system_router
+from app.tasks.repository import TaskRepository, TaskRunRepository
 from app.tasks.router import router as tasks_router
+from app.tasks.runtime import TaskRuntimeRegistry
 
 
 @asynccontextmanager
@@ -37,11 +37,16 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         max_size=20,
         command_timeout=30,
     )
+    app.state.task_runtime = TaskRuntimeRegistry()
+
+    task_repo = TaskRepository(app.state.db_pool)
+    run_repo = TaskRunRepository(app.state.db_pool)
+    await run_repo.recover_incomplete_runs()
+    await task_repo.recover_incomplete_tasks()
 
     http_client = httpx.AsyncClient()
     app.state.http_client = http_client
 
-    # Ticket client
     if settings.ticket_12306_cookie.strip():
         app.state.ticket_client = Live12306TicketClient(
             config=TicketClientConfig(
@@ -53,13 +58,12 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     else:
         app.state.ticket_client = NullTicketClient()
 
-    # Crawler client（复用 httpx client）
     app.state.crawler_client = Live12306CrawlerClient(http_client=http_client)
 
-    # Geo client
     if settings.amap_api_key:
         app.state.geo_client = AmapGeoClient(
-            api_key=settings.amap_api_key, http_client=http_client
+            api_key=settings.amap_api_key,
+            http_client=http_client,
         )
     else:
         app.state.geo_client = NullGeoClient()
@@ -84,14 +88,15 @@ def create_app() -> FastAPI:
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origins,
-        allow_methods=["GET", "POST"],
+        allow_methods=["GET", "POST", "PATCH", "DELETE"],
         allow_headers=["*"],
         expose_headers=["Authorization"],
     )
 
     @app.exception_handler(BusinessError)
     async def business_error_handler(
-        request: Request, exc: BusinessError
+        request: Request,
+        exc: BusinessError,
     ) -> JSONResponse:
         return JSONResponse(
             status_code=exc.http_status,
@@ -100,23 +105,18 @@ def create_app() -> FastAPI:
 
     @app.exception_handler(Exception)
     async def unhandled_error_handler(
-        request: Request, exc: Exception
+        request: Request,
+        exc: Exception,
     ) -> JSONResponse:
         return JSONResponse(
             status_code=500,
             content=APIResponse.fail("服务器内部错误，请稍后重试").model_dump(),
         )
 
-    # 公开路由
     app.include_router(railway_router, prefix="/api")
     app.include_router(journeys_router, prefix="/api")
-
-    # 需鉴权路由
     app.include_router(tasks_router)
-
-    # 系统路由（health 公开，其余需鉴权）
     app.include_router(system_router)
-
     return app
 
 

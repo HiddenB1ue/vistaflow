@@ -1,0 +1,214 @@
+﻿openapi: 3.1.0
+info:
+  title: VistaFlow Railway Crawl Task API Surface
+  version: 1.0.0
+  description: >-
+    Contract delta for adding railway crawl task types to the existing admin task API.
+paths:
+  /task-types:
+    get:
+      summary: List supported task types including railway crawl types
+      responses:
+        '200':
+          description: Task type catalog
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskTypeListResponse'
+  /tasks:
+    post:
+      summary: Create a task definition for an existing or railway crawl task type
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TaskCreateRequest'
+            examples:
+              fetchTrains:
+                summary: Create a train catalog crawl task
+                value:
+                  name: Train catalog sync G-prefix
+                  type: fetch-trains
+                  description: Crawl trains for one date and keyword
+                  enabled: true
+                  cron: null
+                  payload:
+                    date: '2026-04-05'
+                    keyword: G
+              fetchTrainStops:
+                summary: Create a train stops crawl task
+                value:
+                  name: Train G1 stops sync
+                  type: fetch-train-stops
+                  description: Crawl stop details for G1
+                  enabled: true
+                  cron: null
+                  payload:
+                    date: '2026-04-05'
+                    train_code: G1
+              fetchTrainRuns:
+                summary: Create a per-date train run crawl task
+                value:
+                  name: Train G1 run sync
+                  type: fetch-train-runs
+                  description: Crawl whether G1 runs on one date
+                  enabled: true
+                  cron: null
+                  payload:
+                    date: '2026-04-05'
+                    train_code: G1
+      responses:
+        '201':
+          description: Task created
+        '400':
+          description: Business validation error
+        '409':
+          description: Duplicate task name
+  /tasks/{taskId}/run:
+    post:
+      summary: Trigger a manual run for a railway crawl task
+      parameters:
+        - in: path
+          name: taskId
+          required: true
+          schema:
+            type: integer
+      responses:
+        '202':
+          description: Run accepted
+        '404':
+          description: Task not found
+        '409':
+          description: Task disabled or already running
+  /task-runs/{runId}:
+    get:
+      summary: Get a single task run, including railway crawl result summary
+      parameters:
+        - in: path
+          name: runId
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Task run detail
+        '404':
+          description: Run not found
+components:
+  schemas:
+    APIResponseTaskTypeList:
+      type: object
+      required: [success, data, error]
+      properties:
+        success:
+          type: boolean
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/TaskTypeResponse'
+        error:
+          type:
+            - 'null'
+            - string
+    TaskTypeListResponse:
+      allOf:
+        - $ref: '#/components/schemas/APIResponseTaskTypeList'
+    TaskTypeResponse:
+      type: object
+      required: [type, label, description, implemented, supportsCron, paramSchema]
+      properties:
+        type:
+          type: string
+          enum:
+            - fetch-station
+            - geocode
+            - fetch-status
+            - price
+            - cleanup
+            - fetch-trains
+            - fetch-train-stops
+            - fetch-train-runs
+        label:
+          type: string
+        description:
+          type: string
+        implemented:
+          type: boolean
+        supportsCron:
+          type: boolean
+        paramSchema:
+          type: array
+          items:
+            $ref: '#/components/schemas/TaskParamSpec'
+    TaskParamSpec:
+      type: object
+      required: [key, label, valueType, required, placeholder, description]
+      properties:
+        key:
+          type: string
+        label:
+          type: string
+        valueType:
+          type: string
+          enum: [date, text]
+        required:
+          type: boolean
+        placeholder:
+          type: string
+        description:
+          type: string
+    TaskCreateRequest:
+      type: object
+      required: [name, type, enabled, payload]
+      properties:
+        name:
+          type: string
+        type:
+          type: string
+          enum: [fetch-trains, fetch-train-stops, fetch-train-runs]
+        description:
+          type:
+            - 'null'
+            - string
+        enabled:
+          type: boolean
+        cron:
+          type:
+            - 'null'
+            - string
+        payload:
+          oneOf:
+            - $ref: '#/components/schemas/FetchTrainsPayload'
+            - $ref: '#/components/schemas/FetchTrainStopsPayload'
+            - $ref: '#/components/schemas/FetchTrainRunsPayload'
+    FetchTrainsPayload:
+      type: object
+      required: [date, keyword]
+      properties:
+        date:
+          type: string
+          format: date
+        keyword:
+          type: string
+          minLength: 1
+    FetchTrainStopsPayload:
+      type: object
+      required: [date, train_code]
+      properties:
+        date:
+          type: string
+          format: date
+        train_code:
+          type: string
+          minLength: 1
+    FetchTrainRunsPayload:
+      type: object
+      required: [date, train_code]
+      properties:
+        date:
+          type: string
+          format: date
+        train_code:
+          type: string
+          minLength: 1

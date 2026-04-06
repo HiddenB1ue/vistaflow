@@ -1,6 +1,7 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import itertools
+from typing import Any
 
 import asyncpg
 
@@ -9,14 +10,8 @@ from app.models import SeatInfo, SeatLookupKey, StopEvent, Timetable
 from app.planner.time_utils import advance_past, parse_hhmm
 
 
-# ---------------------------------------------------------------------------
-# StationRepository
-# ---------------------------------------------------------------------------
-
-
 class StationRepository(BaseRepository):
     async def find_all(self) -> list[dict[str, object]]:
-        """返回所有站点完整字段。"""
         sql = """
             SELECT id, name, telecode, pinyin, abbr,
                    area_code, area_name, country_code, country_name,
@@ -29,10 +24,9 @@ class StationRepository(BaseRepository):
         return [dict(row) for row in rows]
 
     async def upsert_stations(self, stations: list[dict[str, str]]) -> int:
-        """批量 upsert 站点数据，返回写入条数。"""
         count = 0
         async with self._pool.acquire() as conn:
-            for s in stations:
+            for station in stations:
                 await conn.execute(
                     """
                     INSERT INTO stations (telecode, name, pinyin, abbr, area_code)
@@ -44,17 +38,16 @@ class StationRepository(BaseRepository):
                         area_code = EXCLUDED.area_code,
                         updated_at = NOW()
                     """,
-                    s.get("telecode", ""),
-                    s.get("name", ""),
-                    s.get("pinyin", ""),
-                    s.get("abbr", ""),
-                    s.get("area_code", ""),
+                    station.get("telecode", ""),
+                    station.get("name", ""),
+                    station.get("pinyin", ""),
+                    station.get("abbr", ""),
+                    station.get("area_code", ""),
                 )
                 count += 1
         return count
 
     async def find_missing_geo(self) -> list[dict[str, object]]:
-        """查询坐标缺失的站点。"""
         sql = """
             SELECT id, name, area_name
             FROM stations
@@ -65,12 +58,16 @@ class StationRepository(BaseRepository):
         return [dict(row) for row in rows]
 
     async def update_geo(
-        self, station_id: int, longitude: float, latitude: float, geo_source: str
+        self,
+        station_id: int,
+        longitude: float,
+        latitude: float,
+        geo_source: str,
     ) -> None:
-        """更新站点经纬度和来源。"""
         sql = """
             UPDATE stations
-            SET longitude = $2, latitude = $3,
+            SET longitude = $2,
+                latitude = $3,
                 geo_source = $4,
                 geo_updated_at = NOW(),
                 updated_at = NOW()
@@ -80,10 +77,10 @@ class StationRepository(BaseRepository):
             await conn.execute(sql, station_id, longitude, latitude, geo_source)
 
     async def find_by_names(self, names: list[str]) -> list[dict[str, object]]:
-        """按名称列表过滤站点。"""
-        cleaned = [n.strip() for n in names if n.strip()]
+        cleaned = [name.strip() for name in names if name.strip()]
         if not cleaned:
             return []
+
         sql = """
             SELECT id, name, telecode, pinyin, abbr,
                    area_code, area_name, country_code, country_name,
@@ -100,8 +97,7 @@ class StationRepository(BaseRepository):
         self,
         names: list[str],
     ) -> dict[str, tuple[float, float]]:
-        """批量查询站点 GCJ-02 坐标，返回 {站名: (longitude, latitude)}。"""
-        cleaned = sorted({n.strip() for n in names if n.strip()})
+        cleaned = sorted({name.strip() for name in names if name.strip()})
         if not cleaned:
             return {}
 
@@ -116,7 +112,6 @@ class StationRepository(BaseRepository):
               AND latitude IS NOT NULL
             ORDER BY name, geo_updated_at DESC NULLS LAST, id DESC
         """
-
         async with self._pool.acquire() as conn:
             rows = await conn.fetch(sql, cleaned)
 
@@ -130,7 +125,6 @@ class StationRepository(BaseRepository):
         keyword: str,
         limit: int = 10,
     ) -> list[dict[str, str]]:
-        """模糊搜索站点（名称/拼音/简拼）。"""
         kw = keyword.strip()
         if not kw:
             return []
@@ -138,39 +132,35 @@ class StationRepository(BaseRepository):
         sql = """
             SELECT name, telecode, pinyin, abbr
             FROM stations
-            WHERE name    LIKE $1
-               OR pinyin  LIKE $1
-               OR abbr    LIKE $1
+            WHERE name LIKE $1
+               OR pinyin LIKE $1
+               OR abbr LIKE $1
             ORDER BY
-                CASE WHEN name = $2 THEN 0
-                     WHEN name LIKE $2 || '%' THEN 1
-                     WHEN abbr = $2 THEN 2
-                     ELSE 3
+                CASE
+                    WHEN name = $2 THEN 0
+                    WHEN name LIKE $2 || '%' THEN 1
+                    WHEN abbr = $2 THEN 2
+                    ELSE 3
                 END,
                 name
             LIMIT $3
         """
-
         pattern = f"%{kw}%"
         async with self._pool.acquire() as conn:
             rows = await conn.fetch(sql, pattern, kw, limit)
 
         return [
             {
-                "name":    str(row["name"]),
+                "name": str(row["name"]),
                 "telecode": str(row["telecode"] or ""),
-                "pinyin":  str(row["pinyin"] or ""),
-                "abbr":    str(row["abbr"] or ""),
+                "pinyin": str(row["pinyin"] or ""),
+                "abbr": str(row["abbr"] or ""),
             }
             for row in rows
         ]
 
-    async def get_telecodes_by_names(
-        self,
-        names: set[str],
-    ) -> dict[str, str]:
-        """批量查询站点电报码，返回 {站名: 电报码}。"""
-        cleaned = sorted({n.strip() for n in names if n.strip()})
+    async def get_telecodes_by_names(self, names: set[str]) -> dict[str, str]:
+        cleaned = sorted({name.strip() for name in names if name.strip()})
         if not cleaned:
             return {}
 
@@ -181,16 +171,10 @@ class StationRepository(BaseRepository):
               AND telecode IS NOT NULL
               AND telecode <> ''
         """
-
         async with self._pool.acquire() as conn:
             rows = await conn.fetch(sql, cleaned)
 
         return {str(row["name"]): str(row["telecode"]) for row in rows}
-
-
-# ---------------------------------------------------------------------------
-# TrainRepository
-# ---------------------------------------------------------------------------
 
 
 class TrainRepository(BaseRepository):
@@ -201,7 +185,6 @@ class TrainRepository(BaseRepository):
         to_station: str,
         full_route: bool = False,
     ) -> list[dict[str, object]]:
-        """查询车次经停站列表。"""
         train_no = await self._resolve_train_no(train_code, from_station, to_station)
         if not train_no:
             return []
@@ -221,7 +204,6 @@ class TrainRepository(BaseRepository):
         from_station: str,
         to_station: str,
     ) -> str | None:
-        """找到同时经停 from_station 和 to_station 的 train_no。"""
         sql = """
             SELECT ts.train_no
             FROM train_stops ts
@@ -271,98 +253,186 @@ class TrainRepository(BaseRepository):
         ]
 
 
-def _slice_stops(
-    stops: list[dict[str, object]],
-    from_station: str,
-    to_station: str,
-) -> list[dict[str, object]]:
-    """截取 from_station 到 to_station 之间的经停段。"""
-    names = [str(s["station_name"]).strip() for s in stops]
-    try:
-        start_idx = names.index(from_station.strip())
-        end_idx = names.index(to_station.strip())
-    except ValueError:
-        return []
+class RailwayTaskRepository(BaseRepository):
+    async def upsert_train_rows(self, rows: list[dict[str, Any]]) -> int:
+        async with self._pool.acquire() as conn:
+            return await self._upsert_train_rows(conn, rows)
 
-    if start_idx <= end_idx:
-        return stops[start_idx : end_idx + 1]
-    return list(reversed(stops[end_idx : start_idx + 1]))
+    async def upsert_train_and_stop_rows(
+        self,
+        train_rows: list[dict[str, Any]],
+        stop_rows: list[dict[str, Any]],
+    ) -> tuple[int, int]:
+        async with self._pool.acquire() as conn, conn.transaction():
+            train_count = await self._upsert_train_rows(conn, train_rows)
+            stop_count = await self._upsert_stop_rows(conn, stop_rows)
+        return train_count, stop_count
 
+    async def upsert_train_and_run_rows(
+        self,
+        train_rows: list[dict[str, Any]],
+        run_rows: list[dict[str, Any]],
+    ) -> tuple[int, int]:
+        async with self._pool.acquire() as conn, conn.transaction():
+            train_count = await self._upsert_train_rows(conn, train_rows)
+            run_count = await self._upsert_run_rows(conn, run_rows)
+        return train_count, run_count
 
-# ---------------------------------------------------------------------------
-# TimetableRepository
-# ---------------------------------------------------------------------------
+    async def _upsert_train_rows(
+        self,
+        conn: asyncpg.Connection,
+        rows: list[dict[str, Any]],
+    ) -> int:
+        values = await _prepare_train_values(conn, rows)
+        if not values:
+            return 0
+
+        await conn.executemany(
+            """
+            INSERT INTO trains (
+              train_no, station_train_code, from_station_id, from_station,
+              to_station_id, to_station, total_num, is_active
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, TRUE)
+            ON CONFLICT (train_no) DO UPDATE SET
+              station_train_code = COALESCE(
+                  EXCLUDED.station_train_code,
+                  trains.station_train_code
+              ),
+              from_station_id = COALESCE(EXCLUDED.from_station_id, trains.from_station_id),
+              from_station = COALESCE(EXCLUDED.from_station, trains.from_station),
+              to_station_id = COALESCE(EXCLUDED.to_station_id, trains.to_station_id),
+              to_station = COALESCE(EXCLUDED.to_station, trains.to_station),
+              total_num = COALESCE(EXCLUDED.total_num, trains.total_num),
+              is_active = TRUE,
+              updated_at = NOW()
+            """,
+            values,
+        )
+        return len(values)
+
+    async def _upsert_stop_rows(
+        self,
+        conn: asyncpg.Connection,
+        rows: list[dict[str, Any]],
+    ) -> int:
+        values = [
+            (
+                str(item.get("train_no") or "").strip(),
+                _to_int(item.get("station_no")),
+                _to_text(item.get("station_name")),
+                _to_text(item.get("station_train_code")),
+                _to_text(item.get("arrive_time")),
+                _to_text(item.get("start_time")),
+                _to_text(item.get("running_time")),
+                _to_int(item.get("arrive_day_diff")),
+                _to_text(item.get("arrive_day_str")),
+                _to_text(item.get("is_start")),
+                _to_text(item.get("start_station_name")),
+                _to_text(item.get("end_station_name")),
+                _to_text(item.get("train_class_name")),
+                _to_text(item.get("service_type")),
+                _to_text(item.get("wz_num")),
+            )
+            for item in rows
+            if str(item.get("train_no") or "").strip()
+            and (_to_int(item.get("station_no")) or 0) > 0
+        ]
+        if not values:
+            return 0
+
+        await conn.executemany(
+            """
+            INSERT INTO train_stops (
+              train_no, station_no, station_name, station_train_code, arrive_time, start_time,
+              running_time, arrive_day_diff, arrive_day_str, is_start, start_station_name,
+              end_station_name, train_class_name, service_type, wz_num
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+            ON CONFLICT (train_no, station_no) DO UPDATE SET
+              station_name = EXCLUDED.station_name,
+              station_train_code = EXCLUDED.station_train_code,
+              arrive_time = EXCLUDED.arrive_time,
+              start_time = EXCLUDED.start_time,
+              running_time = EXCLUDED.running_time,
+              arrive_day_diff = EXCLUDED.arrive_day_diff,
+              arrive_day_str = EXCLUDED.arrive_day_str,
+              is_start = EXCLUDED.is_start,
+              start_station_name = EXCLUDED.start_station_name,
+              end_station_name = EXCLUDED.end_station_name,
+              train_class_name = EXCLUDED.train_class_name,
+              service_type = EXCLUDED.service_type,
+              wz_num = EXCLUDED.wz_num,
+              updated_at = NOW()
+            """,
+            values,
+        )
+        return len(values)
+
+    async def _upsert_run_rows(
+        self,
+        conn: asyncpg.Connection,
+        rows: list[dict[str, Any]],
+    ) -> int:
+        train_nos = sorted(
+            {
+                str(item.get("train_no") or "").strip()
+                for item in rows
+                if str(item.get("train_no") or "").strip()
+            }
+        )
+        if not train_nos:
+            return 0
+
+        map_rows = await conn.fetch(
+            "SELECT train_no, id FROM trains WHERE train_no = ANY($1)",
+            train_nos,
+        )
+        train_id_map = {str(row["train_no"]): int(row["id"]) for row in map_rows}
+
+        dedup: dict[tuple[int, str], tuple[int, str, str]] = {}
+        for item in rows:
+            train_no = str(item.get("train_no") or "").strip()
+            train_id = train_id_map.get(train_no)
+            run_date = _to_text(item.get("run_date") or item.get("date"))
+            status = _to_text(item.get("status")) or "running"
+            if train_id is None or run_date is None:
+                continue
+            dedup[(train_id, run_date)] = (train_id, run_date, status)
+
+        values = list(dedup.values())
+        if not values:
+            return 0
+
+        await conn.executemany(
+            """
+            INSERT INTO train_runs (train_id, run_date, status, source_updated_at)
+            VALUES ($1, $2, $3, NOW())
+            ON CONFLICT (train_id, run_date) DO UPDATE SET
+              status = EXCLUDED.status,
+              source_updated_at = EXCLUDED.source_updated_at,
+              updated_at = NOW()
+            """,
+            values,
+        )
+        return len(values)
+
 
 MINUTES_PER_DAY = 1440
 
 
-def _parse_stop_rows(train_no: str, rows: list[asyncpg.Record]) -> list[StopEvent]:
-    """将数据库行转换为 StopEvent 列表，计算跨天绝对分钟数。"""
-    events: list[StopEvent] = []
-    previous_depart: int | None = None
-
-    for row in rows:
-        station_name = (row["station_name"] or "").strip()
-        if not row["station_no"] or not station_name:
-            continue
-
-        base_minutes = int(row["arrive_day_diff"] or 0) * MINUTES_PER_DAY
-        arrive_clock = parse_hhmm(row["arrive_time"])
-        start_clock = parse_hhmm(row["start_time"])
-
-        arrive_abs: int | None = None
-        if arrive_clock is not None:
-            arrive_abs = base_minutes + arrive_clock
-        elif start_clock is not None:
-            arrive_abs = base_minutes + start_clock
-
-        depart_abs: int | None = None
-        if start_clock is not None:
-            depart_abs = base_minutes + start_clock
-            if arrive_abs is not None:
-                depart_abs = advance_past(depart_abs, arrive_abs)
-        else:
-            depart_abs = arrive_abs
-
-        if previous_depart is not None:
-            if arrive_abs is not None:
-                arrive_abs = advance_past(arrive_abs, previous_depart)
-            if depart_abs is not None:
-                depart_abs = advance_past(depart_abs, previous_depart)
-
-        if depart_abs is not None:
-            previous_depart = depart_abs
-
-        events.append(
-            StopEvent(
-                train_no=train_no,
-                stop_number=int(row["station_no"]),
-                station_name=station_name,
-                train_code=(row["station_train_code"] or "").strip(),
-                arrive_abs_min=arrive_abs,
-                depart_abs_min=depart_abs,
-            )
-        )
-
-    return events
-
-
 class TimetableRepository(BaseRepository):
     async def load_timetable(self, run_date: str, filter_running_only: bool) -> Timetable:
-        """加载完整时刻表。
-
-        filter_running_only=True 时只加载当日有开行记录（status='running'）的车次。
-        """
         if filter_running_only:
             sql = """
                 SELECT
                     ts.train_no,
                     ts.station_no,
-                    COALESCE(ts.station_name, '')      AS station_name,
+                    COALESCE(ts.station_name, '') AS station_name,
                     COALESCE(ts.station_train_code, '') AS station_train_code,
                     ts.arrive_time,
                     ts.start_time,
-                    COALESCE(ts.arrive_day_diff, 0)    AS arrive_day_diff
+                    COALESCE(ts.arrive_day_diff, 0) AS arrive_day_diff
                 FROM train_stops ts
                 JOIN trains t ON t.train_no = ts.train_no
                 JOIN train_runs tr
@@ -377,11 +447,11 @@ class TimetableRepository(BaseRepository):
                 SELECT
                     ts.train_no,
                     ts.station_no,
-                    COALESCE(ts.station_name, '')      AS station_name,
+                    COALESCE(ts.station_name, '') AS station_name,
                     COALESCE(ts.station_train_code, '') AS station_train_code,
                     ts.arrive_time,
                     ts.start_time,
-                    COALESCE(ts.arrive_day_diff, 0)    AS arrive_day_diff
+                    COALESCE(ts.arrive_day_diff, 0) AS arrive_day_diff
                 FROM train_stops ts
                 ORDER BY ts.train_no, ts.station_no
             """
@@ -405,32 +475,11 @@ class TimetableRepository(BaseRepository):
         return timetable
 
 
-# ---------------------------------------------------------------------------
-# SeatRepository
-# ---------------------------------------------------------------------------
-
 AVAILABILITY_STATUS_MAP = {
     "available": "有",
     "waitlist": "候补",
     "sold_out": "无",
 }
-
-
-def _make_seat_info(seat_type: str, status: str, available_count: int | None) -> SeatInfo:
-    normalized = status.strip().lower()
-    available = normalized == "available" and (
-        available_count is None or available_count > 0
-    )
-    if available_count is not None and available_count > 0:
-        display_status = str(available_count)
-    else:
-        display_status = AVAILABILITY_STATUS_MAP.get(normalized, "--")
-    return SeatInfo(
-        seat_type=seat_type.strip().lower(),
-        status=display_status,
-        price=None,
-        available=available,
-    )
 
 
 class SeatRepository(BaseRepository):
@@ -439,14 +488,12 @@ class SeatRepository(BaseRepository):
         run_date: str,
         segments: set[SeatLookupKey],
     ) -> dict[SeatLookupKey, list[SeatInfo]]:
-        """批量查询指定区间的最新余票快照。"""
         if not segments:
             return {}
 
-        # 构建 VALUES 子句用于批量匹配
         placeholders = ", ".join(
-            f"(${i * 3 + 1}, ${i * 3 + 2}, ${i * 3 + 3})"
-            for i in range(len(segments))
+            f"(${index * 3 + 1}, ${index * 3 + 2}, ${index * 3 + 3})"
+            for index in range(len(segments))
         )
         params: list[object] = []
         for train_no, from_station, to_station in sorted(segments):
@@ -503,9 +550,168 @@ class SeatRepository(BaseRepository):
                 seat_type=str(row["seat_type"]),
                 status=str(row["availability_status"]),
                 available_count=(
-                    int(row["available_count"]) if row["available_count"] is not None else None
+                    int(row["available_count"])
+                    if row["available_count"] is not None
+                    else None
                 ),
             )
             result.setdefault(key, []).append(seat)
 
         return result
+
+
+def _slice_stops(
+    stops: list[dict[str, object]],
+    from_station: str,
+    to_station: str,
+) -> list[dict[str, object]]:
+    names = [str(stop["station_name"]).strip() for stop in stops]
+    try:
+        start_index = names.index(from_station.strip())
+        end_index = names.index(to_station.strip())
+    except ValueError:
+        return []
+
+    if start_index <= end_index:
+        return stops[start_index : end_index + 1]
+    return list(reversed(stops[end_index : start_index + 1]))
+
+
+def dedupe_train_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    seen: set[str] = set()
+    unique_rows: list[dict[str, Any]] = []
+    for row in rows:
+        train_no = str(row.get("train_no") or "").strip()
+        if not train_no or train_no in seen:
+            continue
+        seen.add(train_no)
+        unique_rows.append(row)
+    return unique_rows
+
+
+async def _prepare_train_values(
+    conn: asyncpg.Connection,
+    rows: list[dict[str, Any]],
+) -> list[tuple[str, str | None, int | None, str | None, int | None, str | None, int | None]]:
+    unique_rows = dedupe_train_rows(rows)
+    station_names = sorted(
+        {
+            str(name).strip()
+            for row in unique_rows
+            for name in (row.get("from_station"), row.get("to_station"))
+            if str(name or "").strip()
+        }
+    )
+
+    station_map: dict[str, int] = {}
+    if station_names:
+        station_rows = await conn.fetch(
+            "SELECT name, MIN(id) AS id FROM stations WHERE name = ANY($1) GROUP BY name",
+            station_names,
+        )
+        station_map = {str(row["name"]): int(row["id"]) for row in station_rows}
+
+    values: list[
+        tuple[str, str | None, int | None, str | None, int | None, str | None, int | None]
+    ] = []
+    for row in unique_rows:
+        train_no = str(row.get("train_no") or "").strip()
+        if not train_no:
+            continue
+        from_station = _to_text(row.get("from_station"))
+        to_station = _to_text(row.get("to_station"))
+        values.append(
+            (
+                train_no,
+                _to_text(row.get("station_train_code")),
+                station_map.get(from_station) if from_station else None,
+                from_station,
+                station_map.get(to_station) if to_station else None,
+                to_station,
+                _to_int(row.get("total_num")),
+            )
+        )
+    return values
+
+
+def _parse_stop_rows(train_no: str, rows: list[asyncpg.Record]) -> list[StopEvent]:
+    events: list[StopEvent] = []
+    previous_depart: int | None = None
+
+    for row in rows:
+        station_name = (row["station_name"] or "").strip()
+        if not row["station_no"] or not station_name:
+            continue
+
+        base_minutes = int(row["arrive_day_diff"] or 0) * MINUTES_PER_DAY
+        arrive_clock = parse_hhmm(row["arrive_time"])
+        start_clock = parse_hhmm(row["start_time"])
+
+        arrive_abs: int | None = None
+        if arrive_clock is not None:
+            arrive_abs = base_minutes + arrive_clock
+        elif start_clock is not None:
+            arrive_abs = base_minutes + start_clock
+
+        depart_abs: int | None = None
+        if start_clock is not None:
+            depart_abs = base_minutes + start_clock
+            if arrive_abs is not None:
+                depart_abs = advance_past(depart_abs, arrive_abs)
+        else:
+            depart_abs = arrive_abs
+
+        if previous_depart is not None:
+            if arrive_abs is not None:
+                arrive_abs = advance_past(arrive_abs, previous_depart)
+            if depart_abs is not None:
+                depart_abs = advance_past(depart_abs, previous_depart)
+
+        if depart_abs is not None:
+            previous_depart = depart_abs
+
+        events.append(
+            StopEvent(
+                train_no=train_no,
+                stop_number=int(row["station_no"]),
+                station_name=station_name,
+                train_code=(row["station_train_code"] or "").strip(),
+                arrive_abs_min=arrive_abs,
+                depart_abs_min=depart_abs,
+            )
+        )
+
+    return events
+
+
+def _make_seat_info(
+    seat_type: str,
+    status: str,
+    available_count: int | None,
+) -> SeatInfo:
+    normalized = status.strip().lower()
+    available = normalized == "available" and (
+        available_count is None or available_count > 0
+    )
+    if available_count is not None and available_count > 0:
+        display_status = str(available_count)
+    else:
+        display_status = AVAILABILITY_STATUS_MAP.get(normalized, "--")
+    return SeatInfo(
+        seat_type=seat_type.strip().lower(),
+        status=display_status,
+        price=None,
+        available=available,
+    )
+
+
+def _to_text(value: Any) -> str | None:
+    text = str(value or "").strip()
+    return text or None
+
+
+def _to_int(value: Any) -> int | None:
+    if isinstance(value, int):
+        return value
+    text = str(value or "").strip()
+    return int(text) if text.isdigit() else None
