@@ -13,7 +13,7 @@ from app.tasks.handlers import (
     handle_fetch_train_stops,
     handle_fetch_trains,
 )
-from app.tasks.repository import TaskRunLogRepository
+from app.tasks.repository import TaskRunLogRepository, TaskRunRepository
 
 NOW = datetime(2026, 4, 6, tzinfo=UTC)
 
@@ -50,6 +50,7 @@ def handler_context() -> HandlerContext:
         task=make_task("fetch-trains", {"date": "2026-04-05", "keyword": "G"}),
         run_id=99,
         pool=AsyncMock(),
+        run_repo=AsyncMock(spec=TaskRunRepository),
         run_log_repo=AsyncMock(spec=TaskRunLogRepository),
         log_repo=AsyncMock(),
         crawler_client=AsyncMock(),
@@ -62,15 +63,21 @@ async def test_handle_fetch_trains_writes_summary(
     handler_context: HandlerContext,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    cast(Any, handler_context.crawler_client.fetch_trains).return_value = [
-        {
-            "train_no": "240000G1010A",
-            "station_train_code": "G1",
-            "from_station": "北京南",
-            "to_station": "上海虹桥",
-            "total_num": 2,
-        }
-    ]
+    async def fake_fetch_trains(date: str, keyword: str) -> list[dict[str, Any]]:
+        assert date == "2026-04-05"
+        assert keyword == "G"
+        return [
+            {
+                "train_no": "240000G1010A",
+                "station_train_code": "G1",
+                "from_station": "北京南",
+                "to_station": "上海虹桥",
+                "total_num": 2,
+                "keyword": "G",
+            }
+        ]
+
+    cast(Any, handler_context.crawler_client).fetch_trains = fake_fetch_trains
 
     class FakeRepo:
         def __init__(self, pool: object) -> None:
@@ -85,6 +92,52 @@ async def test_handle_fetch_trains_writes_summary(
 
     assert result.summary == "车次同步完成"
     assert result.metrics_value == "1"
+    assert result.progress_snapshot is not None
+    assert result.progress_snapshot["details"]["currentSeedKeyword"] == "G"
+    assert result.progress_snapshot["details"]["uniqueTrainNosSeen"] == 1
+
+
+@pytest.mark.asyncio
+async def test_handle_fetch_trains_dispatches_roots_when_keyword_missing(
+    handler_context: HandlerContext,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    handler_context.task = make_task("fetch-trains", {"date": "2026-04-05"})
+    calls: list[str] = []
+
+    async def fake_fetch_trains(date: str, keyword: str) -> list[dict[str, Any]]:
+        assert date == "2026-04-05"
+        calls.append(keyword)
+        return [
+            {
+                "train_no": f"TN-{keyword.upper()}",
+                "station_train_code": keyword.upper(),
+                "from_station": "北京南",
+                "to_station": "上海虹桥",
+                "total_num": 2,
+                "keyword": keyword,
+            }
+        ]
+
+    cast(Any, handler_context.crawler_client).fetch_trains = fake_fetch_trains
+
+    class FakeRepo:
+        def __init__(self, pool: object) -> None:
+            self.pool = pool
+
+        async def upsert_train_rows(self, rows: list[dict[str, object]]) -> int:
+            return len(rows)
+
+    monkeypatch.setattr("app.tasks.handlers.RailwayTaskRepository", FakeRepo)
+    monkeypatch.setattr("app.tasks.handlers.seed_keywords", lambda: ["g", "d"])
+
+    result = await handle_fetch_trains(handler_context)
+
+    assert calls == ["g", "d"]
+    assert result.metrics_value == "2"
+    assert result.progress_snapshot is not None
+    assert result.progress_snapshot["details"]["completedSeedKeywords"] == 2
+    assert result.progress_snapshot["summary"]["processedUnits"] == 2
 
 
 @pytest.mark.asyncio

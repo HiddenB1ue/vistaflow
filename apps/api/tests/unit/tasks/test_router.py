@@ -107,6 +107,19 @@ def fake_service() -> MagicMock:
             requestedBy="admin",
             summary=None,
             metricsValue="",
+            progressSnapshot={
+                "version": 1,
+                "taskType": "fetch-trains",
+                "stage": "crawling",
+                "status": "running",
+                "summary": {
+                    "processedUnits": 1,
+                    "pendingUnits": 0,
+                    "successUnits": 1,
+                    "failedUnits": 0,
+                },
+                "details": {"currentSeedKeyword": "G"},
+            },
             errorMessage=None,
             terminationReason=None,
             startedAt=NOW,
@@ -180,6 +193,7 @@ def test_trigger_task(client: TestClient, fake_service: MagicMock) -> None:
     response = client.post("/tasks/1/run")
     assert response.status_code == 202
     assert response.json()["data"]["taskId"] == 1
+    assert response.json()["data"]["progressSnapshot"]["details"]["currentSeedKeyword"] == "G"
 
 
 def test_list_task_runs(client: TestClient, fake_service: MagicMock) -> None:
@@ -187,6 +201,7 @@ def test_list_task_runs(client: TestClient, fake_service: MagicMock) -> None:
     response = client.get("/tasks/1/runs")
     assert response.status_code == 200
     assert response.json()["data"][0]["id"] == 11
+    assert response.json()["data"][0]["progressSnapshot"]["status"] == "running"
 
 
 def test_get_task_run_logs(client: TestClient, fake_service: MagicMock) -> None:

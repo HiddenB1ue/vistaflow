@@ -124,6 +124,7 @@ class TaskRunResponse(BaseModel):
     requestedBy: str
     summary: str | None = None
     metricsValue: str = ""
+    progressSnapshot: dict[str, Any] | None = None
     errorMessage: str | None = None
     terminationReason: str | None = None
     startedAt: datetime | None = None
@@ -142,7 +143,7 @@ class TaskRunLogResponse(BaseModel):
 
 class FetchTrainsPayload(BaseModel):
     date: str
-    keyword: str
+    keyword: str | None = None
 
     @field_validator("date")
     @classmethod
@@ -151,8 +152,8 @@ class FetchTrainsPayload(BaseModel):
 
     @field_validator("keyword")
     @classmethod
-    def normalize_keyword_field(cls, value: str) -> str:
-        return normalize_required_text_field(value, field_name="keyword")
+    def normalize_keyword_field(cls, value: str | None) -> str | None:
+        return normalize_optional_text_field(value)
 
 
 class FetchTrainStopsPayload(BaseModel):
@@ -199,6 +200,13 @@ def normalize_required_text_field(value: str, *, field_name: str) -> str:
     return cleaned
 
 
+def normalize_optional_text_field(value: str | None) -> str | None:
+    if value is None:
+        return None
+    cleaned = value.strip()
+    return cleaned or None
+
+
 def normalize_payload_date(value: str) -> str:
     cleaned = value.strip()
     try:
@@ -219,7 +227,7 @@ def normalize_task_payload(task_type: str, payload: dict[str, Any]) -> dict[str,
         validated = model.model_validate(payload)
     except Exception as exc:
         raise TaskPayloadValidationError(task_type, str(exc)) from exc
-    return dict(validated.model_dump())
+    return dict(validated.model_dump(exclude_none=True))
 
 
 def get_task_payload_model(task_type: str) -> type[BaseModel] | None:

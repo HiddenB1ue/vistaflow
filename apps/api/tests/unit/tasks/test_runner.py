@@ -54,6 +54,7 @@ def make_run(*, status: str = "pending", task_type: str = "fetch-station") -> Ta
         requested_by="admin",
         summary=None,
         metrics_value="",
+        progress_snapshot=None,
         error_message=None,
         termination_reason=None,
         started_at=None,
@@ -101,11 +102,16 @@ async def test_execute_marks_completed(
         return type(
             "Result",
             (),
-            {"summary": "done", "metrics_value": "12", "timing_value": "1s"},
+            {
+                "summary": "done",
+                "metrics_value": "12",
+                "timing_value": "1s",
+                "progress_snapshot": None,
+            },
         )()
 
     monkeypatch.setitem(TASK_HANDLERS, "fetch-station", fake_handler)
-    run_repo.find_by_id.return_value = make_run(status="completed")
+    run_repo.find_by_id.side_effect = [make_run(), make_run(status="completed")]
 
     await runner.execute(make_task(), 11)
 
@@ -131,7 +137,7 @@ async def test_execute_marks_error_when_handler_raises(
         raise RuntimeError("boom")
 
     monkeypatch.setitem(TASK_HANDLERS, "fetch-trains", fake_handler)
-    run_repo.find_by_id.return_value = make_run(status="error", task_type="fetch-trains")
+    run_repo.find_by_id.side_effect = [make_run(task_type="fetch-trains"), make_run(status="error", task_type="fetch-trains"), make_run(status="error", task_type="fetch-trains")]
 
     await runner.execute(make_task(task_type="fetch-trains"), 11)
 

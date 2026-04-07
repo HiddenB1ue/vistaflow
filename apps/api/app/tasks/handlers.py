@@ -1,17 +1,22 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Any
 
 import asyncpg
 
-from app.integrations.crawler.client import AbstractCrawlerClient
+from app.integrations.crawler.client import AbstractCrawlerClient, seed_keywords
 from app.integrations.geo.client import AbstractGeoClient
 from app.models import TaskDefinition
-from app.railway.repository import RailwayTaskRepository, StationRepository
+from app.railway.repository import (
+    RailwayTaskRepository,
+    StationRepository,
+    dedupe_train_rows,
+)
 from app.system.log_repository import LogRepository
 from app.tasks.exceptions import TaskExecutionError
-from app.tasks.repository import TaskRunLogRepository
+from app.tasks.progress import build_progress_snapshot
+from app.tasks.repository import TaskRunLogRepository, TaskRunRepository
 from app.tasks.schemas import (
     FetchTrainRunsPayload,
     FetchTrainsPayload,
@@ -26,6 +31,53 @@ class TaskExecutionResult:
     summary: str
     metrics_value: str = ""
     timing_value: str = ""
+    progress_snapshot: dict[str, Any] | None = None
+
+
+@dataclass
+class FetchTrainsProgressStats:
+    total_seed_keywords: int = 0
+    current_seed_keyword: str | None = None
+    completed_seed_keywords: int = 0
+    failed_seed_keywords: int = 0
+    last_completed_seed_keyword: str | None = None
+    last_failed_seed_keyword: str | None = None
+    raw_rows_fetched: int = 0
+    unique_train_nos_seen: int = 0
+    trains_upsert_attempted: int = 0
+    duplicate_rows_skipped: int = 0
+
+    def to_snapshot(
+        self,
+        *,
+        stage: str = "crawling",
+        status: str = "running",
+    ) -> dict[str, Any]:
+        processed_units = self.completed_seed_keywords + self.failed_seed_keywords
+        pending_units = max(0, self.total_seed_keywords - processed_units)
+        return build_progress_snapshot(
+            "fetch-trains",
+            stage=stage,
+            status=status,
+            summary={
+                "processedUnits": processed_units,
+                "pendingUnits": pending_units,
+                "successUnits": self.completed_seed_keywords,
+                "failedUnits": self.failed_seed_keywords,
+            },
+            details={
+                "currentSeedKeyword": self.current_seed_keyword,
+                "pendingSeedKeywords": pending_units,
+                "completedSeedKeywords": self.completed_seed_keywords,
+                "failedSeedKeywords": self.failed_seed_keywords,
+                "lastCompletedSeedKeyword": self.last_completed_seed_keyword,
+                "lastFailedSeedKeyword": self.last_failed_seed_keyword,
+                "rawRowsFetched": self.raw_rows_fetched,
+                "uniqueTrainNosSeen": self.unique_train_nos_seen,
+                "trainsUpsertAttempted": self.trains_upsert_attempted,
+                "duplicateRowsSkipped": self.duplicate_rows_skipped,
+            },
+        )
 
 
 @dataclass
@@ -33,6 +85,7 @@ class HandlerContext:
     task: TaskDefinition
     run_id: int
     pool: asyncpg.Pool
+    run_repo: TaskRunRepository
     run_log_repo: TaskRunLogRepository
     log_repo: LogRepository
     crawler_client: AbstractCrawlerClient
@@ -85,22 +138,101 @@ async def handle_geocode(ctx: HandlerContext) -> TaskExecutionResult:
 
 async def handle_fetch_trains(ctx: HandlerContext) -> TaskExecutionResult:
     payload = FetchTrainsPayload.model_validate(ctx.task.payload)
+    keyword_display = payload.keyword or "<roots>"
+    seeds = [payload.keyword] if payload.keyword else seed_keywords()
     await ctx.log(
         "INFO",
-        f"任务 {ctx.task.name} 开始抓取车次：date={payload.date}, keyword={payload.keyword}",
+        f"任务 {ctx.task.name} 开始抓取车次：date={payload.date}, keyword={keyword_display}",
     )
-    rows = await ctx.crawler_client.fetch_trains(payload.date, payload.keyword)
+
     repo = RailwayTaskRepository(ctx.pool)
-    imported = await repo.upsert_train_rows(rows)
-    if imported == 0:
+    stats = FetchTrainsProgressStats(total_seed_keywords=len(seeds))
+    seen_train_nos: set[str] = set()
+
+    for seed in seeds:
+        stats.current_seed_keyword = seed
+        try:
+            rows = await ctx.crawler_client.fetch_trains(payload.date, seed)
+        except Exception as exc:
+            stats.failed_seed_keywords += 1
+            stats.last_failed_seed_keyword = seed
+            snapshot = stats.to_snapshot()
+            await ctx.run_repo.update_progress_snapshot(ctx.run_id, snapshot)
+            await ctx.log(
+                "WARN",
+                (
+                    "fetch-trains seed failed: "
+                    f"keyword={seed} pending={snapshot['summary']['pendingUnits']} "
+                    f"error={exc}"
+                ),
+            )
+            continue
+
+        stats.raw_rows_fetched += len(rows)
+        deduped_rows = dedupe_train_rows(rows)
+        duplicate_count = len(rows) - len(deduped_rows)
+        new_rows: list[dict[str, Any]] = []
+        for row in deduped_rows:
+            train_no = str(row.get("train_no") or "").strip()
+            if not train_no:
+                continue
+            if train_no in seen_train_nos:
+                duplicate_count += 1
+                continue
+            seen_train_nos.add(train_no)
+            new_rows.append(row)
+
+        upserted = 0
+        if new_rows:
+            upserted = await repo.upsert_train_rows(new_rows)
+            stats.trains_upsert_attempted += len(new_rows)
+            stats.unique_train_nos_seen += len(new_rows)
+        stats.duplicate_rows_skipped += duplicate_count
+        stats.completed_seed_keywords += 1
+        stats.last_completed_seed_keyword = seed
+
+        snapshot = stats.to_snapshot()
+        await ctx.run_repo.update_progress_snapshot(ctx.run_id, snapshot)
         await ctx.log(
             "INFO",
-            f"fetch-trains 完成，但未找到匹配车次：keyword={payload.keyword}",
+            (
+                "fetch-trains seed processed: "
+                f"keyword={seed} fetched={len(rows)} deduped={len(deduped_rows)} "
+                f"upserted={upserted} pending={snapshot['summary']['pendingUnits']} "
+                f"completed={stats.completed_seed_keywords}"
+            ),
         )
-        return TaskExecutionResult(summary="车次同步完成，未找到匹配数据", metrics_value="0")
 
-    await ctx.log("SUCCESS", f"fetch-trains 完成，写入 {imported} 条车次记录")
-    return TaskExecutionResult(summary="车次同步完成", metrics_value=str(imported))
+    if stats.unique_train_nos_seen == 0 and stats.failed_seed_keywords == 0:
+        await ctx.log(
+            "INFO",
+            f"fetch-trains 完成，但未找到匹配车次：keyword={keyword_display}",
+        )
+        return TaskExecutionResult(
+            summary="车次同步完成，未找到匹配数据",
+            metrics_value="0",
+            progress_snapshot=stats.to_snapshot(),
+        )
+
+    if stats.failed_seed_keywords > 0:
+        await ctx.log(
+            "WARN",
+            (
+                "fetch-trains 完成，但存在失败种子关键词："
+                f"failed={stats.failed_seed_keywords}, "
+                f"last={stats.last_failed_seed_keyword or '-'}"
+            ),
+        )
+        summary = "车次同步完成，部分种子关键词抓取失败"
+    else:
+        summary = "车次同步完成"
+
+    await ctx.log("SUCCESS", f"fetch-trains 完成，写入 {stats.unique_train_nos_seen} 条车次记录")
+    return TaskExecutionResult(
+        summary=summary,
+        metrics_value=str(stats.unique_train_nos_seen),
+        progress_snapshot=stats.to_snapshot(),
+    )
 
 
 async def handle_fetch_train_stops(ctx: HandlerContext) -> TaskExecutionResult:

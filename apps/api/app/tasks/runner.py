@@ -20,6 +20,7 @@ from app.tasks.handlers import (
     handle_fetch_train_stops,
     handle_fetch_trains,
 )
+from app.tasks.progress import with_progress_state
 from app.tasks.repository import TaskRepository, TaskRunLogRepository, TaskRunRepository
 from app.tasks.runtime import TaskRuntimeRegistry
 
@@ -73,7 +74,19 @@ class TaskRunner:
         return refreshed
 
     async def execute(self, task: TaskDefinition, run_id: int) -> None:
-        await self._run_repo.update_run_status(run_id, "running", set_started=True)
+        current_run = await self._run_repo.find_by_id(run_id)
+        running_snapshot = with_progress_state(
+            current_run.progress_snapshot if current_run is not None else None,
+            task_type=task.type,
+            stage="crawling",
+            status="running",
+        )
+        await self._run_repo.update_run_status(
+            run_id,
+            "running",
+            progress_snapshot=running_snapshot,
+            set_started=True,
+        )
         await self._task_repo.mark_task_running(task.id, run_id)
         await self._run_log_repo.create_log(run_id, "SYSTEM", f"任务 {task.name} 已开始执行")
         started_at = monotonic()
@@ -88,6 +101,7 @@ class TaskRunner:
                     task=task,
                     run_id=run_id,
                     pool=self._pool,
+                    run_repo=self._run_repo,
                     run_log_repo=self._run_log_repo,
                     log_repo=self._log_repo,
                     crawler_client=self._crawler_client,
@@ -95,11 +109,18 @@ class TaskRunner:
                 )
             )
             timing_value = self._format_elapsed(started_at)
+            completed_snapshot = with_progress_state(
+                result.progress_snapshot,
+                task_type=task.type,
+                stage="completed",
+                status="completed",
+            )
             await self._run_repo.update_run_status(
                 run_id,
                 "completed",
                 summary=result.summary,
                 metrics_value=result.metrics_value,
+                progress_snapshot=completed_snapshot,
                 set_finished=True,
             )
             await self._task_repo.apply_run_result(
@@ -121,9 +142,17 @@ class TaskRunner:
                 highlighted_terms=[task.type],
             )
             timing_value = self._format_elapsed(started_at)
+            current_run = await self._run_repo.find_by_id(run_id)
+            terminated_snapshot = with_progress_state(
+                current_run.progress_snapshot if current_run is not None else None,
+                task_type=task.type,
+                stage="terminated",
+                status="terminated",
+            )
             await self._run_repo.update_run_status(
                 run_id,
                 "terminated",
+                progress_snapshot=terminated_snapshot,
                 error_message="执行已被管理员终止",
                 termination_reason="管理员终止执行",
                 set_finished=True,
@@ -147,9 +176,17 @@ class TaskRunner:
                 highlighted_terms=[task.type],
             )
             timing_value = self._format_elapsed(started_at)
+            current_run = await self._run_repo.find_by_id(run_id)
+            error_snapshot = with_progress_state(
+                current_run.progress_snapshot if current_run is not None else None,
+                task_type=task.type,
+                stage="error",
+                status="error",
+            )
             await self._run_repo.update_run_status(
                 run_id,
                 "error",
+                progress_snapshot=error_snapshot,
                 error_message=str(exc),
                 set_finished=True,
             )

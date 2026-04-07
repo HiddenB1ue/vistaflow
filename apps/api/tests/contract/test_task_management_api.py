@@ -28,4 +28,5 @@ def test_openapi_exposes_railway_task_contracts() -> None:
     task_type_props = schema["components"]["schemas"]["TaskTypeResponse"]["properties"]
     assert "paramSchema" in task_type_props
     assert "payload" in schema["components"]["schemas"]["TaskCreateRequest"]["properties"]
+    assert "progressSnapshot" in schema["components"]["schemas"]["TaskRunResponse"]["properties"]
     assert {"fetch-trains", "fetch-train-stops", "fetch-train-runs"}.issubset(TASK_TYPES.keys())

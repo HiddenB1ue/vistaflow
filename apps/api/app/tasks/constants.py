@@ -49,9 +49,9 @@ TRAIN_KEYWORD_PARAM: Final[TaskParamDefinition] = TaskParamDefinition(
     key="keyword",
     label="关键字",
     value_type="text",
-    required=True,
+    required=False,
     placeholder="例如 G、D、K、北京",
-    description="用于 12306 车次搜索接口的关键字。",
+    description="递归抓取的起始关键字；留空时任务会按系统内置根关键字集合依次抓取。",
 )
 
 TRAIN_CODE_PARAM: Final[TaskParamDefinition] = TaskParamDefinition(

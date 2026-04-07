@@ -22,6 +22,7 @@ from app.tasks.exceptions import (
     TaskUpdateConflict,
 )
 from app.tasks.repository import TaskRepository, TaskRunLogRepository, TaskRunRepository
+from app.tasks.progress import build_progress_snapshot
 from app.tasks.runner import TaskRunner
 from app.tasks.schemas import (
     TaskCreateRequest,
@@ -133,6 +134,14 @@ class TaskService:
 
         normalized_payload = normalize_task_payload(task.type, task.payload)
         run = await self._run_repo.create_run(task_id=task_id)
+        run = await self._run_repo.update_progress_snapshot(
+            run.id,
+            build_progress_snapshot(
+                task.type,
+                stage="pending",
+                status="pending",
+            ),
+        )
         await self._task_repo.mark_task_running(task_id, run.id)
         scheduled_task = replace(task, payload=normalized_payload)
         self._runner.schedule(scheduled_task, run)
@@ -227,6 +236,7 @@ class TaskService:
             requestedBy=run.requested_by,
             summary=run.summary,
             metricsValue=run.metrics_value,
+            progressSnapshot=run.progress_snapshot,
             errorMessage=run.error_message,
             terminationReason=run.termination_reason,
             startedAt=run.started_at,

@@ -86,12 +86,19 @@ Payload:
 }
 ```
 
+`keyword` is optional. When omitted or empty, the task will iterate the built-in
+root keyword set (`c d g k s t y z 0-9`) inside the same run.
+
 Behavior:
 
-- query train catalog data for one date and keyword
+- treat `keyword` as a recursive crawl seed rather than a single-shot query
+- recursively expand child keywords using the current 12306 search boundary
+  rules (`result_limit=200`, `expand_span=3`, `max_keyword_length=6`)
 - normalize the payload date to `YYYY-MM-DD`
+- aggregate one flattened result set per seed keyword
+- dedupe repeated `station_train_code` values inside crawler aggregation
 - idempotently upsert matching rows into `trains`
-- write processed counts into task run summary and logs
+- update `task_run.progress_snapshot` and logs at seed-keyword granularity
 
 #### 2. `fetch-train-stops`
 

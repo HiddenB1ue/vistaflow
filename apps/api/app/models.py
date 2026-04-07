@@ -97,6 +97,7 @@ class TaskRun:
     requested_by: str
     summary: str | None
     metrics_value: str
+    progress_snapshot: dict[str, Any] | None
     error_message: str | None
     termination_reason: str | None
     started_at: datetime | None

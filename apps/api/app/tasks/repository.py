@@ -4,6 +4,7 @@ from typing import Any
 
 from app.database import BaseRepository
 from app.models import TaskDefinition, TaskRun, TaskRunLog
+from app.tasks.progress import stage_for_status, with_progress_state
 
 DEFAULT_METRICS_LABEL = "最近结果"
 DEFAULT_TIMING_LABEL = "最近耗时"
@@ -251,12 +252,14 @@ class TaskRunRepository(BaseRepository):
         requested_by: str = "admin",
     ) -> TaskRun:
         sql = """
-            INSERT INTO task_run (task_id, task_name, task_type, trigger_mode, status, requested_by)
-            SELECT id, name, type, 'manual', 'pending', $2
+            INSERT INTO task_run (
+                task_id, task_name, task_type, trigger_mode, status, requested_by, progress_snapshot
+            )
+            SELECT id, name, type, 'manual', 'pending', $2, NULL
             FROM task
             WHERE id = $1
             RETURNING id, task_id, task_name, task_type, trigger_mode, status,
-                      requested_by, summary, metrics_value, error_message,
+                      requested_by, summary, metrics_value, progress_snapshot, error_message,
                       termination_reason, started_at, finished_at, created_at,
                       updated_at
         """
@@ -269,7 +272,7 @@ class TaskRunRepository(BaseRepository):
     async def find_by_id(self, run_id: int) -> TaskRun | None:
         sql = """
             SELECT id, task_id, task_name, task_type, trigger_mode, status,
-                   requested_by, summary, metrics_value, error_message,
+                   requested_by, summary, metrics_value, progress_snapshot, error_message,
                    termination_reason, started_at, finished_at, created_at,
                    updated_at
             FROM task_run
@@ -282,7 +285,7 @@ class TaskRunRepository(BaseRepository):
     async def find_active_by_task(self, task_id: int) -> TaskRun | None:
         sql = """
             SELECT id, task_id, task_name, task_type, trigger_mode, status,
-                   requested_by, summary, metrics_value, error_message,
+                   requested_by, summary, metrics_value, progress_snapshot, error_message,
                    termination_reason, started_at, finished_at, created_at,
                    updated_at
             FROM task_run
@@ -298,7 +301,7 @@ class TaskRunRepository(BaseRepository):
     async def list_by_task(self, task_id: int) -> list[TaskRun]:
         sql = """
             SELECT id, task_id, task_name, task_type, trigger_mode, status,
-                   requested_by, summary, metrics_value, error_message,
+                   requested_by, summary, metrics_value, progress_snapshot, error_message,
                    termination_reason, started_at, finished_at, created_at,
                    updated_at
             FROM task_run
@@ -316,6 +319,7 @@ class TaskRunRepository(BaseRepository):
         *,
         summary: str | None = None,
         metrics_value: str | None = None,
+        progress_snapshot: dict[str, Any] | None = None,
         error_message: str | None = None,
         termination_reason: str | None = None,
         set_started: bool = False,
@@ -326,20 +330,21 @@ class TaskRunRepository(BaseRepository):
             SET status = $2,
                 summary = COALESCE($3, summary),
                 metrics_value = COALESCE($4, metrics_value),
-                error_message = $5,
-                termination_reason = $6,
+                progress_snapshot = COALESCE($5, progress_snapshot),
+                error_message = $6,
+                termination_reason = $7,
                 started_at = CASE
-                    WHEN $7 THEN COALESCE(started_at, NOW())
+                    WHEN $8 THEN COALESCE(started_at, NOW())
                     ELSE started_at
                 END,
                 finished_at = CASE
-                    WHEN $8 THEN NOW()
+                    WHEN $9 THEN NOW()
                     ELSE finished_at
                 END,
                 updated_at = NOW()
             WHERE id = $1
             RETURNING id, task_id, task_name, task_type, trigger_mode, status,
-                      requested_by, summary, metrics_value, error_message,
+                      requested_by, summary, metrics_value, progress_snapshot, error_message,
                       termination_reason, started_at, finished_at, created_at,
                       updated_at
         """
@@ -350,6 +355,7 @@ class TaskRunRepository(BaseRepository):
                 status,
                 summary,
                 metrics_value,
+                progress_snapshot,
                 error_message,
                 termination_reason,
                 set_started,
@@ -359,10 +365,40 @@ class TaskRunRepository(BaseRepository):
             raise RuntimeError(f"Failed to update run {run_id}")
         return self._row_to_run(row)
 
+    async def update_progress_snapshot(
+        self,
+        run_id: int,
+        progress_snapshot: dict[str, Any],
+    ) -> TaskRun:
+        sql = """
+            UPDATE task_run
+            SET progress_snapshot = $2,
+                updated_at = NOW()
+            WHERE id = $1
+            RETURNING id, task_id, task_name, task_type, trigger_mode, status,
+                      requested_by, summary, metrics_value, progress_snapshot, error_message,
+                      termination_reason, started_at, finished_at, created_at,
+                      updated_at
+        """
+        async with self._pool.acquire() as conn:
+            row = await conn.fetchrow(sql, run_id, progress_snapshot)
+        if row is None:
+            raise RuntimeError(f"Failed to update progress snapshot for run {run_id}")
+        return self._row_to_run(row)
+
     async def recover_incomplete_runs(self) -> None:
         sql = """
             UPDATE task_run
             SET status = 'terminated',
+                progress_snapshot = CASE
+                    WHEN progress_snapshot IS NULL THEN NULL
+                    ELSE jsonb_set(
+                        jsonb_set(progress_snapshot, '{stage}', '\"terminated\"'::jsonb, true),
+                        '{status}',
+                        '\"terminated\"'::jsonb,
+                        true
+                    )
+                END,
                 termination_reason = $1,
                 error_message = COALESCE(error_message, $1),
                 finished_at = COALESCE(finished_at, NOW()),
@@ -385,6 +421,16 @@ class TaskRunRepository(BaseRepository):
             requested_by=str(record.get("requested_by") or "admin"),
             summary=record.get("summary"),
             metrics_value=str(record.get("metrics_value") or ""),
+            progress_snapshot=(
+                with_progress_state(
+                    record.get("progress_snapshot"),
+                    task_type=str(record["task_type"]),
+                    stage=stage_for_status(str(record.get("status") or "pending")),
+                    status=str(record.get("status") or "pending"),
+                )
+                if record.get("progress_snapshot") is not None
+                else None
+            ),
             error_message=record.get("error_message"),
             termination_reason=record.get("termination_reason"),
             started_at=record.get("started_at"),

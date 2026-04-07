@@ -68,6 +68,7 @@ def make_run(*, status: str = "pending") -> TaskRun:
         requested_by="admin",
         summary=None,
         metrics_value="",
+        progress_snapshot=None,
         error_message=None,
         termination_reason=None,
         started_at=None,
@@ -258,6 +259,7 @@ async def test_trigger_task_success(
     task_repo.find_by_id.return_value = task
     run_repo.find_active_by_task.return_value = None
     run_repo.create_run.return_value = make_run()
+    run_repo.update_progress_snapshot.return_value = make_run()
     run_repo.find_by_id.return_value = make_run(status="running")
 
     result = await task_service.trigger_task(1)
@@ -279,12 +281,34 @@ async def test_trigger_task_normalizes_railway_payload_before_schedule(
     )
     run_repo.find_active_by_task.return_value = None
     run_repo.create_run.return_value = make_run()
+    run_repo.update_progress_snapshot.return_value = make_run()
     run_repo.find_by_id.return_value = make_run(status="running")
 
     await task_service.trigger_task(1)
 
     scheduled_task = runner.schedule.call_args.args[0]
     assert scheduled_task.payload == {"date": "2026-04-05", "keyword": "G"}
+
+
+@pytest.mark.asyncio
+async def test_trigger_task_allows_fetch_trains_without_keyword(
+    service: tuple[TaskService, AsyncMock, AsyncMock, AsyncMock, MagicMock],
+) -> None:
+    task_service, task_repo, run_repo, _, runner = service
+    task_repo.find_by_id.return_value = make_task(
+        task_type="fetch-trains",
+        type_label="爬取车次",
+        payload={"date": "20260405"},
+    )
+    run_repo.find_active_by_task.return_value = None
+    run_repo.create_run.return_value = make_run()
+    run_repo.update_progress_snapshot.return_value = make_run()
+    run_repo.find_by_id.return_value = make_run(status="running")
+
+    await task_service.trigger_task(1)
+
+    scheduled_task = runner.schedule.call_args.args[0]
+    assert scheduled_task.payload == {"date": "2026-04-05"}
 
 
 @pytest.mark.asyncio
