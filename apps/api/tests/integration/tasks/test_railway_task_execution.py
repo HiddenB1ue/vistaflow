@@ -142,23 +142,14 @@ async def test_handle_fetch_trains_dispatches_roots_when_keyword_missing(
 
 
 @pytest.mark.asyncio
-async def test_handle_fetch_train_stops_persists_parent_train_and_stops(
+async def test_handle_fetch_train_stops_persists_stop_rows_only(
     handler_context: HandlerContext,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     handler_context.task = make_task(
         "fetch-train-stops",
-        {"date": "2026-04-05", "train_code": "G1"},
+        {"date": "2026-04-05", "keyword": "G1"},
     )
-    cast(Any, handler_context.crawler_client.fetch_trains).return_value = [
-        {
-            "train_no": "240000G1010A",
-            "station_train_code": "G1",
-            "from_station": "北京南",
-            "to_station": "上海虹桥",
-            "total_num": 2,
-        }
-    ]
     cast(Any, handler_context.crawler_client.fetch_train_stops).return_value = [
         {
             "train_no": "240000G1010A",
@@ -181,20 +172,71 @@ async def test_handle_fetch_train_stops_persists_parent_train_and_stops(
     class FakeRepo:
         def __init__(self, pool: object) -> None:
             self.pool = pool
+            self.stop_rows: list[dict[str, object]] = []
 
-        async def upsert_train_and_stop_rows(
-            self,
-            train_rows: list[dict[str, object]],
-            stop_rows: list[dict[str, object]],
-        ) -> tuple[int, int]:
-            return len(train_rows), len(stop_rows)
+        async def find_train_nos_by_keyword(self, keyword: str) -> list[str]:
+            assert keyword == "G1"
+            return ["240000G1010A"]
 
-    monkeypatch.setattr("app.tasks.handlers.RailwayTaskRepository", FakeRepo)
+        async def upsert_stop_rows(self, stop_rows: list[dict[str, object]]) -> int:
+            self.stop_rows = stop_rows
+            return len(stop_rows)
+
+    fake_repo = FakeRepo(handler_context.pool)
+    monkeypatch.setattr("app.tasks.handlers.RailwayTaskRepository", lambda pool: fake_repo)
 
     result = await handle_fetch_train_stops(handler_context)
 
     assert result.summary == "车次经停同步完成"
     assert result.metrics_value == "2"
+    assert len(fake_repo.stop_rows) == 2
+
+
+@pytest.mark.asyncio
+async def test_handle_fetch_train_stops_uses_all_train_nos_when_keyword_missing(
+    handler_context: HandlerContext,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    handler_context.task = make_task(
+        "fetch-train-stops",
+        {"date": "2026-04-05"},
+    )
+
+    async def fake_fetch_train_stops(train_no: str, date: str) -> list[dict[str, Any]]:
+        assert date == "2026-04-05"
+        return [
+            {
+                "train_no": train_no,
+                "station_no": 1,
+                "station_name": "北京南",
+                "station_train_code": "G1",
+                "start_station_name": "北京南",
+                "end_station_name": "上海虹桥",
+            }
+        ]
+
+    cast(Any, handler_context.crawler_client).fetch_train_stops = fake_fetch_train_stops
+
+    class FakeRepo:
+        def __init__(self, pool: object) -> None:
+            self.pool = pool
+            self.calls = 0
+
+        async def list_all_train_nos(self) -> list[str]:
+            return ["TN-1", "TN-2"]
+
+        async def upsert_stop_rows(self, stop_rows: list[dict[str, object]]) -> int:
+            self.calls += 1
+            return len(stop_rows)
+
+    fake_repo = FakeRepo(handler_context.pool)
+    monkeypatch.setattr("app.tasks.handlers.RailwayTaskRepository", lambda pool: fake_repo)
+
+    result = await handle_fetch_train_stops(handler_context)
+
+    assert result.summary == "车次经停同步完成"
+    assert result.metrics_value == "2"
+    assert fake_repo.calls == 2
 
 
 @pytest.mark.asyncio

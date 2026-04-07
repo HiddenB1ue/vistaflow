@@ -237,36 +237,75 @@ async def handle_fetch_trains(ctx: HandlerContext) -> TaskExecutionResult:
 
 async def handle_fetch_train_stops(ctx: HandlerContext) -> TaskExecutionResult:
     payload = FetchTrainStopsPayload.model_validate(ctx.task.payload)
+    keyword_display = payload.keyword or "<all>"
     await ctx.log(
         "INFO",
-        f"任务 {ctx.task.name} 开始抓取经停：date={payload.date}, train_code={payload.train_code}",
+        f"任务 {ctx.task.name} 开始抓取经停：date={payload.date}, keyword={keyword_display}",
     )
-    train_candidates = await ctx.crawler_client.fetch_trains(payload.date, payload.train_code)
-    train_row = resolve_train_row(
-        train_candidates,
-        run_date=payload.date,
-        train_code=payload.train_code,
-    )
-    stop_rows = await ctx.crawler_client.fetch_train_stops(
-        str(train_row["train_no"]),
-        payload.date,
-    )
-    if not stop_rows:
-        raise TaskExecutionError(
-            f"未找到车次 {payload.train_code} 在 {payload.date} 的经停数据"
-        )
-
-    train_rows = derive_train_rows_from_stops(stop_rows)
     repo = RailwayTaskRepository(ctx.pool)
-    train_count, stop_count = await repo.upsert_train_and_stop_rows(train_rows, stop_rows)
+    target_train_nos = await resolve_stop_target_train_nos(repo, payload.keyword)
+    if not target_train_nos:
+        if payload.keyword:
+            raise TaskExecutionError(
+                f"数据库中未找到关键字 {payload.keyword} 对应的车次，请先同步车次目录"
+            )
+        raise TaskExecutionError("数据库中没有可抓取经停的车次，请先执行 fetch-trains")
+
+    total_stop_count = 0
+    success_count = 0
+    failed_count = 0
+    last_failed_train_no: str | None = None
+
+    for train_no in target_train_nos:
+        try:
+            stop_rows = await ctx.crawler_client.fetch_train_stops(train_no, payload.date)
+            if not stop_rows:
+                raise TaskExecutionError(
+                    f"未找到车次 {train_no} 在 {payload.date} 的经停数据"
+                )
+            inserted = await repo.upsert_stop_rows(stop_rows)
+            total_stop_count += inserted
+            success_count += 1
+            await ctx.log(
+                "INFO",
+                (
+                    "fetch-train-stops target processed: "
+                    f"train_no={train_no} fetched={len(stop_rows)} upserted={inserted}"
+                ),
+            )
+        except Exception as exc:
+            failed_count += 1
+            last_failed_train_no = train_no
+            await ctx.log(
+                "WARN",
+                f"fetch-train-stops target failed: train_no={train_no} error={exc}",
+            )
+
+    if success_count == 0:
+        suffix = f"，last={last_failed_train_no}" if last_failed_train_no else ""
+        raise TaskExecutionError(f"车次经停抓取失败：success=0, failed={failed_count}{suffix}")
+
+    if failed_count > 0:
+        await ctx.log(
+            "WARN",
+            (
+                "fetch-train-stops 完成，但存在失败车次："
+                f"success={success_count}, failed={failed_count}, "
+                f"last={last_failed_train_no or '-'}"
+            ),
+        )
+        summary = "车次经停同步完成，部分车次抓取失败"
+    else:
+        summary = "车次经停同步完成"
+
     await ctx.log(
         "SUCCESS",
         (
             "fetch-train-stops 完成，"
-            f"写入 {train_count} 条车次记录和 {stop_count} 条经停记录"
+            f"处理 {success_count} 个车次，写入 {total_stop_count} 条经停记录"
         ),
     )
-    return TaskExecutionResult(summary="车次经停同步完成", metrics_value=str(stop_count))
+    return TaskExecutionResult(summary=summary, metrics_value=str(total_stop_count))
 
 
 async def handle_fetch_train_runs(ctx: HandlerContext) -> TaskExecutionResult:
@@ -302,57 +341,13 @@ async def handle_fetch_train_runs(ctx: HandlerContext) -> TaskExecutionResult:
     return TaskExecutionResult(summary="运行车次同步完成", metrics_value=str(run_count))
 
 
-def resolve_train_row(
-    rows: list[dict[str, Any]],
-    *,
-    run_date: str,
-    train_code: str,
-) -> dict[str, Any]:
-    normalized_code = train_code.strip().upper()
-
-    exact = [
-        row
-        for row in rows
-        if str(row.get("station_train_code") or "").upper() == normalized_code
-        or str(row.get("train_no") or "").upper() == normalized_code
-    ]
-    if exact:
-        return exact[0]
-
-    prefix = [
-        row
-        for row in rows
-        if str(row.get("station_train_code") or "").upper().startswith(normalized_code)
-    ]
-    if prefix:
-        return prefix[0]
-
-    raise TaskExecutionError(f"未找到车次 {train_code} 在 {run_date} 的基础信息")
-
-
-def derive_train_rows_from_stops(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    grouped: dict[str, dict[str, Any]] = {}
-    counts: dict[str, int] = {}
-    for row in rows:
-        train_no = str(row.get("train_no") or "").strip()
-        if not train_no:
-            continue
-        grouped.setdefault(
-            train_no,
-            {
-                "train_no": train_no,
-                "station_train_code": row.get("station_train_code"),
-                "from_station": row.get("start_station_name"),
-                "to_station": row.get("end_station_name"),
-                "total_num": None,
-            },
-        )
-        counts[train_no] = counts.get(train_no, 0) + 1
-
-    for train_no, count in counts.items():
-        grouped[train_no]["total_num"] = count
-
-    return list(grouped.values())
+async def resolve_stop_target_train_nos(
+    repo: RailwayTaskRepository,
+    keyword: str | None,
+) -> list[str]:
+    if keyword is None or not keyword.strip():
+        return await repo.list_all_train_nos()
+    return await repo.find_train_nos_by_keyword(keyword)
 
 
 def derive_train_rows_from_runs(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:

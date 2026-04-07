@@ -189,7 +189,7 @@ async def test_create_railway_task_rejects_invalid_payload(
             TaskCreateRequest(
                 name="Broken task",
                 type="fetch-train-stops",
-                payload={"date": "bad-date", "train_code": " "},
+                payload={"date": "bad-date", "keyword": " "},
             )
         )
 
@@ -220,7 +220,7 @@ async def test_update_railway_task_normalizes_payload(
     task_repo.update_task.return_value = make_task(
         task_type="fetch-train-stops",
         type_label="爬取车次经停",
-        payload={"date": "2026-04-06", "train_code": "G1"},
+        payload={"date": "2026-04-06", "keyword": "G1"},
     )
     run_repo.find_active_by_task.return_value = None
 
@@ -228,13 +228,38 @@ async def test_update_railway_task_normalizes_payload(
         1,
         TaskUpdateRequest(
             type="fetch-train-stops",
-            payload={"date": "20260406", "train_code": " G1 "},
+            payload={"date": "20260406", "keyword": " G1 "},
         ),
     )
 
     assert task_repo.update_task.await_args.kwargs["payload"] == {
         "date": "2026-04-06",
-        "train_code": "G1",
+        "keyword": "G1",
+    }
+
+
+@pytest.mark.asyncio
+async def test_create_fetch_train_stops_task_allows_missing_keyword(
+    service: tuple[TaskService, AsyncMock, AsyncMock, AsyncMock, MagicMock],
+) -> None:
+    task_service, task_repo, _, _, _ = service
+    task_repo.find_by_name.return_value = None
+    task_repo.create_task.return_value = make_task(
+        task_type="fetch-train-stops",
+        type_label="爬取车次经停",
+        payload={"date": "2026-04-05"},
+    )
+
+    await task_service.create_task(
+        TaskCreateRequest(
+            name="Stop sync all",
+            type="fetch-train-stops",
+            payload={"date": "20260405"},
+        )
+    )
+
+    assert task_repo.create_task.await_args.kwargs["payload"] == {
+        "date": "2026-04-05",
     }
 
 

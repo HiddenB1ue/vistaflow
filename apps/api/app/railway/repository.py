@@ -258,6 +258,10 @@ class RailwayTaskRepository(BaseRepository):
         async with self._pool.acquire() as conn:
             return await self._upsert_train_rows(conn, rows)
 
+    async def upsert_stop_rows(self, rows: list[dict[str, Any]]) -> int:
+        async with self._pool.acquire() as conn:
+            return await self._upsert_stop_rows(conn, rows)
+
     async def upsert_train_and_stop_rows(
         self,
         train_rows: list[dict[str, Any]],
@@ -277,6 +281,34 @@ class RailwayTaskRepository(BaseRepository):
             train_count = await self._upsert_train_rows(conn, train_rows)
             run_count = await self._upsert_run_rows(conn, run_rows)
         return train_count, run_count
+
+    async def list_all_train_nos(self) -> list[str]:
+        sql = """
+            SELECT DISTINCT train_no
+            FROM trains
+            WHERE train_no IS NOT NULL
+              AND train_no <> ''
+            ORDER BY train_no
+        """
+        async with self._pool.acquire() as conn:
+            rows = await conn.fetch(sql)
+        return [str(row["train_no"]) for row in rows if row["train_no"]]
+
+    async def find_train_nos_by_keyword(self, keyword: str) -> list[str]:
+        cleaned_keyword = keyword.strip()
+        if not cleaned_keyword:
+            return []
+
+        sql = """
+            SELECT DISTINCT train_no
+            FROM trains
+            WHERE UPPER(train_no) = UPPER($1)
+               OR UPPER(station_train_code) = UPPER($1)
+            ORDER BY train_no
+        """
+        async with self._pool.acquire() as conn:
+            rows = await conn.fetch(sql, cleaned_keyword)
+        return [str(row["train_no"]) for row in rows if row["train_no"]]
 
     async def _upsert_train_rows(
         self,

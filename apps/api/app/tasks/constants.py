@@ -54,6 +54,15 @@ TRAIN_KEYWORD_PARAM: Final[TaskParamDefinition] = TaskParamDefinition(
     description="递归抓取的起始关键字；留空时任务会按系统内置根关键字集合依次抓取。",
 )
 
+TRAIN_LOOKUP_KEYWORD_PARAM: Final[TaskParamDefinition] = TaskParamDefinition(
+    key="keyword",
+    label="关键字",
+    value_type="text",
+    required=False,
+    placeholder="例如 G1 或 240000G1010A",
+    description="用于数据库定位 train_no；可传 station_train_code 或 train_no，留空时处理库内全部车次。",
+)
+
 TRAIN_CODE_PARAM: Final[TaskParamDefinition] = TaskParamDefinition(
     key="train_code",
     label="车次",
@@ -81,9 +90,9 @@ TASK_TYPES: Final[dict[str, TaskTypeDefinition]] = {
     "fetch-train-stops": TaskTypeDefinition(
         type="fetch-train-stops",
         label="爬取车次经停",
-        description="抓取指定车次在某天的经停详情，并写入 train_stops 表。",
+        description="抓取指定车次或库内全部车次在某天的经停详情，并写入 train_stops 表。",
         implemented=True,
-        param_schema=(TRAIN_DATE_PARAM, TRAIN_CODE_PARAM),
+        param_schema=(TRAIN_DATE_PARAM, TRAIN_LOOKUP_KEYWORD_PARAM),
     ),
     "fetch-train-runs": TaskTypeDefinition(
         type="fetch-train-runs",

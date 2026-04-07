@@ -131,7 +131,7 @@ def test_create_railway_task_rejects_invalid_payload(
             "name": "Broken task",
             "type": "fetch-train-stops",
             "enabled": True,
-            "payload": {"date": "bad-date", "train_code": " "},
+            "payload": {"date": "bad-date", "keyword": " "},
         },
     )
 
@@ -156,6 +156,34 @@ def test_create_railway_task_allows_missing_keyword(
         json={
             "name": "Train sync all",
             "type": "fetch-trains",
+            "enabled": True,
+            "payload": {"date": "20260405"},
+        },
+    )
+
+    assert response.status_code == 201
+    assert task_repo.create_task.await_args.kwargs["payload"] == {
+        "date": "2026-04-05",
+    }
+
+
+def test_create_fetch_train_stops_task_allows_missing_keyword(
+    client: TestClient,
+    service_bundle: tuple[TaskService, AsyncMock, AsyncMock, AsyncMock, MagicMock],
+) -> None:
+    service, task_repo, _, _, _ = service_bundle
+    task_repo.find_by_name.return_value = None
+    task_repo.create_task.return_value = _make_task(
+        "fetch-train-stops",
+        {"date": "2026-04-05"},
+    )
+    app.dependency_overrides[get_task_service] = lambda: service
+
+    response = client.post(
+        "/tasks",
+        json={
+            "name": "Train stop sync all",
+            "type": "fetch-train-stops",
             "enabled": True,
             "payload": {"date": "20260405"},
         },

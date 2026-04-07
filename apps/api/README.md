@@ -107,17 +107,19 @@ Payload:
 ```json
 {
   "date": "2026-04-05",
-  "train_code": "G1"
+  "keyword": "G1"
 }
 ```
 
 Behavior:
 
-- search the train first to resolve the stable `train_no`
+- resolve target `train_no` values from the local `trains` table
+- accept either exact `train_no` or exact `station_train_code` as `keyword`
+- when `keyword` is omitted or empty, iterate all `train_no` values currently stored in `trains`
 - fetch stop details with the unchanged 12306 query contract
-- derive parent train rows from stop data
-- idempotently upsert into `trains` and `train_stops`
-- fail the run when no stop data is returned
+- call the upstream stop API strictly by `train_no`
+- idempotently upsert into `train_stops`
+- depend on `fetch-trains` as the source of truth for `trains`
 
 #### 3. `fetch-train-runs`
 
