@@ -377,13 +377,28 @@ def build_train_run_rows(
     run_date: str,
     train_code: str,
 ) -> list[dict[str, Any]]:
+    normalized_run_date = run_date.strip()
     normalized_code = train_code.strip().upper()
     rows: list[dict[str, Any]] = []
     for row in raw_rows:
-        station_train_code = str(row.get("station_train_code") or "").upper()
-        train_no = str(row.get("train_no") or "").upper()
-        if station_train_code != normalized_code and train_no != normalized_code:
+        station_train_code = str(row.get("station_train_code") or "").strip().upper()
+        if not station_train_code or not station_train_code.startswith(normalized_code):
             continue
+
+        row_run_date = str(row.get("run_date") or "").strip()
+        row_compact_date = str(row.get("date") or "").strip()
+        if row_run_date:
+            normalized_row_run_date = row_run_date
+        elif len(row_compact_date) == 8 and row_compact_date.isdigit():
+            normalized_row_run_date = (
+                f"{row_compact_date[:4]}-{row_compact_date[4:6]}-{row_compact_date[6:8]}"
+            )
+        else:
+            normalized_row_run_date = ""
+
+        if normalized_row_run_date != normalized_run_date:
+            continue
+
         rows.append(
             {
                 "train_no": row.get("train_no"),
@@ -391,7 +406,7 @@ def build_train_run_rows(
                 "from_station": row.get("from_station"),
                 "to_station": row.get("to_station"),
                 "total_num": row.get("total_num"),
-                "run_date": run_date,
+                "run_date": normalized_run_date,
                 "status": run_status_from_flag(row.get("data_flag")),
             }
         )

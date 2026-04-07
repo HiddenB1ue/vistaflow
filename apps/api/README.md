@@ -132,7 +132,10 @@ Payload:
 
 Behavior:
 
-- query the train search endpoint for the specific date/train
+- use `train_code` as a prefix seed rather than an exact single-train identifier
+- recursively collect the full matching prefix branch for the requested date
+- keep only rows whose normalized run date matches the payload date
+- keep only rows whose `station_train_code` starts with the requested prefix
 - preserve the upstream 12306 request and response contract
 - derive one-day run facts and normalize run status
 - idempotently upsert into `trains` and `train_runs`

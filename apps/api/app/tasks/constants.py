@@ -60,7 +60,7 @@ TRAIN_CODE_PARAM: Final[TaskParamDefinition] = TaskParamDefinition(
     value_type="text",
     required=True,
     placeholder="例如 G1、D301",
-    description="用于定位指定车次的公开车次号或 train_no。",
+    description="用于指定车次前缀或起始车次号，例如 G1 表示匹配 G1* 分支。",
 )
 
 
@@ -88,7 +88,7 @@ TASK_TYPES: Final[dict[str, TaskTypeDefinition]] = {
     "fetch-train-runs": TaskTypeDefinition(
         type="fetch-train-runs",
         label="获取某天运行的车次",
-        description="抓取指定车次在某天的运行事实，并写入 train_runs 表。",
+        description="抓取指定车次前缀在某天的运行事实，并写入 train_runs 表。",
         implemented=True,
         param_schema=(TRAIN_DATE_PARAM, TRAIN_CODE_PARAM),
     ),

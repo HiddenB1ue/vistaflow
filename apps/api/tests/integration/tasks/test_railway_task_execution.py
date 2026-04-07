@@ -9,6 +9,7 @@ import pytest
 from app.models import TaskDefinition
 from app.tasks.handlers import (
     HandlerContext,
+    build_train_run_rows,
     handle_fetch_train_runs,
     handle_fetch_train_stops,
     handle_fetch_trains,
@@ -233,3 +234,152 @@ async def test_handle_fetch_train_runs_persists_run_facts(
 
     assert result.summary == "运行车次同步完成"
     assert result.metrics_value == "1"
+
+
+def test_build_train_run_rows_filters_by_prefix_and_date() -> None:
+    rows = build_train_run_rows(
+        [
+            {
+                "train_no": "TN-G2",
+                "station_train_code": "G2",
+                "from_station": "北京南",
+                "to_station": "上海虹桥",
+                "total_num": 2,
+                "run_date": "2026-04-05",
+                "data_flag": "1",
+            },
+            {
+                "train_no": "TN-G20",
+                "station_train_code": "G20",
+                "from_station": "北京南",
+                "to_station": "上海虹桥",
+                "total_num": 2,
+                "date": "20260405",
+                "data_flag": "0",
+            },
+            {
+                "train_no": "TN-G219",
+                "station_train_code": "G219",
+                "from_station": "上海虹桥",
+                "to_station": "张家界西",
+                "total_num": 11,
+                "run_date": "2026-04-05",
+                "data_flag": None,
+            },
+            {
+                "train_no": "TN-G3",
+                "station_train_code": "G3",
+                "from_station": "北京南",
+                "to_station": "上海虹桥",
+                "total_num": 2,
+                "run_date": "2026-04-05",
+                "data_flag": "1",
+            },
+            {
+                "train_no": "TN-D2",
+                "station_train_code": "D2",
+                "from_station": "北京南",
+                "to_station": "上海虹桥",
+                "total_num": 2,
+                "run_date": "2026-04-05",
+                "data_flag": "1",
+            },
+            {
+                "train_no": "TN-G21-OTHER-DATE",
+                "station_train_code": "G21",
+                "from_station": "北京南",
+                "to_station": "上海虹桥",
+                "total_num": 2,
+                "run_date": "2026-04-06",
+                "data_flag": "1",
+            },
+        ],
+        run_date="2026-04-05",
+        train_code="G2",
+    )
+
+    assert [row["station_train_code"] for row in rows] == ["G2", "G20", "G219"]
+    assert [row["status"] for row in rows] == ["running", "suspended", "running"]
+
+
+@pytest.mark.asyncio
+async def test_handle_fetch_train_runs_filters_by_prefix_and_date(
+    handler_context: HandlerContext,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    handler_context.task = make_task(
+        "fetch-train-runs",
+        {"date": "2026-04-05", "train_code": "G2"},
+    )
+    cast(Any, handler_context.crawler_client.fetch_train_runs).return_value = [
+        {
+            "train_no": "TN-G2",
+            "station_train_code": "G2",
+            "from_station": "北京南",
+            "to_station": "上海虹桥",
+            "total_num": 2,
+            "run_date": "2026-04-05",
+            "data_flag": "1",
+        },
+        {
+            "train_no": "TN-G20",
+            "station_train_code": "G20",
+            "from_station": "北京南",
+            "to_station": "上海虹桥",
+            "total_num": 2,
+            "date": "20260405",
+            "data_flag": "0",
+        },
+        {
+            "train_no": "TN-G219",
+            "station_train_code": "G219",
+            "from_station": "上海虹桥",
+            "to_station": "张家界西",
+            "total_num": 11,
+            "run_date": "2026-04-05",
+            "data_flag": None,
+        },
+        {
+            "train_no": "TN-G3",
+            "station_train_code": "G3",
+            "from_station": "北京南",
+            "to_station": "上海虹桥",
+            "total_num": 2,
+            "run_date": "2026-04-05",
+            "data_flag": "1",
+        },
+        {
+            "train_no": "TN-G21-OTHER-DATE",
+            "station_train_code": "G21",
+            "from_station": "北京南",
+            "to_station": "上海虹桥",
+            "total_num": 2,
+            "run_date": "2026-04-06",
+            "data_flag": "1",
+        },
+    ]
+
+    class FakeRepo:
+        def __init__(self, pool: object) -> None:
+            self.pool = pool
+            self.train_rows: list[dict[str, object]] = []
+            self.run_rows: list[dict[str, object]] = []
+
+        async def upsert_train_and_run_rows(
+            self,
+            train_rows: list[dict[str, object]],
+            run_rows: list[dict[str, object]],
+        ) -> tuple[int, int]:
+            self.train_rows = train_rows
+            self.run_rows = run_rows
+            return len(train_rows), len(run_rows)
+
+    fake_repo = FakeRepo(handler_context.pool)
+    monkeypatch.setattr("app.tasks.handlers.RailwayTaskRepository", lambda pool: fake_repo)
+
+    result = await handle_fetch_train_runs(handler_context)
+
+    assert result.summary == "运行车次同步完成"
+    assert result.metrics_value == "3"
+    assert [row["station_train_code"] for row in fake_repo.run_rows] == ["G2", "G20", "G219"]
+    assert all(row["run_date"] == "2026-04-05" for row in fake_repo.run_rows)
