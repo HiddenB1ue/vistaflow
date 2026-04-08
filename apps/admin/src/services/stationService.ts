@@ -9,6 +9,6 @@ export async function fetchStations(): Promise<Station[]> {
     await new Promise((r) => setTimeout(r, 300));
     return MOCK_STATIONS;
   }
-  const { data } = await apiClient.get<{ data: Station[] }>('/admin/stations');
+  const { data } = await apiClient.get<{ data: Station[] }>('/stations');
   return data.data;
 }

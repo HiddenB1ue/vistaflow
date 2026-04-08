@@ -9,6 +9,6 @@ export async function fetchLogs(): Promise<LogRecord[]> {
     await new Promise((r) => setTimeout(r, 300));
     return MOCK_LOGS;
   }
-  const { data } = await apiClient.get<{ data: LogRecord[] }>('/admin/logs');
+  const { data } = await apiClient.get<{ data: LogRecord[] }>('/admin/system/logs');
   return data.data;
 }

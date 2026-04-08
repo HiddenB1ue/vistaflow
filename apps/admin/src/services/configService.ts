@@ -9,7 +9,7 @@ export async function fetchCredentials(): Promise<ApiCredential[]> {
     await new Promise((r) => setTimeout(r, 300));
     return MOCK_CREDENTIALS;
   }
-  const { data } = await apiClient.get<{ data: ApiCredential[] }>('/admin/credentials');
+  const { data } = await apiClient.get<{ data: ApiCredential[] }>('/admin/system/credentials');
   return data.data;
 }
 
@@ -18,6 +18,6 @@ export async function fetchToggles(): Promise<GlobalToggle[]> {
     await new Promise((r) => setTimeout(r, 200));
     return MOCK_TOGGLES;
   }
-  const { data } = await apiClient.get<{ data: GlobalToggle[] }>('/admin/toggles');
+  const { data } = await apiClient.get<{ data: GlobalToggle[] }>('/admin/system/toggles');
   return data.data;
 }

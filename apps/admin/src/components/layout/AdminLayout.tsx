@@ -4,6 +4,7 @@ import { Outlet, useLocation } from 'react-router-dom';
 import { AuraBackground, DrawerBackdrop, ErrorBoundary, NoiseTexture, ToastContainer } from '@vistaflow/ui';
 import { PreviewModal } from '@/components/overlays/PreviewModal';
 import { StationDrawer } from '@/components/overlays/StationDrawer';
+import { TaskDetailDrawer } from '@/components/overlays/TaskDetailDrawer';
 import { TaskDrawer } from '@/components/overlays/TaskDrawer';
 import { ROUTE_META_LABELS, TOAST_MESSAGES } from '@/constants/labels';
 import { fetchTasks } from '@/services/taskService';
@@ -43,10 +44,13 @@ export function AdminLayout() {
   const removeToast = useToastStore((state) => state.removeToast);
   const addToast = useToastStore((state) => state.addToast);
   const taskDrawerOpen = useDrawerStore((state) => state.taskDrawerOpen);
+  const taskDetailDrawerOpen = useDrawerStore((state) => state.taskDetailDrawerOpen);
+  const taskDetailDrawerTaskId = useDrawerStore((state) => state.taskDetailDrawerTaskId);
   const stationDrawerOpen = useDrawerStore((state) => state.stationDrawerOpen);
   const stationDrawerData = useDrawerStore((state) => state.stationDrawerData);
   const previewModalOpen = useModalStore((state) => state.previewModalOpen);
   const closeTaskDrawer = useDrawerStore((state) => state.closeTaskDrawer);
+  const closeTaskDetailDrawer = useDrawerStore((state) => state.closeTaskDetailDrawer);
   const closeStationDrawer = useDrawerStore((state) => state.closeStationDrawer);
   const closePreviewModal = useModalStore((state) => state.closePreviewModal);
 
@@ -54,7 +58,7 @@ export function AdminLayout() {
   const pendingTaskCount = tasks.filter((task) => task.status === 'pending').length;
   const timestamp = useMemo(() => formatTimestamp(new Date()), []);
 
-  const { data: taskData } = useQuery({
+  const { data: taskData, refetch: refetchTasks } = useQuery({
     queryKey: ['admin', 'tasks'],
     queryFn: fetchTasks,
   });
@@ -65,9 +69,10 @@ export function AdminLayout() {
     }
   }, [setTasks, taskData]);
 
-  const handleRefresh = useCallback(() => {
+  const handleRefresh = useCallback(async () => {
+    await refetchTasks();
     addToast(TOAST_MESSAGES.dataRefreshed, 'info');
-  }, [addToast]);
+  }, [addToast, refetchTasks]);
 
   const handleTaskDrawerSubmit = useCallback((taskName: string) => {
     closeTaskDrawer();
@@ -91,20 +96,22 @@ export function AdminLayout() {
 
   const handleCloseBackdrop = useCallback(() => {
     closeTaskDrawer();
+    closeTaskDetailDrawer();
     closeStationDrawer();
-  }, [closeStationDrawer, closeTaskDrawer]);
+  }, [closeStationDrawer, closeTaskDetailDrawer, closeTaskDrawer]);
 
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
       if (event.key !== 'Escape') return;
       if (taskDrawerOpen) closeTaskDrawer();
+      if (taskDetailDrawerOpen) closeTaskDetailDrawer();
       if (stationDrawerOpen) closeStationDrawer();
       if (previewModalOpen) closePreviewModal();
     }
 
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [closePreviewModal, closeStationDrawer, closeTaskDrawer, previewModalOpen, stationDrawerOpen, taskDrawerOpen]);
+  }, [closePreviewModal, closeStationDrawer, closeTaskDetailDrawer, closeTaskDrawer, previewModalOpen, stationDrawerOpen, taskDetailDrawerOpen, taskDrawerOpen]);
 
   useEffect(() => {
     const main = mainRef.current;
@@ -124,8 +131,13 @@ export function AdminLayout() {
       <AuraBackground enableMouseTracking />
       <NoiseTexture opacity={0.03} />
       <ToastContainer toasts={toasts} onDismiss={removeToast} />
-      <DrawerBackdrop isActive={taskDrawerOpen || stationDrawerOpen} onClick={handleCloseBackdrop} />
+      <DrawerBackdrop isActive={taskDrawerOpen || taskDetailDrawerOpen || stationDrawerOpen} onClick={handleCloseBackdrop} />
       <TaskDrawer isOpen={taskDrawerOpen} onClose={closeTaskDrawer} onSubmit={handleTaskDrawerSubmit} />
+      <TaskDetailDrawer
+        isOpen={taskDetailDrawerOpen}
+        taskId={taskDetailDrawerTaskId}
+        onClose={closeTaskDetailDrawer}
+      />
       <StationDrawer
         isOpen={stationDrawerOpen}
         station={stationDrawerData}

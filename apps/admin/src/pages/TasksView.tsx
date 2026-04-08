@@ -1,12 +1,18 @@
-
-import { useCallback, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { TASK_LABELS, TOAST_MESSAGES } from '@/constants/labels';
+import { useMemo, useState } from 'react';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import {
+  TASK_FEEDBACK_LABELS,
+  TASK_LABELS,
+  TASK_STATE_LABELS,
+  TASK_STATUS_LABELS,
+  TOAST_MESSAGES,
+} from '@/constants/labels';
 import { TaskCard } from '@/components/ui/TaskCard';
+import { triggerTask, terminateTaskRun, extractApiErrorMessage } from '@/services/taskService';
 import { useDrawerStore } from '@/stores/drawerStore';
-import { useModalStore } from '@/stores/modalStore';
 import { useTaskStore } from '@/stores/taskStore';
 import { useToastStore } from '@/stores/toastStore';
+import type { Task, TaskStatus } from '@/types/task';
 import {
   Button,
   ContentSection,
@@ -18,25 +24,57 @@ import {
   KpiCard,
 } from '@vistaflow/ui';
 
-const statusOptions = [
+type TaskFilter = 'all' | TaskStatus;
+
+const statusOptions: Array<{ value: TaskFilter; label: string }> = [
   { value: 'all', label: TASK_LABELS.allStatus },
-  { value: 'running', label: TASK_LABELS.statusRunning },
-  { value: 'pending', label: TASK_LABELS.statusPending },
-  { value: 'completed', label: TASK_LABELS.statusDone },
-  { value: 'error', label: TASK_LABELS.statusError },
-  { value: 'terminated', label: TASK_LABELS.statusTerminated },
+  { value: 'idle', label: TASK_STATUS_LABELS.idle },
+  { value: 'running', label: TASK_STATUS_LABELS.running },
+  { value: 'pending', label: TASK_STATUS_LABELS.pending },
+  { value: 'completed', label: TASK_STATUS_LABELS.completed },
+  { value: 'error', label: TASK_STATUS_LABELS.error },
+  { value: 'terminated', label: TASK_STATUS_LABELS.terminated },
 ];
 
 export default function TasksView() {
-  const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const tasks = useTaskStore((state) => state.tasks);
-  const updateTaskStatus = useTaskStore((state) => state.updateTaskStatus);
   const addToast = useToastStore((state) => state.addToast);
   const openTaskDrawer = useDrawerStore((state) => state.openTaskDrawer);
-  const openPreviewModal = useModalStore((state) => state.openPreviewModal);
+  const openTaskDetailDrawer = useDrawerStore((state) => state.openTaskDetailDrawer);
 
   const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState('all');
+  const [statusFilter, setStatusFilter] = useState<TaskFilter>('all');
+
+  const runTaskMutation = useMutation({
+    mutationFn: (task: Task) => triggerTask(task.id),
+    onSuccess: async (_run, task) => {
+      await queryClient.invalidateQueries({ queryKey: ['admin', 'tasks'] });
+      await queryClient.invalidateQueries({ queryKey: ['admin', 'task', task.id] });
+      await queryClient.invalidateQueries({ queryKey: ['admin', 'task-runs', task.id] });
+      addToast(
+        task.status === 'idle' ? TASK_FEEDBACK_LABELS.taskQueued : TOAST_MESSAGES.taskRestarted,
+        'success',
+      );
+    },
+    onError: (error: unknown) => {
+      addToast(extractApiErrorMessage(error), 'error');
+    },
+  });
+
+  const terminateTaskMutation = useMutation({
+    mutationFn: (task: Task) => terminateTaskRun(task.latestRun!.id),
+    onSuccess: async (_run, task) => {
+      await queryClient.invalidateQueries({ queryKey: ['admin', 'tasks'] });
+      await queryClient.invalidateQueries({ queryKey: ['admin', 'task', task.id] });
+      await queryClient.invalidateQueries({ queryKey: ['admin', 'task-runs', task.id] });
+      await queryClient.invalidateQueries({ queryKey: ['admin', 'task-run-logs'] });
+      addToast(TOAST_MESSAGES.taskTerminated, 'warn');
+    },
+    onError: (error: unknown) => {
+      addToast(extractApiErrorMessage(error), 'error');
+    },
+  });
 
   const runningCount = tasks.filter((task) => task.status === 'running').length;
   const pendingCount = tasks.filter((task) => task.status === 'pending').length;
@@ -45,44 +83,71 @@ export default function TasksView() {
   const filteredTasks = useMemo(() => {
     const keyword = search.trim().toLowerCase();
     return tasks.filter((task) => {
-      const matchesKeyword = keyword.length === 0 || [task.name, task.typeLabel, task.description].some((field) => field.toLowerCase().includes(keyword));
+      const searchableFields = [task.name, task.typeLabel, task.description ?? '', task.type];
+      const matchesKeyword =
+        keyword.length === 0 ||
+        searchableFields.some((field) => field.toLowerCase().includes(keyword));
       const matchesStatus = statusFilter === 'all' || task.status === statusFilter;
       return matchesKeyword && matchesStatus;
     });
   }, [search, statusFilter, tasks]);
 
-  const handleStop = useCallback((taskId: string) => {
-    updateTaskStatus(taskId, 'terminated');
-    addToast(TOAST_MESSAGES.taskTerminated, 'error');
-  }, [addToast, updateTaskStatus]);
-
-  const handleRestart = useCallback((taskId: string) => {
-    updateTaskStatus(taskId, 'running');
-    addToast(TOAST_MESSAGES.taskRestarted, 'success');
-  }, [addToast, updateTaskStatus]);
-
-  const handleNavigateToConfig = useCallback(() => {
-    navigate('/config');
-    addToast(TOAST_MESSAGES.updateCredentialFirst, 'warn');
-  }, [addToast, navigate]);
+  const busyTaskId = runTaskMutation.isPending
+    ? runTaskMutation.variables.id
+    : terminateTaskMutation.isPending
+      ? terminateTaskMutation.variables.id
+      : null;
 
   return (
     <div className="vf-page-stack">
       <ContentSection spacing="dense">
         <div className="grid grid-cols-2 gap-5 lg:grid-cols-4">
-          <KpiCard label={TASK_LABELS.activeTotal} value={<>{runningCount + pendingCount} <span className="text-lg text-muted">/ {tasks.length}</span></>} />
-          <KpiCard label={TASK_LABELS.running} value={runningCount} accentColor="#4ADE80" valueClassName="text-[#4ADE80]" />
-          <KpiCard label={TASK_LABELS.pendingConfirm} value={pendingCount} accentColor="#FACC15" alertDot={pendingCount > 0} valueClassName="text-[#FACC15]" />
-          <KpiCard label={TASK_LABELS.errorTerminated} value={errorCount} accentColor="#F87171" valueClassName="text-[#F87171]" />
+          <KpiCard
+            label={TASK_LABELS.activeTotal}
+            value={
+              <>
+                {runningCount + pendingCount} <span className="text-lg text-muted">/ {tasks.length}</span>
+              </>
+            }
+          />
+          <KpiCard
+            label={TASK_LABELS.running}
+            value={runningCount}
+            accentColor="#4ADE80"
+            valueClassName="text-[#4ADE80]"
+          />
+          <KpiCard
+            label={TASK_STATE_LABELS.queuedKpi}
+            value={pendingCount}
+            accentColor="#FACC15"
+            alertDot={pendingCount > 0}
+            valueClassName="text-[#FACC15]"
+          />
+          <KpiCard
+            label={TASK_LABELS.errorTerminated}
+            value={errorCount}
+            accentColor="#F87171"
+            valueClassName="text-[#F87171]"
+          />
         </div>
       </ContentSection>
 
       <ControlToolbar>
         <ControlToolbarMain>
-          <InputBox placeholder={TASK_LABELS.searchPlaceholder} className="min-w-0 w-full" value={search} onChange={(event) => setSearch(event.target.value)} />
+          <InputBox
+            placeholder={TASK_LABELS.searchPlaceholder}
+            className="min-w-0 w-full"
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+          />
         </ControlToolbarMain>
         <ControlToolbarActions>
-          <CustomSelect options={statusOptions} value={statusFilter} onChange={setStatusFilter} className="w-full md:w-[180px]" />
+          <CustomSelect
+            options={statusOptions}
+            value={statusFilter}
+            onChange={(value) => setStatusFilter(value as TaskFilter)}
+            className="w-full md:w-[180px]"
+          />
           <Button variant="primary" size="sm" onClick={openTaskDrawer}>
             <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -98,11 +163,10 @@ export default function TasksView() {
             <TaskCard
               key={task.id}
               task={task}
-              onStop={handleStop}
-              onRestart={handleRestart}
-              onPreview={() => openPreviewModal()}
-              onNavigateToConfig={handleNavigateToConfig}
-              onShowDetails={() => addToast(TASK_LABELS.taskDetailsInDev, 'info')}
+              onTerminate={(selectedTask) => terminateTaskMutation.mutate(selectedTask)}
+              onRun={(selectedTask) => runTaskMutation.mutate(selectedTask)}
+              onShowDetails={(selectedTask) => openTaskDetailDrawer(selectedTask.id)}
+              actionDisabled={busyTaskId === task.id}
             />
           ))}
         </div>

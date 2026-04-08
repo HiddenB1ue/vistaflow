@@ -11,7 +11,7 @@ export async function fetchSparklineData(): Promise<SparklineData> {
     await new Promise((r) => setTimeout(r, 200));
     return MOCK_SPARKLINE_DATA;
   }
-  const { data } = await apiClient.get<{ data: SparklineData }>('/admin/overview/sparkline');
+  const { data } = await apiClient.get<{ data: SparklineData }>('/admin/system/overview/sparkline');
   return data.data;
 }
 
@@ -20,6 +20,6 @@ export async function fetchApiQuota(): Promise<ApiQuota> {
     await new Promise((r) => setTimeout(r, 200));
     return MOCK_API_QUOTA;
   }
-  const { data } = await apiClient.get<{ data: ApiQuota }>('/admin/overview/quota');
+  const { data } = await apiClient.get<{ data: ApiQuota }>('/admin/system/overview/quota');
   return data.data;
 }
