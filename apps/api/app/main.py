@@ -25,6 +25,9 @@ from app.system.router import health_router, router as system_router
 from app.tasks.registry import create_task_registry
 from app.tasks.router import router as tasks_router
 
+API_V1_PREFIX = "/api/v1"
+ADMIN_API_V1_PREFIX = f"{API_V1_PREFIX}/admin"
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
@@ -107,11 +110,11 @@ def create_app() -> FastAPI:
             content=APIResponse.fail("服务器内部错误，请稍后重试").model_dump(),
         )
 
-    app.include_router(railway_router, prefix="/api/v1")
-    app.include_router(journeys_router, prefix="/api/v1")
-    app.include_router(tasks_router)
+    app.include_router(railway_router, prefix=API_V1_PREFIX)
+    app.include_router(journeys_router, prefix=API_V1_PREFIX)
+    app.include_router(tasks_router, prefix=ADMIN_API_V1_PREFIX)
     app.include_router(health_router)
-    app.include_router(system_router)
+    app.include_router(system_router, prefix=ADMIN_API_V1_PREFIX)
     return app
 
 

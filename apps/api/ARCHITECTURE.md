@@ -63,7 +63,7 @@ app/
 │   └── utils.py                # _route_id, _build_journey_result 等辅助函数
 │
 ├── tasks/                      # 数据爬取任务领域
-│   ├── router.py               # /admin-api/v1/tasks/*（需鉴权）
+│   ├── router.py               # /api/v1/admin/tasks/*（需鉴权）
 │   ├── schemas.py              # TaskResponse
 │   ├── service.py              # TaskService
 │   ├── repository.py           # TaskRepository（task 表）
@@ -75,7 +75,7 @@ app/
 │   └── exceptions.py           # TaskNotFound, TaskAlreadyRunning
 │
 ├── system/                     # 系统运维领域
-│   ├── router.py               # /healthz, /admin-api/v1/system/*
+│   ├── router.py               # /healthz, /api/v1/admin/system/*
 │   ├── schemas.py              # CredentialResponse, LogResponse, SparklineResponse 等
 │   ├── credential_service.py   # CredentialService
 │   ├── credential_repository.py # CredentialRepository（credential 表）

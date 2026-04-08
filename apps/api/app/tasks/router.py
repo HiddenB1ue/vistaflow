@@ -15,7 +15,6 @@ from app.tasks.schemas import (
 )
 
 router = APIRouter(
-    prefix="/admin-api/v1",
     tags=["tasks"],
     dependencies=[Depends(require_admin_auth)],
 )

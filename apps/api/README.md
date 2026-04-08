@@ -48,14 +48,14 @@ uv run pytest --cov=app --cov-report=term-missing
 
 The backend task API currently supports the following management endpoints:
 
-- `GET /admin-api/v1/tasks/types`: list supported task types and execution metadata
-- `GET /admin-api/v1/tasks` / `POST /admin-api/v1/tasks`: query and create task definitions
-- `GET /admin-api/v1/tasks/{id}` / `PATCH /admin-api/v1/tasks/{id}` / `DELETE /admin-api/v1/tasks/{id}`: view, update, or delete a task
-- `POST /admin-api/v1/tasks/{id}/runs`: create a pending task run
-- `GET /admin-api/v1/tasks/{id}/runs`: query task run history
-- `GET /admin-api/v1/task-runs/{id}`: inspect one run
-- `GET /admin-api/v1/task-runs/{id}/logs`: inspect run logs
-- `POST /admin-api/v1/task-runs/{id}/terminate`: terminate a pending run or request cancellation for a running run
+- `GET /api/v1/admin/tasks/types`: list supported task types and execution metadata
+- `GET /api/v1/admin/tasks` / `POST /api/v1/admin/tasks`: query and create task definitions
+- `GET /api/v1/admin/tasks/{id}` / `PATCH /api/v1/admin/tasks/{id}` / `DELETE /api/v1/admin/tasks/{id}`: view, update, or delete a task
+- `POST /api/v1/admin/tasks/{id}/runs`: create a pending task run
+- `GET /api/v1/admin/tasks/{id}/runs`: query task run history
+- `GET /api/v1/admin/task-runs/{id}`: inspect one run
+- `GET /api/v1/admin/task-runs/{id}/logs`: inspect run logs
+- `POST /api/v1/admin/task-runs/{id}/terminate`: terminate a pending run or request cancellation for a running run
 
 Task execution now happens in a separate worker process:
 
@@ -80,7 +80,7 @@ Reserved but not yet implemented task type:
 The railway task feature extends the existing task domain and keeps the 12306
 request parameters, request method, and response parsing contract unchanged.
 Administrators can define and manually execute these task types through the same
-`/admin-api/v1/tasks` API surface.
+`/api/v1/admin/tasks` API surface.
 
 #### 1. `fetch-trains`
 

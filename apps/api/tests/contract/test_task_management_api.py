@@ -13,14 +13,14 @@ def test_task_management_routes_exist() -> None:
             continue
         route_map.setdefault(path, set()).update(methods)
 
-    assert "GET" in route_map["/admin-api/v1/tasks/types"]
-    assert {"GET", "POST"}.issubset(route_map["/admin-api/v1/tasks"])
-    assert {"GET", "PATCH", "DELETE"}.issubset(route_map["/admin-api/v1/tasks/{task_id}"])
-    assert "POST" in route_map["/admin-api/v1/tasks/{task_id}/runs"]
-    assert "GET" in route_map["/admin-api/v1/tasks/{task_id}/runs"]
-    assert "GET" in route_map["/admin-api/v1/task-runs/{run_id}"]
-    assert "GET" in route_map["/admin-api/v1/task-runs/{run_id}/logs"]
-    assert "POST" in route_map["/admin-api/v1/task-runs/{run_id}/terminate"]
+    assert "GET" in route_map["/api/v1/admin/tasks/types"]
+    assert {"GET", "POST"}.issubset(route_map["/api/v1/admin/tasks"])
+    assert {"GET", "PATCH", "DELETE"}.issubset(route_map["/api/v1/admin/tasks/{task_id}"])
+    assert "POST" in route_map["/api/v1/admin/tasks/{task_id}/runs"]
+    assert "GET" in route_map["/api/v1/admin/tasks/{task_id}/runs"]
+    assert "GET" in route_map["/api/v1/admin/task-runs/{run_id}"]
+    assert "GET" in route_map["/api/v1/admin/task-runs/{run_id}/logs"]
+    assert "POST" in route_map["/api/v1/admin/task-runs/{run_id}/terminate"]
     assert "GET" in route_map["/healthz"]
 
 

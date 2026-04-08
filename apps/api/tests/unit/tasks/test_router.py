@@ -157,7 +157,7 @@ def override_service(fake_service: MagicMock) -> None:
 
 def test_list_task_types(client: TestClient, fake_service: MagicMock) -> None:
     override_service(fake_service)
-    response = client.get("/admin-api/v1/tasks/types")
+    response = client.get("/api/v1/admin/tasks/types")
     assert response.status_code == 200
     assert response.json()["data"][0]["type"] == "fetch-trains"
     assert response.json()["data"][0]["paramSchema"][0]["key"] == "date"
@@ -166,7 +166,7 @@ def test_list_task_types(client: TestClient, fake_service: MagicMock) -> None:
 def test_create_task(client: TestClient, fake_service: MagicMock) -> None:
     override_service(fake_service)
     response = client.post(
-        "/admin-api/v1/tasks",
+        "/api/v1/admin/tasks",
         json={
             "name": "Train sync",
             "type": "fetch-trains",
@@ -180,7 +180,7 @@ def test_create_task(client: TestClient, fake_service: MagicMock) -> None:
 def test_update_task(client: TestClient, fake_service: MagicMock) -> None:
     override_service(fake_service)
     response = client.patch(
-        "/admin-api/v1/tasks/1",
+        "/api/v1/admin/tasks/1",
         json={"payload": {"date": "2026-04-06", "keyword": "D"}},
     )
     assert response.status_code == 200
@@ -189,14 +189,14 @@ def test_update_task(client: TestClient, fake_service: MagicMock) -> None:
 
 def test_delete_task(client: TestClient, fake_service: MagicMock) -> None:
     override_service(fake_service)
-    response = client.delete("/admin-api/v1/tasks/1")
+    response = client.delete("/api/v1/admin/tasks/1")
     assert response.status_code == 204
     fake_service.delete_task.assert_awaited_once_with(1)
 
 
 def test_trigger_task(client: TestClient, fake_service: MagicMock) -> None:
     override_service(fake_service)
-    response = client.post("/admin-api/v1/tasks/1/runs")
+    response = client.post("/api/v1/admin/tasks/1/runs")
     assert response.status_code == 202
     assert response.json()["data"]["taskId"] == 1
     assert response.json()["data"]["progressSnapshot"]["phase"] == "queued"
@@ -204,7 +204,7 @@ def test_trigger_task(client: TestClient, fake_service: MagicMock) -> None:
 
 def test_list_task_runs(client: TestClient, fake_service: MagicMock) -> None:
     override_service(fake_service)
-    response = client.get("/admin-api/v1/tasks/1/runs")
+    response = client.get("/api/v1/admin/tasks/1/runs")
     assert response.status_code == 200
     assert response.json()["data"][0]["id"] == 11
     assert response.json()["data"][0]["progressSnapshot"]["status"] == "pending"
@@ -212,13 +212,13 @@ def test_list_task_runs(client: TestClient, fake_service: MagicMock) -> None:
 
 def test_get_task_run_logs(client: TestClient, fake_service: MagicMock) -> None:
     override_service(fake_service)
-    response = client.get("/admin-api/v1/task-runs/11/logs")
+    response = client.get("/api/v1/admin/task-runs/11/logs")
     assert response.status_code == 200
     assert response.json()["data"][0]["message"] == "started"
 
 
 def test_terminate_task_run(client: TestClient, fake_service: MagicMock) -> None:
     override_service(fake_service)
-    response = client.post("/admin-api/v1/task-runs/11/terminate")
+    response = client.post("/api/v1/admin/task-runs/11/terminate")
     assert response.status_code == 202
     fake_service.terminate_run.assert_awaited_once_with(11)

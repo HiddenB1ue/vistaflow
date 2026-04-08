@@ -97,7 +97,7 @@ def test_create_railway_task_normalizes_payload(
     app.dependency_overrides[get_task_service] = lambda: service
 
     response = client.post(
-        "/admin-api/v1/tasks",
+        "/api/v1/admin/tasks",
         json={
             "name": "Train sync",
             "type": "fetch-trains",
@@ -123,7 +123,7 @@ def test_create_railway_task_rejects_invalid_payload(
     app.dependency_overrides[get_task_service] = lambda: service
 
     response = client.post(
-        "/admin-api/v1/tasks",
+        "/api/v1/admin/tasks",
         json={
             "name": "Broken task",
             "type": "fetch-train-stops",
@@ -149,7 +149,7 @@ def test_create_railway_task_allows_missing_keyword(
     app.dependency_overrides[get_task_service] = lambda: service
 
     response = client.post(
-        "/admin-api/v1/tasks",
+        "/api/v1/admin/tasks",
         json={
             "name": "Train sync all",
             "type": "fetch-trains",
@@ -177,7 +177,7 @@ def test_create_fetch_train_stops_task_allows_missing_keyword(
     app.dependency_overrides[get_task_service] = lambda: service
 
     response = client.post(
-        "/admin-api/v1/tasks",
+        "/api/v1/admin/tasks",
         json={
             "name": "Train stop sync all",
             "type": "fetch-train-stops",
@@ -205,7 +205,7 @@ def test_create_fetch_train_runs_task_normalizes_keyword(
     app.dependency_overrides[get_task_service] = lambda: service
 
     response = client.post(
-        "/admin-api/v1/tasks",
+        "/api/v1/admin/tasks",
         json={
             "name": "Train run sync",
             "type": "fetch-train-runs",
@@ -234,7 +234,7 @@ def test_create_fetch_train_runs_task_allows_missing_keyword(
     app.dependency_overrides[get_task_service] = lambda: service
 
     response = client.post(
-        "/admin-api/v1/tasks",
+        "/api/v1/admin/tasks",
         json={
             "name": "Train run sync all",
             "type": "fetch-train-runs",

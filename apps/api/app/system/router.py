@@ -17,7 +17,7 @@ from app.system.schemas import (
 )
 
 health_router = APIRouter(tags=["system"])
-router = APIRouter(prefix="/admin-api/v1/system", tags=["system"])
+router = APIRouter(prefix="/system", tags=["system"])
 
 
 @health_router.get("/healthz")
