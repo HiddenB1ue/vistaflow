@@ -21,11 +21,9 @@ from app.integrations.ticket_12306.client import (
 from app.journeys.router import router as journeys_router
 from app.railway.router import router as railway_router
 from app.schemas import APIResponse
-from app.system.router import router as system_router
+from app.system.router import health_router, router as system_router
 from app.tasks.registry import create_task_registry
-from app.tasks.repository import TaskRepository, TaskRunRepository
 from app.tasks.router import router as tasks_router
-from app.tasks.runtime import TaskRuntimeRegistry
 
 
 @asynccontextmanager
@@ -38,13 +36,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         max_size=20,
         command_timeout=30,
     )
-    app.state.task_runtime = TaskRuntimeRegistry()
     app.state.task_registry = create_task_registry()
-
-    task_repo = TaskRepository(app.state.db_pool)
-    run_repo = TaskRunRepository(app.state.db_pool)
-    await run_repo.recover_incomplete_runs()
-    await task_repo.recover_incomplete_tasks()
 
     http_client = httpx.AsyncClient()
     app.state.http_client = http_client
@@ -115,9 +107,10 @@ def create_app() -> FastAPI:
             content=APIResponse.fail("服务器内部错误，请稍后重试").model_dump(),
         )
 
-    app.include_router(railway_router, prefix="/api")
-    app.include_router(journeys_router, prefix="/api")
+    app.include_router(railway_router, prefix="/api/v1")
+    app.include_router(journeys_router, prefix="/api/v1")
     app.include_router(tasks_router)
+    app.include_router(health_router)
     app.include_router(system_router)
     return app
 

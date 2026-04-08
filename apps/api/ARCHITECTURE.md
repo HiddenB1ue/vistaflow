@@ -63,18 +63,19 @@ app/
 │   └── utils.py                # _route_id, _build_journey_result 等辅助函数
 │
 ├── tasks/                      # 数据爬取任务领域
-│   ├── router.py               # /tasks, /tasks/{id}/run（需鉴权）
+│   ├── router.py               # /admin-api/v1/tasks/*（需鉴权）
 │   ├── schemas.py              # TaskResponse
 │   ├── service.py              # TaskService
 │   ├── repository.py           # TaskRepository（task 表）
-│   ├── runner.py               # TaskRunner（注册表模式分发）
-│   ├── handlers.py             # HandlerContext + 各任务类型 handler
+│   ├── runner.py               # TaskRunner（worker 侧执行器）
+│   ├── worker.py               # PostgreSQL 队列 worker 入口
+│   ├── handlers.py             # 兼容测试的任务包装层
 │   ├── dependencies.py         # TaskServiceDep
 │   ├── constants.py            # TaskType, TaskStatus
 │   └── exceptions.py           # TaskNotFound, TaskAlreadyRunning
 │
 ├── system/                     # 系统运维领域
-│   ├── router.py               # /health, /credentials, /logs, /overview/*, /toggles
+│   ├── router.py               # /healthz, /admin-api/v1/system/*
 │   ├── schemas.py              # CredentialResponse, LogResponse, SparklineResponse 等
 │   ├── credential_service.py   # CredentialService
 │   ├── credential_repository.py # CredentialRepository（credential 表）
@@ -276,7 +277,7 @@ uv run pytest --cov=app --cov-report=term-missing
 ### 新增任务类型
 
 1. 在 `tasks/handlers.py` 中编写新的 handler 函数
-2. 在 `tasks/runner.py` 的 `TASK_HANDLERS` 注册表中添加一行
+2. 在 `tasks/types/__init__.py` 中注册新的 `TaskTypeDefinition`
 3. runner.py 本身不需要修改
 
 ### 替换外部数据源

@@ -1,23 +1,27 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from typing import Any
 
 from app.integrations.crawler.client import seed_keywords
 from app.railway.repository import RailwayTaskRepository, dedupe_train_rows
 from app.tasks.definition import TaskCapabilityContract, TaskTypeDefinition
-from app.tasks.execution import TaskExecutionContext, TaskExecutionResult
+from app.tasks.execution import TaskExecutionContext
+from app.tasks.executor import TaskExecutorHelper
 from app.tasks.payloads import FetchTrainsPayload
 from app.tasks.railway_support import FetchTrainsProgressStats
 from app.tasks.type_params import TRAIN_DATE_PARAM, TRAIN_KEYWORD_PARAM
 
 
-async def execute_fetch_trains(ctx: TaskExecutionContext) -> TaskExecutionResult:
-    payload = FetchTrainsPayload.model_validate(ctx.task.payload)
+async def execute_fetch_trains(ctx: TaskExecutionContext):
+    helper = TaskExecutorHelper(ctx)
+    payload = helper.parse_payload(FetchTrainsPayload)
     keyword_display = payload.keyword or "<roots>"
     seeds = [payload.keyword] if payload.keyword else seed_keywords()
-    await ctx.log(
-        "INFO",
+    await helper.begin(
         f"任务 {ctx.task.name} 开始抓取车次：date={payload.date}, keyword={keyword_display}",
+        total_units=len(seeds),
+        current={"unitId": keyword_display, "label": keyword_display},
+        details={"requestedDate": payload.date},
     )
 
     repo = RailwayTaskRepository(ctx.pool)
@@ -25,6 +29,7 @@ async def execute_fetch_trains(ctx: TaskExecutionContext) -> TaskExecutionResult
     seen_train_nos: set[str] = set()
 
     for seed in seeds:
+        await helper.checkpoint()
         stats.current_seed_keyword = seed
         try:
             rows = await ctx.crawler_client.fetch_trains(payload.date, seed)
@@ -32,7 +37,12 @@ async def execute_fetch_trains(ctx: TaskExecutionContext) -> TaskExecutionResult
             stats.failed_seed_keywords += 1
             stats.last_failed_seed_keyword = seed
             snapshot = stats.to_snapshot()
-            await ctx.update_progress(snapshot)
+            await helper.update(
+                summary=snapshot["summary"],
+                current={"unitId": seed, "label": seed},
+                last_error={"unitId": seed, "label": seed, "message": str(exc)},
+                details=snapshot["details"],
+            )
             await ctx.log(
                 "WARN",
                 (
@@ -67,7 +77,11 @@ async def execute_fetch_trains(ctx: TaskExecutionContext) -> TaskExecutionResult
         stats.last_completed_seed_keyword = seed
 
         snapshot = stats.to_snapshot()
-        await ctx.update_progress(snapshot)
+        await helper.update(
+            summary=snapshot["summary"],
+            current={"unitId": seed, "label": seed},
+            details=snapshot["details"],
+        )
         await ctx.log(
             "INFO",
             (
@@ -79,15 +93,8 @@ async def execute_fetch_trains(ctx: TaskExecutionContext) -> TaskExecutionResult
         )
 
     if stats.unique_train_nos_seen == 0 and stats.failed_seed_keywords == 0:
-        await ctx.log(
-            "INFO",
-            f"fetch-trains 完成，但未找到匹配车次：keyword={keyword_display}",
-        )
-        return TaskExecutionResult(
-            summary="车次同步完成，未找到匹配数据",
-            metrics_value="0",
-            progress_snapshot=stats.to_snapshot(),
-        )
+        await ctx.log("INFO", f"fetch-trains 完成，但未找到匹配车次：keyword={keyword_display}")
+        return helper.success(summary="车次同步完成，未找到匹配数据", metrics_value="0")
 
     if stats.failed_seed_keywords > 0:
         await ctx.log(
@@ -98,16 +105,18 @@ async def execute_fetch_trains(ctx: TaskExecutionContext) -> TaskExecutionResult
                 f"last={stats.last_failed_seed_keyword or '-'}"
             ),
         )
+        await helper.update(
+            summary={"warningUnits": stats.failed_seed_keywords},
+            details={"resultLevel": "warning"},
+        )
         summary = "车次同步完成，部分种子关键词抓取失败"
+        result_builder = helper.warning
     else:
         summary = "车次同步完成"
+        result_builder = helper.success
 
     await ctx.log("SUCCESS", f"fetch-trains 完成，写入 {stats.unique_train_nos_seen} 条车次记录")
-    return TaskExecutionResult(
-        summary=summary,
-        metrics_value=str(stats.unique_train_nos_seen),
-        progress_snapshot=stats.to_snapshot(),
-    )
+    return result_builder(summary=summary, metrics_value=str(stats.unique_train_nos_seen))
 
 
 TASK_TYPE_DEFINITION = TaskTypeDefinition(

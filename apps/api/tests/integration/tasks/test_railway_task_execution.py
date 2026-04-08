@@ -35,6 +35,7 @@ def make_task(task_type: str, payload: dict[str, object]) -> TaskDefinition:
         latest_run_started_at=None,
         latest_run_finished_at=None,
         latest_error_message=None,
+        latest_result_level=None,
         metrics_label="最近结果",
         metrics_value="",
         timing_label="最近耗时",
@@ -94,7 +95,7 @@ async def test_handle_fetch_trains_writes_summary(
     assert result.summary == "车次同步完成"
     assert result.metrics_value == "1"
     assert result.progress_snapshot is not None
-    assert result.progress_snapshot["details"]["currentSeedKeyword"] == "G"
+    assert result.progress_snapshot["current"]["unitId"] == "G"
     assert result.progress_snapshot["details"]["uniqueTrainNosSeen"] == 1
 
 

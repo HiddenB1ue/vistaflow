@@ -1,6 +1,4 @@
-﻿from __future__ import annotations
-
-from dataclasses import replace
+from __future__ import annotations
 
 from app.models import TaskDefinition, TaskRun, TaskRunLog
 from app.tasks.exceptions import (
@@ -16,10 +14,9 @@ from app.tasks.exceptions import (
     TaskTypeUnsupported,
     TaskUpdateConflict,
 )
-from app.tasks.progress import build_progress_snapshot
+from app.tasks.progress import build_progress_snapshot, with_progress_state
 from app.tasks.registry import TaskDefinitionRegistry, get_builtin_task_registry
 from app.tasks.repository import TaskRepository, TaskRunLogRepository, TaskRunRepository
-from app.tasks.runner import TaskRunner
 from app.tasks.schemas import (
     TaskCreateRequest,
     TaskLatestRunResponse,
@@ -40,13 +37,11 @@ class TaskService:
         task_repo: TaskRepository,
         run_repo: TaskRunRepository,
         run_log_repo: TaskRunLogRepository,
-        runner: TaskRunner,
         task_registry: TaskDefinitionRegistry | None = None,
     ) -> None:
         self._task_repo = task_repo
         self._run_repo = run_repo
         self._run_log_repo = run_log_repo
-        self._runner = runner
         self._task_registry = task_registry or get_builtin_task_registry()
 
     async def list_task_types(self) -> list[TaskTypeResponse]:
@@ -130,19 +125,17 @@ class TaskService:
         if not definition.implemented or not definition.capability.can_run:
             raise TaskTypeNotImplemented(task.type)
 
-        normalized_payload = self._task_registry.normalize_payload(task.type, task.payload)
-        run = await self._run_repo.create_run(task_id=task_id)
-        run = await self._run_repo.update_progress_snapshot(
-            run.id,
-            build_progress_snapshot(
-                task.type,
-                stage="pending",
-                status="pending",
-            ),
+        self._task_registry.normalize_payload(task.type, task.payload)
+        progress_snapshot = build_progress_snapshot(
+            task.type,
+            phase="queued",
+            status="pending",
         )
-        await self._task_repo.mark_task_running(task_id, run.id)
-        scheduled_task = replace(task, payload=normalized_payload)
-        self._runner.schedule(scheduled_task, run)
+        run = await self._run_repo.create_run(
+            task_id=task_id,
+            progress_snapshot=progress_snapshot,
+        )
+        await self._task_repo.mark_task_pending(task_id, run.id)
         latest_run = await self._require_run(run.id)
         return self._to_run_response(latest_run)
 
@@ -151,8 +144,37 @@ class TaskService:
         definition = self._require_task_type_definition(run.task_type)
         if not definition.capability.can_terminate:
             raise TaskRunNotTerminable(run_id)
-        terminated = await self._runner.terminate(run)
-        return self._to_run_response(terminated)
+
+        if run.status == "pending":
+            terminated = await self._run_repo.terminate_pending_run(
+                run_id,
+                termination_reason="管理员终止执行",
+                error_message="执行已被管理员终止",
+            )
+            if terminated.progress_snapshot is not None:
+                terminated = await self._run_repo.update_progress_snapshot(
+                    run_id,
+                    with_progress_state(
+                        terminated.progress_snapshot,
+                        task_type=run.task_type,
+                        phase="terminated",
+                        status="terminated",
+                    ),
+                )
+            await self._task_repo.apply_run_result(
+                run.task_id,
+                run.id,
+                "terminated",
+                result_level="error",
+                error_message="执行已被管理员终止",
+            )
+            return self._to_run_response(terminated)
+
+        if run.status == "running":
+            cancellation_requested = await self._run_repo.request_cancellation(run_id)
+            return self._to_run_response(cancellation_requested)
+
+        raise TaskRunNotTerminable(run_id)
 
     async def list_runs(self, task_id: int) -> list[TaskRunResponse]:
         await self._require_task(task_id)
@@ -205,6 +227,7 @@ class TaskService:
             latest_run = TaskLatestRunResponse(
                 id=task.latest_run_id,
                 status=task.latest_run_status,
+                resultLevel=task.latest_result_level,
                 startedAt=task.latest_run_started_at,
                 finishedAt=task.latest_run_finished_at,
                 errorMessage=task.latest_error_message,
@@ -236,6 +259,7 @@ class TaskService:
             status=run.status,
             requestedBy=run.requested_by,
             summary=run.summary,
+            resultLevel=run.result_level,
             metricsValue=run.metrics_value,
             progressSnapshot=run.progress_snapshot,
             errorMessage=run.error_message,

@@ -1,7 +1,7 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from datetime import UTC, datetime
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock
 
 import pytest
 from pydantic import BaseModel, field_validator
@@ -18,6 +18,7 @@ from app.tasks.exceptions import (
     TaskDisabled,
     TaskNameConflict,
     TaskPayloadValidationError,
+    TaskRunNotTerminable,
     TaskTypeNotImplemented,
     TaskTypeUnsupported,
     TaskUpdateConflict,
@@ -54,6 +55,7 @@ def make_task(
         latest_run_started_at=None,
         latest_run_finished_at=None,
         latest_error_message=None,
+        latest_result_level=None,
         metrics_label="最近结果",
         metrics_value="",
         timing_label="最近耗时",
@@ -64,20 +66,31 @@ def make_task(
     )
 
 
-def make_run(*, status: str = "pending") -> TaskRun:
+def make_run(
+    *,
+    status: str = "pending",
+    task_type: str = "fetch-station",
+    result_level: str | None = None,
+    cancel_requested: bool = False,
+) -> TaskRun:
     return TaskRun(
         id=11,
         task_id=1,
         task_name="站点同步",
-        task_type="fetch-station",
+        task_type=task_type,
         trigger_mode="manual",
         status=status,
         requested_by="admin",
         summary=None,
+        result_level=result_level,
         metrics_value="",
         progress_snapshot=None,
         error_message=None,
         termination_reason=None,
+        worker_id=None,
+        heartbeat_at=None,
+        cancel_requested=cancel_requested,
+        cancel_requested_at=None,
         started_at=None,
         finished_at=None,
         created_at=NOW,
@@ -108,32 +121,27 @@ class DemoPayload(BaseModel):
 
 
 @pytest.fixture
-def service() -> tuple[TaskService, AsyncMock, AsyncMock, AsyncMock, MagicMock]:
+def service() -> tuple[TaskService, AsyncMock, AsyncMock, AsyncMock]:
     task_repo = AsyncMock()
     run_repo = AsyncMock()
     run_log_repo = AsyncMock()
-    runner = MagicMock()
-    runner.schedule = MagicMock()
-    runner.terminate = AsyncMock()
     return (
         TaskService(
             task_repo=task_repo,
             run_repo=run_repo,
             run_log_repo=run_log_repo,
-            runner=runner,
         ),
         task_repo,
         run_repo,
         run_log_repo,
-        runner,
     )
 
 
 @pytest.mark.asyncio
 async def test_create_task_success(
-    service: tuple[TaskService, AsyncMock, AsyncMock, AsyncMock, MagicMock],
+    service: tuple[TaskService, AsyncMock, AsyncMock, AsyncMock],
 ) -> None:
-    task_service, task_repo, _, _, _ = service
+    task_service, task_repo, _, _ = service
     task_repo.find_by_name.return_value = None
     task_repo.create_task.return_value = make_task()
 
@@ -147,9 +155,9 @@ async def test_create_task_success(
 
 @pytest.mark.asyncio
 async def test_create_railway_task_normalizes_payload(
-    service: tuple[TaskService, AsyncMock, AsyncMock, AsyncMock, MagicMock],
+    service: tuple[TaskService, AsyncMock, AsyncMock, AsyncMock],
 ) -> None:
-    task_service, task_repo, _, _, _ = service
+    task_service, task_repo, _, _ = service
     task_repo.find_by_name.return_value = None
     task_repo.create_task.return_value = make_task(
         task_type="fetch-trains",
@@ -173,9 +181,9 @@ async def test_create_railway_task_normalizes_payload(
 
 @pytest.mark.asyncio
 async def test_create_task_rejects_duplicate_name(
-    service: tuple[TaskService, AsyncMock, AsyncMock, AsyncMock, MagicMock],
+    service: tuple[TaskService, AsyncMock, AsyncMock, AsyncMock],
 ) -> None:
-    task_service, task_repo, _, _, _ = service
+    task_service, task_repo, _, _ = service
     task_repo.find_by_name.return_value = make_task()
 
     with pytest.raises(TaskNameConflict):
@@ -186,9 +194,9 @@ async def test_create_task_rejects_duplicate_name(
 
 @pytest.mark.asyncio
 async def test_create_task_rejects_unsupported_type(
-    service: tuple[TaskService, AsyncMock, AsyncMock, AsyncMock, MagicMock],
+    service: tuple[TaskService, AsyncMock, AsyncMock, AsyncMock],
 ) -> None:
-    task_service, _, _, _, _ = service
+    task_service, _, _, _ = service
 
     with pytest.raises(TaskTypeUnsupported):
         await task_service.create_task(
@@ -198,9 +206,9 @@ async def test_create_task_rejects_unsupported_type(
 
 @pytest.mark.asyncio
 async def test_create_railway_task_rejects_invalid_payload(
-    service: tuple[TaskService, AsyncMock, AsyncMock, AsyncMock, MagicMock],
+    service: tuple[TaskService, AsyncMock, AsyncMock, AsyncMock],
 ) -> None:
-    task_service, task_repo, _, _, _ = service
+    task_service, task_repo, _, _ = service
     task_repo.find_by_name.return_value = None
 
     with pytest.raises(TaskPayloadValidationError):
@@ -215,9 +223,9 @@ async def test_create_railway_task_rejects_invalid_payload(
 
 @pytest.mark.asyncio
 async def test_update_task_rejects_active_run(
-    service: tuple[TaskService, AsyncMock, AsyncMock, AsyncMock, MagicMock],
+    service: tuple[TaskService, AsyncMock, AsyncMock, AsyncMock],
 ) -> None:
-    task_service, task_repo, run_repo, _, _ = service
+    task_service, task_repo, run_repo, _ = service
     task_repo.find_by_id.return_value = make_task()
     run_repo.find_active_by_task.return_value = make_run(status="running")
 
@@ -227,9 +235,9 @@ async def test_update_task_rejects_active_run(
 
 @pytest.mark.asyncio
 async def test_update_railway_task_normalizes_payload(
-    service: tuple[TaskService, AsyncMock, AsyncMock, AsyncMock, MagicMock],
+    service: tuple[TaskService, AsyncMock, AsyncMock, AsyncMock],
 ) -> None:
-    task_service, task_repo, run_repo, _, _ = service
+    task_service, task_repo, run_repo, _ = service
     task_repo.find_by_id.return_value = make_task(
         task_type="fetch-trains",
         type_label="爬取车次",
@@ -259,9 +267,9 @@ async def test_update_railway_task_normalizes_payload(
 
 @pytest.mark.asyncio
 async def test_create_fetch_train_stops_task_allows_missing_keyword(
-    service: tuple[TaskService, AsyncMock, AsyncMock, AsyncMock, MagicMock],
+    service: tuple[TaskService, AsyncMock, AsyncMock, AsyncMock],
 ) -> None:
-    task_service, task_repo, _, _, _ = service
+    task_service, task_repo, _, _ = service
     task_repo.find_by_name.return_value = None
     task_repo.create_task.return_value = make_task(
         task_type="fetch-train-stops",
@@ -287,7 +295,6 @@ async def test_create_task_supports_registry_defined_custom_type() -> None:
     task_repo = AsyncMock()
     run_repo = AsyncMock()
     run_log_repo = AsyncMock()
-    runner = MagicMock()
     task_repo.find_by_name.return_value = None
     task_repo.create_task.return_value = make_task(
         task_type="demo-task",
@@ -321,7 +328,6 @@ async def test_create_task_supports_registry_defined_custom_type() -> None:
         task_repo=task_repo,
         run_repo=run_repo,
         run_log_repo=run_log_repo,
-        runner=runner,
         task_registry=registry,
     )
 
@@ -367,7 +373,6 @@ async def test_list_task_types_reads_from_custom_registry() -> None:
         task_repo=AsyncMock(),
         run_repo=AsyncMock(),
         run_log_repo=AsyncMock(),
-        runner=MagicMock(),
         task_registry=registry,
     )
 
@@ -381,9 +386,9 @@ async def test_list_task_types_reads_from_custom_registry() -> None:
 
 @pytest.mark.asyncio
 async def test_delete_task_rejects_active_run(
-    service: tuple[TaskService, AsyncMock, AsyncMock, AsyncMock, MagicMock],
+    service: tuple[TaskService, AsyncMock, AsyncMock, AsyncMock],
 ) -> None:
-    task_service, task_repo, run_repo, _, _ = service
+    task_service, task_repo, run_repo, _ = service
     task_repo.find_by_id.return_value = make_task()
     run_repo.find_active_by_task.return_value = make_run(status="running")
 
@@ -393,70 +398,65 @@ async def test_delete_task_rejects_active_run(
 
 @pytest.mark.asyncio
 async def test_trigger_task_success(
-    service: tuple[TaskService, AsyncMock, AsyncMock, AsyncMock, MagicMock],
+    service: tuple[TaskService, AsyncMock, AsyncMock, AsyncMock],
 ) -> None:
-    task_service, task_repo, run_repo, _, runner = service
-    task = make_task()
-    task_repo.find_by_id.return_value = task
+    task_service, task_repo, run_repo, _ = service
+    task_repo.find_by_id.return_value = make_task()
     run_repo.find_active_by_task.return_value = None
     run_repo.create_run.return_value = make_run()
-    run_repo.update_progress_snapshot.return_value = make_run()
-    run_repo.find_by_id.return_value = make_run(status="running")
+    run_repo.find_by_id.return_value = make_run()
 
     result = await task_service.trigger_task(1)
 
     assert result.taskId == 1
-    task_repo.mark_task_running.assert_awaited_once_with(1, 11)
-    runner.schedule.assert_called_once()
+    assert result.status == "pending"
+    task_repo.mark_task_pending.assert_awaited_once_with(1, 11)
+    assert run_repo.create_run.await_args.kwargs["progress_snapshot"]["phase"] == "queued"
 
 
 @pytest.mark.asyncio
-async def test_trigger_task_normalizes_railway_payload_before_schedule(
-    service: tuple[TaskService, AsyncMock, AsyncMock, AsyncMock, MagicMock],
+async def test_trigger_task_normalizes_payload_before_queue(
+    service: tuple[TaskService, AsyncMock, AsyncMock, AsyncMock],
 ) -> None:
-    task_service, task_repo, run_repo, _, runner = service
+    task_service, task_repo, run_repo, _ = service
     task_repo.find_by_id.return_value = make_task(
         task_type="fetch-trains",
         type_label="爬取车次",
         payload={"date": "20260405", "keyword": " G "},
     )
     run_repo.find_active_by_task.return_value = None
-    run_repo.create_run.return_value = make_run()
-    run_repo.update_progress_snapshot.return_value = make_run()
-    run_repo.find_by_id.return_value = make_run(status="running")
+    run_repo.create_run.return_value = make_run(task_type="fetch-trains")
+    run_repo.find_by_id.return_value = make_run(task_type="fetch-trains")
 
     await task_service.trigger_task(1)
 
-    scheduled_task = runner.schedule.call_args.args[0]
-    assert scheduled_task.payload == {"date": "2026-04-05", "keyword": "G"}
+    assert run_repo.create_run.await_args.kwargs["progress_snapshot"]["taskType"] == "fetch-trains"
 
 
 @pytest.mark.asyncio
 async def test_trigger_task_allows_fetch_trains_without_keyword(
-    service: tuple[TaskService, AsyncMock, AsyncMock, AsyncMock, MagicMock],
+    service: tuple[TaskService, AsyncMock, AsyncMock, AsyncMock],
 ) -> None:
-    task_service, task_repo, run_repo, _, runner = service
+    task_service, task_repo, run_repo, _ = service
     task_repo.find_by_id.return_value = make_task(
         task_type="fetch-trains",
         type_label="爬取车次",
         payload={"date": "20260405"},
     )
     run_repo.find_active_by_task.return_value = None
-    run_repo.create_run.return_value = make_run()
-    run_repo.update_progress_snapshot.return_value = make_run()
-    run_repo.find_by_id.return_value = make_run(status="running")
+    run_repo.create_run.return_value = make_run(task_type="fetch-trains")
+    run_repo.find_by_id.return_value = make_run(task_type="fetch-trains")
 
-    await task_service.trigger_task(1)
+    result = await task_service.trigger_task(1)
 
-    scheduled_task = runner.schedule.call_args.args[0]
-    assert scheduled_task.payload == {"date": "2026-04-05"}
+    assert result.status == "pending"
 
 
 @pytest.mark.asyncio
 async def test_trigger_task_rejects_disabled_task(
-    service: tuple[TaskService, AsyncMock, AsyncMock, AsyncMock, MagicMock],
+    service: tuple[TaskService, AsyncMock, AsyncMock, AsyncMock],
 ) -> None:
-    task_service, task_repo, run_repo, _, _ = service
+    task_service, task_repo, run_repo, _ = service
     task_repo.find_by_id.return_value = make_task(enabled=False)
     run_repo.find_active_by_task.return_value = None
 
@@ -466,9 +466,9 @@ async def test_trigger_task_rejects_disabled_task(
 
 @pytest.mark.asyncio
 async def test_trigger_task_rejects_active_run(
-    service: tuple[TaskService, AsyncMock, AsyncMock, AsyncMock, MagicMock],
+    service: tuple[TaskService, AsyncMock, AsyncMock, AsyncMock],
 ) -> None:
-    task_service, task_repo, run_repo, _, _ = service
+    task_service, task_repo, run_repo, _ = service
     task_repo.find_by_id.return_value = make_task()
     run_repo.find_active_by_task.return_value = make_run(status="running")
 
@@ -478,9 +478,9 @@ async def test_trigger_task_rejects_active_run(
 
 @pytest.mark.asyncio
 async def test_trigger_task_rejects_unimplemented_type(
-    service: tuple[TaskService, AsyncMock, AsyncMock, AsyncMock, MagicMock],
+    service: tuple[TaskService, AsyncMock, AsyncMock, AsyncMock],
 ) -> None:
-    task_service, task_repo, run_repo, _, _ = service
+    task_service, task_repo, run_repo, _ = service
     task_repo.find_by_id.return_value = make_task(
         task_type="price",
         type_label="票价信息同步",
@@ -492,10 +492,52 @@ async def test_trigger_task_rejects_unimplemented_type(
 
 
 @pytest.mark.asyncio
-async def test_list_run_logs_returns_log_models(
-    service: tuple[TaskService, AsyncMock, AsyncMock, AsyncMock, AsyncMock],
+async def test_terminate_pending_run_marks_terminated(
+    service: tuple[TaskService, AsyncMock, AsyncMock, AsyncMock],
 ) -> None:
-    task_service, _, run_repo, run_log_repo, _ = service
+    task_service, _, run_repo, _ = service
+    run_repo.find_by_id.return_value = make_run(status="pending")
+    run_repo.terminate_pending_run.return_value = make_run(status="terminated", result_level="error")
+
+    result = await task_service.terminate_run(11)
+
+    assert result.status == "terminated"
+    run_repo.terminate_pending_run.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_terminate_running_run_requests_cancellation(
+    service: tuple[TaskService, AsyncMock, AsyncMock, AsyncMock],
+) -> None:
+    task_service, _, run_repo, _ = service
+    run_repo.find_by_id.return_value = make_run(status="running")
+    run_repo.request_cancellation.return_value = make_run(
+        status="running",
+        cancel_requested=True,
+    )
+
+    result = await task_service.terminate_run(11)
+
+    assert result.status == "running"
+    run_repo.request_cancellation.assert_awaited_once_with(11)
+
+
+@pytest.mark.asyncio
+async def test_terminate_run_rejects_completed(
+    service: tuple[TaskService, AsyncMock, AsyncMock, AsyncMock],
+) -> None:
+    task_service, _, run_repo, _ = service
+    run_repo.find_by_id.return_value = make_run(status="completed")
+
+    with pytest.raises(TaskRunNotTerminable):
+        await task_service.terminate_run(11)
+
+
+@pytest.mark.asyncio
+async def test_list_run_logs_returns_log_models(
+    service: tuple[TaskService, AsyncMock, AsyncMock, AsyncMock],
+) -> None:
+    task_service, _, run_repo, run_log_repo = service
     run_repo.find_by_id.return_value = make_run()
     run_log_repo.list_by_run.return_value = [make_log()]
 

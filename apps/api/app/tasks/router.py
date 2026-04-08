@@ -14,10 +14,13 @@ from app.tasks.schemas import (
     TaskUpdateRequest,
 )
 
-router = APIRouter(tags=["tasks"], dependencies=[Depends(require_admin_auth)])
+router = APIRouter(
+    prefix="/admin-api/v1",
+    tags=["tasks"],
+    dependencies=[Depends(require_admin_auth)],
+)
 
-
-@router.get("/task-types", response_model=APIResponse[list[TaskTypeResponse]])
+@router.get("/tasks/types", response_model=APIResponse[list[TaskTypeResponse]])
 async def list_task_types(service: TaskServiceDep) -> APIResponse[list[TaskTypeResponse]]:
     return APIResponse.ok(await service.list_task_types())
 
@@ -60,11 +63,14 @@ async def delete_task(task_id: int, service: TaskServiceDep) -> Response:
 
 
 @router.post(
-    "/tasks/{task_id}/run",
+    "/tasks/{task_id}/runs",
     response_model=APIResponse[TaskRunResponse],
     status_code=status.HTTP_202_ACCEPTED,
 )
-async def run_task(task_id: int, service: TaskServiceDep) -> APIResponse[TaskRunResponse]:
+async def create_task_run(
+    task_id: int,
+    service: TaskServiceDep,
+) -> APIResponse[TaskRunResponse]:
     return APIResponse.ok(await service.trigger_task(task_id))
 
 

@@ -22,6 +22,11 @@ class Settings(BaseSettings):
     app_env: str = "development"
     app_version: str = "1.0.0"
 
+    # Task worker
+    task_worker_poll_interval_seconds: float = 1.0
+    task_worker_heartbeat_interval_seconds: float = 5.0
+    task_worker_stale_timeout_seconds: float = 60.0
+
     model_config = SettingsConfigDict(
         env_file=".env.development",
         env_file_encoding="utf-8",

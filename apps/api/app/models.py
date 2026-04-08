@@ -51,8 +51,9 @@ TaskType = Literal[
     "fetch-train-runs",
     "price",
 ]
-TaskStatus = Literal["idle", "running", "completed", "error", "terminated"]
+TaskStatus = Literal["idle", "pending", "running", "completed", "error", "terminated"]
 TaskRunStatus = Literal["pending", "running", "completed", "error", "terminated"]
+TaskResultLevel = Literal["success", "warning", "error"]
 TaskTriggerMode = Literal["manual"]
 LogSeverity = Literal["SUCCESS", "INFO", "WARN", "ERROR", "SYSTEM"]
 CredentialHealth = Literal["healthy", "expired"]
@@ -74,6 +75,7 @@ class TaskDefinition:
     latest_run_started_at: datetime | None
     latest_run_finished_at: datetime | None
     latest_error_message: str | None
+    latest_result_level: str | None
     metrics_label: str
     metrics_value: str
     timing_label: str
@@ -96,10 +98,15 @@ class TaskRun:
     status: str
     requested_by: str
     summary: str | None
+    result_level: str | None
     metrics_value: str
     progress_snapshot: dict[str, Any] | None
     error_message: str | None
     termination_reason: str | None
+    worker_id: str | None
+    heartbeat_at: datetime | None
+    cancel_requested: bool
+    cancel_requested_at: datetime | None
     started_at: datetime | None
     finished_at: datetime | None
     created_at: datetime

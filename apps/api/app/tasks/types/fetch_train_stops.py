@@ -1,21 +1,19 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from app.railway.repository import RailwayTaskRepository
 from app.tasks.definition import TaskCapabilityContract, TaskTypeDefinition
 from app.tasks.exceptions import TaskExecutionError
-from app.tasks.execution import TaskExecutionContext, TaskExecutionResult
+from app.tasks.execution import TaskExecutionContext
+from app.tasks.executor import TaskExecutorHelper
 from app.tasks.payloads import FetchTrainStopsPayload
 from app.tasks.railway_support import resolve_stop_target_train_nos
 from app.tasks.type_params import TRAIN_DATE_PARAM, TRAIN_LOOKUP_KEYWORD_PARAM
 
 
-async def execute_fetch_train_stops(ctx: TaskExecutionContext) -> TaskExecutionResult:
-    payload = FetchTrainStopsPayload.model_validate(ctx.task.payload)
+async def execute_fetch_train_stops(ctx: TaskExecutionContext):
+    helper = TaskExecutorHelper(ctx)
+    payload = helper.parse_payload(FetchTrainStopsPayload)
     keyword_display = payload.keyword or "<all>"
-    await ctx.log(
-        "INFO",
-        f"任务 {ctx.task.name} 开始抓取经停：date={payload.date}, keyword={keyword_display}",
-    )
     repo = RailwayTaskRepository(ctx.pool)
     target_train_nos = await resolve_stop_target_train_nos(repo, payload.keyword)
     if not target_train_nos:
@@ -25,21 +23,38 @@ async def execute_fetch_train_stops(ctx: TaskExecutionContext) -> TaskExecutionR
             )
         raise TaskExecutionError("数据库中没有可抓取经停的车次，请先执行 fetch-trains")
 
+    await helper.begin(
+        f"任务 {ctx.task.name} 开始抓取经停：date={payload.date}, keyword={keyword_display}",
+        total_units=len(target_train_nos),
+        current={"unitId": keyword_display, "label": keyword_display},
+        details={"requestedDate": payload.date},
+    )
+
     total_stop_count = 0
     success_count = 0
     failed_count = 0
     last_failed_train_no: str | None = None
 
-    for train_no in target_train_nos:
+    for index, train_no in enumerate(target_train_nos, start=1):
+        await helper.checkpoint()
         try:
             stop_rows = await ctx.crawler_client.fetch_train_stops(train_no, payload.date)
             if not stop_rows:
-                raise TaskExecutionError(
-                    f"未找到车次 {train_no} 在 {payload.date} 的经停数据"
-                )
+                raise TaskExecutionError(f"未找到车次 {train_no} 在 {payload.date} 的经停数据")
             inserted = await repo.upsert_stop_rows(stop_rows)
             total_stop_count += inserted
             success_count += 1
+            await helper.update(
+                summary={
+                    "processedUnits": index,
+                    "successUnits": success_count,
+                    "failedUnits": failed_count,
+                    "pendingUnits": len(target_train_nos) - index,
+                    "warningUnits": failed_count,
+                },
+                current={"unitId": train_no, "label": train_no},
+                details={"upsertedStopRows": total_stop_count},
+            )
             await ctx.log(
                 "INFO",
                 (
@@ -50,6 +65,18 @@ async def execute_fetch_train_stops(ctx: TaskExecutionContext) -> TaskExecutionR
         except Exception as exc:
             failed_count += 1
             last_failed_train_no = train_no
+            await helper.update(
+                summary={
+                    "processedUnits": index,
+                    "successUnits": success_count,
+                    "failedUnits": failed_count,
+                    "pendingUnits": len(target_train_nos) - index,
+                    "warningUnits": failed_count,
+                },
+                current={"unitId": train_no, "label": train_no},
+                last_error={"unitId": train_no, "label": train_no, "message": str(exc)},
+                details={"upsertedStopRows": total_stop_count},
+            )
             await ctx.log(
                 "WARN",
                 f"fetch-train-stops target failed: train_no={train_no} error={exc}",
@@ -69,17 +96,16 @@ async def execute_fetch_train_stops(ctx: TaskExecutionContext) -> TaskExecutionR
             ),
         )
         summary = "车次经停同步完成，部分车次抓取失败"
+        result_builder = helper.warning
     else:
         summary = "车次经停同步完成"
+        result_builder = helper.success
 
     await ctx.log(
         "SUCCESS",
-        (
-            "fetch-train-stops 完成，"
-            f"处理 {success_count} 个车次，写入 {total_stop_count} 条经停记录"
-        ),
+        f"fetch-train-stops 完成，处理 {success_count} 个车次，写入 {total_stop_count} 条经停记录",
     )
-    return TaskExecutionResult(summary=summary, metrics_value=str(total_stop_count))
+    return result_builder(summary=summary, metrics_value=str(total_stop_count))
 
 
 TASK_TYPE_DEFINITION = TaskTypeDefinition(

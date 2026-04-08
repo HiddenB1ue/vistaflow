@@ -48,14 +48,21 @@ uv run pytest --cov=app --cov-report=term-missing
 
 The backend task API currently supports the following management endpoints:
 
-- `GET /task-types`: list supported task types and execution metadata
-- `GET /tasks` / `POST /tasks`: query and create task definitions
-- `GET /tasks/{id}` / `PATCH /tasks/{id}` / `DELETE /tasks/{id}`: view, update, or delete a task
-- `POST /tasks/{id}/run`: manually trigger a task run
-- `GET /tasks/{id}/runs`: query task run history
-- `GET /task-runs/{id}`: inspect one run
-- `GET /task-runs/{id}/logs`: inspect run logs
-- `POST /task-runs/{id}/terminate`: terminate an active run
+- `GET /admin-api/v1/tasks/types`: list supported task types and execution metadata
+- `GET /admin-api/v1/tasks` / `POST /admin-api/v1/tasks`: query and create task definitions
+- `GET /admin-api/v1/tasks/{id}` / `PATCH /admin-api/v1/tasks/{id}` / `DELETE /admin-api/v1/tasks/{id}`: view, update, or delete a task
+- `POST /admin-api/v1/tasks/{id}/runs`: create a pending task run
+- `GET /admin-api/v1/tasks/{id}/runs`: query task run history
+- `GET /admin-api/v1/task-runs/{id}`: inspect one run
+- `GET /admin-api/v1/task-runs/{id}/logs`: inspect run logs
+- `POST /admin-api/v1/task-runs/{id}/terminate`: terminate a pending run or request cancellation for a running run
+
+Task execution now happens in a separate worker process:
+
+```bash
+cd apps/api
+uv run python -m app.tasks.worker
+```
 
 Implemented executable task types:
 
@@ -73,7 +80,7 @@ Reserved but not yet implemented task type:
 The railway task feature extends the existing task domain and keeps the 12306
 request parameters, request method, and response parsing contract unchanged.
 Administrators can define and manually execute these task types through the same
-`/tasks` API surface.
+`/admin-api/v1/tasks` API surface.
 
 #### 1. `fetch-trains`
 

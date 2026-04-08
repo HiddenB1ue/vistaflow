@@ -23,23 +23,37 @@ class FetchTrainsProgressStats:
     def to_snapshot(
         self,
         *,
-        stage: str = "crawling",
+        phase: str = "processing",
         status: str = "running",
     ) -> dict[str, Any]:
         processed_units = self.completed_seed_keywords + self.failed_seed_keywords
         pending_units = max(0, self.total_seed_keywords - processed_units)
         return build_progress_snapshot(
             "fetch-trains",
-            stage=stage,
+            phase=phase,
             status=status,
             summary={
+                "totalUnits": self.total_seed_keywords,
                 "processedUnits": processed_units,
                 "pendingUnits": pending_units,
                 "successUnits": self.completed_seed_keywords,
                 "failedUnits": self.failed_seed_keywords,
+                "warningUnits": self.failed_seed_keywords,
             },
+            current={
+                "unitId": self.current_seed_keyword,
+                "label": self.current_seed_keyword,
+            },
+            last_error=(
+                {
+                    "unitId": self.last_failed_seed_keyword,
+                    "label": self.last_failed_seed_keyword,
+                    "message": "seed failed",
+                }
+                if self.last_failed_seed_keyword
+                else None
+            ),
             details={
-                "currentSeedKeyword": self.current_seed_keyword,
                 "pendingSeedKeywords": pending_units,
                 "completedSeedKeywords": self.completed_seed_keywords,
                 "failedSeedKeywords": self.failed_seed_keywords,

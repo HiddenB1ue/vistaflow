@@ -73,3 +73,8 @@ class TaskRunNotTerminable(BusinessError):
 
 class TaskExecutionError(RuntimeError):
     pass
+
+
+class TaskCancellationRequested(RuntimeError):
+    def __init__(self, run_id: int) -> None:
+        super().__init__(f"任务执行 {run_id} 已收到终止请求")

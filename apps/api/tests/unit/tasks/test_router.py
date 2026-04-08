@@ -29,8 +29,6 @@ def client(monkeypatch: pytest.MonkeyPatch) -> Generator[TestClient, None, None]
     mock_pool = MagicMock()
     mock_pool.close = AsyncMock()
     monkeypatch.setattr("app.main.asyncpg.create_pool", AsyncMock(return_value=mock_pool))
-    monkeypatch.setattr("app.main.TaskRunRepository.recover_incomplete_runs", AsyncMock())
-    monkeypatch.setattr("app.main.TaskRepository.recover_incomplete_tasks", AsyncMock())
     monkeypatch.setattr(
         "app.main.get_settings",
         lambda: SimpleNamespace(
@@ -41,6 +39,9 @@ def client(monkeypatch: pytest.MonkeyPatch) -> Generator[TestClient, None, None]
             app_env="test",
             app_version="test",
             cors_origins=["*"],
+            task_worker_poll_interval_seconds=1.0,
+            task_worker_heartbeat_interval_seconds=5.0,
+            task_worker_stale_timeout_seconds=60.0,
         ),
     )
     app.dependency_overrides[require_admin_auth] = lambda: None
@@ -103,26 +104,31 @@ def fake_service() -> MagicMock:
             taskName="铁路任务",
             taskType="fetch-trains",
             triggerMode="manual",
-            status="running",
+            status="pending",
             requestedBy="admin",
             summary=None,
+            resultLevel=None,
             metricsValue="",
             progressSnapshot={
-                "version": 1,
+                "version": 2,
                 "taskType": "fetch-trains",
-                "stage": "crawling",
-                "status": "running",
+                "phase": "queued",
+                "status": "pending",
                 "summary": {
-                    "processedUnits": 1,
-                    "pendingUnits": 0,
-                    "successUnits": 1,
+                    "totalUnits": 0,
+                    "processedUnits": 0,
+                    "successUnits": 0,
                     "failedUnits": 0,
+                    "pendingUnits": 0,
+                    "warningUnits": 0,
                 },
-                "details": {"currentSeedKeyword": "G"},
+                "current": {},
+                "lastError": {},
+                "details": {},
             },
             errorMessage=None,
             terminationReason=None,
-            startedAt=NOW,
+            startedAt=None,
             finishedAt=None,
             createdAt=NOW,
             updatedAt=NOW,
@@ -151,7 +157,7 @@ def override_service(fake_service: MagicMock) -> None:
 
 def test_list_task_types(client: TestClient, fake_service: MagicMock) -> None:
     override_service(fake_service)
-    response = client.get("/task-types")
+    response = client.get("/admin-api/v1/tasks/types")
     assert response.status_code == 200
     assert response.json()["data"][0]["type"] == "fetch-trains"
     assert response.json()["data"][0]["paramSchema"][0]["key"] == "date"
@@ -160,7 +166,7 @@ def test_list_task_types(client: TestClient, fake_service: MagicMock) -> None:
 def test_create_task(client: TestClient, fake_service: MagicMock) -> None:
     override_service(fake_service)
     response = client.post(
-        "/tasks",
+        "/admin-api/v1/tasks",
         json={
             "name": "Train sync",
             "type": "fetch-trains",
@@ -174,7 +180,7 @@ def test_create_task(client: TestClient, fake_service: MagicMock) -> None:
 def test_update_task(client: TestClient, fake_service: MagicMock) -> None:
     override_service(fake_service)
     response = client.patch(
-        "/tasks/1",
+        "/admin-api/v1/tasks/1",
         json={"payload": {"date": "2026-04-06", "keyword": "D"}},
     )
     assert response.status_code == 200
@@ -183,36 +189,36 @@ def test_update_task(client: TestClient, fake_service: MagicMock) -> None:
 
 def test_delete_task(client: TestClient, fake_service: MagicMock) -> None:
     override_service(fake_service)
-    response = client.delete("/tasks/1")
+    response = client.delete("/admin-api/v1/tasks/1")
     assert response.status_code == 204
     fake_service.delete_task.assert_awaited_once_with(1)
 
 
 def test_trigger_task(client: TestClient, fake_service: MagicMock) -> None:
     override_service(fake_service)
-    response = client.post("/tasks/1/run")
+    response = client.post("/admin-api/v1/tasks/1/runs")
     assert response.status_code == 202
     assert response.json()["data"]["taskId"] == 1
-    assert response.json()["data"]["progressSnapshot"]["details"]["currentSeedKeyword"] == "G"
+    assert response.json()["data"]["progressSnapshot"]["phase"] == "queued"
 
 
 def test_list_task_runs(client: TestClient, fake_service: MagicMock) -> None:
     override_service(fake_service)
-    response = client.get("/tasks/1/runs")
+    response = client.get("/admin-api/v1/tasks/1/runs")
     assert response.status_code == 200
     assert response.json()["data"][0]["id"] == 11
-    assert response.json()["data"][0]["progressSnapshot"]["status"] == "running"
+    assert response.json()["data"][0]["progressSnapshot"]["status"] == "pending"
 
 
 def test_get_task_run_logs(client: TestClient, fake_service: MagicMock) -> None:
     override_service(fake_service)
-    response = client.get("/task-runs/11/logs")
+    response = client.get("/admin-api/v1/task-runs/11/logs")
     assert response.status_code == 200
     assert response.json()["data"][0]["message"] == "started"
 
 
 def test_terminate_task_run(client: TestClient, fake_service: MagicMock) -> None:
     override_service(fake_service)
-    response = client.post("/task-runs/11/terminate")
+    response = client.post("/admin-api/v1/task-runs/11/terminate")
     assert response.status_code == 202
     fake_service.terminate_run.assert_awaited_once_with(11)

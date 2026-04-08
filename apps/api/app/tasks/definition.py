@@ -16,7 +16,7 @@ TaskType = Literal[
     "fetch-train-runs",
     "price",
 ]
-TaskStatus = Literal["idle", "running", "completed", "error", "terminated"]
+TaskStatus = Literal["idle", "pending", "running", "completed", "error", "terminated"]
 TaskRunStatus = Literal["pending", "running", "completed", "error", "terminated"]
 TaskTriggerMode = Literal["manual"]
 TaskValueType = Literal["date", "text"]

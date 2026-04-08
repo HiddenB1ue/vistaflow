@@ -40,6 +40,7 @@ class TaskTypeResponse(BaseModel):
 class TaskLatestRunResponse(BaseModel):
     id: int
     status: str
+    resultLevel: str | None = None
     startedAt: datetime | None = None
     finishedAt: datetime | None = None
     errorMessage: str | None = None
@@ -122,6 +123,7 @@ class TaskRunResponse(BaseModel):
     status: str
     requestedBy: str
     summary: str | None = None
+    resultLevel: str | None = None
     metricsValue: str = ""
     progressSnapshot: dict[str, Any] | None = None
     errorMessage: str | None = None

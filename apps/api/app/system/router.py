@@ -16,10 +16,11 @@ from app.system.schemas import (
     ToggleResponse,
 )
 
-router = APIRouter(tags=["system"])
+health_router = APIRouter(tags=["system"])
+router = APIRouter(prefix="/admin-api/v1/system", tags=["system"])
 
 
-@router.get("/health")
+@health_router.get("/healthz")
 def health() -> dict[str, str]:
     settings = get_settings()
     return {

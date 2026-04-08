@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from collections.abc import Generator
 from datetime import UTC, datetime
@@ -13,7 +13,6 @@ from app.main import app
 from app.models import TaskDefinition
 from app.tasks.dependencies import get_task_service
 from app.tasks.repository import TaskRepository, TaskRunLogRepository, TaskRunRepository
-from app.tasks.runner import TaskRunner
 from app.tasks.service import TaskService
 
 NOW = datetime(2026, 4, 6, tzinfo=UTC)
@@ -24,8 +23,6 @@ def client(monkeypatch: pytest.MonkeyPatch) -> Generator[TestClient, None, None]
     mock_pool = MagicMock()
     mock_pool.close = AsyncMock()
     monkeypatch.setattr("app.main.asyncpg.create_pool", AsyncMock(return_value=mock_pool))
-    monkeypatch.setattr("app.main.TaskRunRepository.recover_incomplete_runs", AsyncMock())
-    monkeypatch.setattr("app.main.TaskRepository.recover_incomplete_tasks", AsyncMock())
     monkeypatch.setattr(
         "app.main.get_settings",
         lambda: SimpleNamespace(
@@ -36,6 +33,9 @@ def client(monkeypatch: pytest.MonkeyPatch) -> Generator[TestClient, None, None]
             app_env="test",
             app_version="test",
             cors_origins=["*"],
+            task_worker_poll_interval_seconds=1.0,
+            task_worker_heartbeat_interval_seconds=5.0,
+            task_worker_stale_timeout_seconds=60.0,
         ),
     )
     app.dependency_overrides[require_admin_auth] = lambda: None
@@ -45,20 +45,16 @@ def client(monkeypatch: pytest.MonkeyPatch) -> Generator[TestClient, None, None]
 
 
 @pytest.fixture
-def service_bundle() -> tuple[TaskService, AsyncMock, AsyncMock, AsyncMock, MagicMock]:
+def service_bundle() -> tuple[TaskService, AsyncMock, AsyncMock, AsyncMock]:
     task_repo = AsyncMock(spec=TaskRepository)
     run_repo = AsyncMock(spec=TaskRunRepository)
     run_log_repo = AsyncMock(spec=TaskRunLogRepository)
-    runner = MagicMock(spec=TaskRunner)
-    runner.schedule = MagicMock()
-    runner.terminate = AsyncMock()
     service = TaskService(
         task_repo=task_repo,
         run_repo=run_repo,
         run_log_repo=run_log_repo,
-        runner=runner,
     )
-    return service, task_repo, run_repo, run_log_repo, runner
+    return service, task_repo, run_repo, run_log_repo
 
 
 def _make_task(task_type: str, payload: dict[str, object]) -> TaskDefinition:
@@ -77,6 +73,7 @@ def _make_task(task_type: str, payload: dict[str, object]) -> TaskDefinition:
         latest_run_started_at=None,
         latest_run_finished_at=None,
         latest_error_message=None,
+        latest_result_level=None,
         metrics_label="最近结果",
         metrics_value="",
         timing_label="最近耗时",
@@ -89,9 +86,9 @@ def _make_task(task_type: str, payload: dict[str, object]) -> TaskDefinition:
 
 def test_create_railway_task_normalizes_payload(
     client: TestClient,
-    service_bundle: tuple[TaskService, AsyncMock, AsyncMock, AsyncMock, MagicMock],
+    service_bundle: tuple[TaskService, AsyncMock, AsyncMock, AsyncMock],
 ) -> None:
-    service, task_repo, _, _, _ = service_bundle
+    service, task_repo, _, _ = service_bundle
     task_repo.find_by_name.return_value = None
     task_repo.create_task.return_value = _make_task(
         "fetch-trains",
@@ -100,7 +97,7 @@ def test_create_railway_task_normalizes_payload(
     app.dependency_overrides[get_task_service] = lambda: service
 
     response = client.post(
-        "/tasks",
+        "/admin-api/v1/tasks",
         json={
             "name": "Train sync",
             "type": "fetch-trains",
@@ -119,14 +116,14 @@ def test_create_railway_task_normalizes_payload(
 
 def test_create_railway_task_rejects_invalid_payload(
     client: TestClient,
-    service_bundle: tuple[TaskService, AsyncMock, AsyncMock, AsyncMock, MagicMock],
+    service_bundle: tuple[TaskService, AsyncMock, AsyncMock, AsyncMock],
 ) -> None:
-    service, task_repo, _, _, _ = service_bundle
+    service, task_repo, _, _ = service_bundle
     task_repo.find_by_name.return_value = None
     app.dependency_overrides[get_task_service] = lambda: service
 
     response = client.post(
-        "/tasks",
+        "/admin-api/v1/tasks",
         json={
             "name": "Broken task",
             "type": "fetch-train-stops",
@@ -141,9 +138,9 @@ def test_create_railway_task_rejects_invalid_payload(
 
 def test_create_railway_task_allows_missing_keyword(
     client: TestClient,
-    service_bundle: tuple[TaskService, AsyncMock, AsyncMock, AsyncMock, MagicMock],
+    service_bundle: tuple[TaskService, AsyncMock, AsyncMock, AsyncMock],
 ) -> None:
-    service, task_repo, _, _, _ = service_bundle
+    service, task_repo, _, _ = service_bundle
     task_repo.find_by_name.return_value = None
     task_repo.create_task.return_value = _make_task(
         "fetch-trains",
@@ -152,7 +149,7 @@ def test_create_railway_task_allows_missing_keyword(
     app.dependency_overrides[get_task_service] = lambda: service
 
     response = client.post(
-        "/tasks",
+        "/admin-api/v1/tasks",
         json={
             "name": "Train sync all",
             "type": "fetch-trains",
@@ -169,9 +166,9 @@ def test_create_railway_task_allows_missing_keyword(
 
 def test_create_fetch_train_stops_task_allows_missing_keyword(
     client: TestClient,
-    service_bundle: tuple[TaskService, AsyncMock, AsyncMock, AsyncMock, MagicMock],
+    service_bundle: tuple[TaskService, AsyncMock, AsyncMock, AsyncMock],
 ) -> None:
-    service, task_repo, _, _, _ = service_bundle
+    service, task_repo, _, _ = service_bundle
     task_repo.find_by_name.return_value = None
     task_repo.create_task.return_value = _make_task(
         "fetch-train-stops",
@@ -180,7 +177,7 @@ def test_create_fetch_train_stops_task_allows_missing_keyword(
     app.dependency_overrides[get_task_service] = lambda: service
 
     response = client.post(
-        "/tasks",
+        "/admin-api/v1/tasks",
         json={
             "name": "Train stop sync all",
             "type": "fetch-train-stops",

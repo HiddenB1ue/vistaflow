@@ -9,6 +9,8 @@ from app.integrations.crawler.client import AbstractCrawlerClient
 from app.integrations.geo.client import AbstractGeoClient
 from app.models import TaskDefinition
 from app.system.log_repository import LogRepository
+from app.tasks.exceptions import TaskCancellationRequested
+from app.tasks.progress import build_progress_snapshot
 from app.tasks.repository import TaskRunLogRepository, TaskRunRepository
 
 
@@ -29,6 +31,7 @@ class TaskServiceAccess:
 @dataclass(frozen=True)
 class TaskExecutionResult:
     summary: str
+    result_level: str = "success"
     metrics_value: str = ""
     timing_value: str = ""
     progress_snapshot: dict[str, Any] | None = None
@@ -103,3 +106,30 @@ class TaskExecutionContext:
 
     async def update_progress(self, snapshot: dict[str, Any]) -> None:
         await self.run_repo.update_progress_snapshot(self.run_id, snapshot)
+
+    async def is_cancel_requested(self) -> bool:
+        return await self.run_repo.is_cancel_requested(self.run_id)
+
+    async def raise_if_cancel_requested(self) -> None:
+        if await self.is_cancel_requested():
+            raise TaskCancellationRequested(self.run_id)
+
+    def build_progress_snapshot(
+        self,
+        *,
+        phase: str,
+        status: str,
+        summary: dict[str, Any] | None = None,
+        current: dict[str, Any] | None = None,
+        last_error: dict[str, Any] | None = None,
+        details: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        return build_progress_snapshot(
+            self.task.type,
+            phase=phase,
+            status=status,
+            summary=summary,
+            current=current,
+            last_error=last_error,
+            details=details,
+        )
