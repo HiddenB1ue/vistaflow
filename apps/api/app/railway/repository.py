@@ -1,6 +1,7 @@
 ﻿from __future__ import annotations
 
 import itertools
+from datetime import date as date_type
 from typing import Any
 
 import asyncpg
@@ -437,11 +438,11 @@ class RailwayTaskRepository(BaseRepository):
         )
         train_id_map = {str(row["train_no"]): int(row["id"]) for row in map_rows}
 
-        dedup: dict[tuple[int, str], tuple[int, str, str]] = {}
+        dedup: dict[tuple[int, date_type], tuple[int, date_type, str]] = {}
         for item in rows:
             train_no = str(item.get("train_no") or "").strip()
             train_id = train_id_map.get(train_no)
-            run_date = _to_text(item.get("run_date") or item.get("date"))
+            run_date = _to_date(item.get("run_date") or item.get("date"))
             status = _to_text(item.get("status")) or "running"
             if train_id is None or run_date is None:
                 continue
@@ -762,3 +763,19 @@ def _to_int(value: Any) -> int | None:
         return value
     text = str(value or "").strip()
     return int(text) if text.isdigit() else None
+
+
+def _to_date(value: Any) -> date_type | None:
+    if isinstance(value, date_type):
+        return value
+
+    text = str(value or "").strip()
+    if not text:
+        return None
+
+    try:
+        if len(text) == 8 and text.isdigit():
+            return date_type.fromisoformat(f"{text[:4]}-{text[4:6]}-{text[6:]}")
+        return date_type.fromisoformat(text)
+    except ValueError:
+        return None
