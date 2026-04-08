@@ -96,14 +96,14 @@ def build_train_run_rows(
     raw_rows: list[dict[str, Any]],
     *,
     run_date: str,
-    train_code: str,
+    keyword: str,
 ) -> list[dict[str, Any]]:
     normalized_run_date = run_date.strip()
-    normalized_code = train_code.strip().upper()
+    normalized_keyword = keyword.strip().upper()
     rows: list[dict[str, Any]] = []
     for row in raw_rows:
         station_train_code = str(row.get("station_train_code") or "").strip().upper()
-        if not station_train_code or not station_train_code.startswith(normalized_code):
+        if not station_train_code or not station_train_code.startswith(normalized_keyword):
             continue
 
         row_run_date = str(row.get("run_date") or "").strip()

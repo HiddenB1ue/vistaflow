@@ -40,17 +40,17 @@ class FetchTrainStopsPayload(BaseModel):
 
 class FetchTrainRunsPayload(BaseModel):
     date: str
-    train_code: str
+    keyword: str | None = None
 
     @field_validator("date")
     @classmethod
     def normalize_date_field(cls, value: str) -> str:
         return normalize_payload_date(value)
 
-    @field_validator("train_code")
+    @field_validator("keyword")
     @classmethod
-    def normalize_train_code_field(cls, value: str) -> str:
-        return normalize_required_text_field(value, field_name="train_code")
+    def normalize_keyword_field(cls, value: str | None) -> str | None:
+        return normalize_optional_text_field(value)
 
 
 PayloadModel = type[BaseModel]

@@ -16,7 +16,7 @@ from app.integrations.crawler.client import Live12306CrawlerClient
 from app.tasks.handlers import build_train_run_rows, derive_train_rows_from_runs
 
 TEST_DATE = "2026-04-10"
-TEST_TRAIN_CODE = "G2"
+TEST_KEYWORD = "G2"
 
 
 def normalize_iso_date(raw: str) -> str:
@@ -30,19 +30,19 @@ def normalize_iso_date(raw: str) -> str:
 
 async def main() -> None:
     date = normalize_iso_date(TEST_DATE)
-    train_code = TEST_TRAIN_CODE.strip()
-    if not train_code:
-        raise ValueError("TEST_TRAIN_CODE cannot be empty")
+    keyword = TEST_KEYWORD.strip()
+    if not keyword:
+        raise ValueError("TEST_KEYWORD cannot be empty")
 
     async with httpx.AsyncClient() as http_client:
         client = Live12306CrawlerClient(http_client=http_client)
-        raw_rows = await client.fetch_train_runs(date, train_code)
+        raw_rows = await client.fetch_train_runs(date, keyword)
 
-    run_rows = build_train_run_rows(raw_rows, run_date=date, train_code=train_code)
+    run_rows = build_train_run_rows(raw_rows, run_date=date, keyword=keyword)
     train_rows = derive_train_rows_from_runs(run_rows)
 
     print(f"fetch date = {date}")
-    print(f"train code prefix = {train_code}")
+    print(f"keyword = {keyword}")
     print(f"raw rows fetched = {len(raw_rows)}")
     print(f"filtered run rows = {len(run_rows)}")
     print(f"derived train rows = {len(train_rows)}")

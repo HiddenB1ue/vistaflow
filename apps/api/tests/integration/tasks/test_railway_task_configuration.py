@@ -190,3 +190,60 @@ def test_create_fetch_train_stops_task_allows_missing_keyword(
     assert task_repo.create_task.await_args.kwargs["payload"] == {
         "date": "2026-04-05",
     }
+
+
+def test_create_fetch_train_runs_task_normalizes_keyword(
+    client: TestClient,
+    service_bundle: tuple[TaskService, AsyncMock, AsyncMock, AsyncMock],
+) -> None:
+    service, task_repo, _, _ = service_bundle
+    task_repo.find_by_name.return_value = None
+    task_repo.create_task.return_value = _make_task(
+        "fetch-train-runs",
+        {"date": "2026-04-05", "keyword": "G1"},
+    )
+    app.dependency_overrides[get_task_service] = lambda: service
+
+    response = client.post(
+        "/admin-api/v1/tasks",
+        json={
+            "name": "Train run sync",
+            "type": "fetch-train-runs",
+            "enabled": True,
+            "payload": {"date": "20260405", "keyword": " G1 "},
+        },
+    )
+
+    assert response.status_code == 201
+    assert task_repo.create_task.await_args.kwargs["payload"] == {
+        "date": "2026-04-05",
+        "keyword": "G1",
+    }
+
+
+def test_create_fetch_train_runs_task_allows_missing_keyword(
+    client: TestClient,
+    service_bundle: tuple[TaskService, AsyncMock, AsyncMock, AsyncMock],
+) -> None:
+    service, task_repo, _, _ = service_bundle
+    task_repo.find_by_name.return_value = None
+    task_repo.create_task.return_value = _make_task(
+        "fetch-train-runs",
+        {"date": "2026-04-05"},
+    )
+    app.dependency_overrides[get_task_service] = lambda: service
+
+    response = client.post(
+        "/admin-api/v1/tasks",
+        json={
+            "name": "Train run sync all",
+            "type": "fetch-train-runs",
+            "enabled": True,
+            "payload": {"date": "20260405"},
+        },
+    )
+
+    assert response.status_code == 201
+    assert task_repo.create_task.await_args.kwargs["payload"] == {
+        "date": "2026-04-05",
+    }

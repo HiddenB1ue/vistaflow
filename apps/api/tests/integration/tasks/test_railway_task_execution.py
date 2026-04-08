@@ -247,7 +247,7 @@ async def test_handle_fetch_train_runs_persists_run_facts(
 ) -> None:
     handler_context.task = make_task(
         "fetch-train-runs",
-        {"date": "2026-04-05", "train_code": "G1"},
+        {"date": "2026-04-05", "keyword": "G1"},
     )
     cast(Any, handler_context.crawler_client.fetch_train_runs).return_value = [
         {
@@ -278,6 +278,52 @@ async def test_handle_fetch_train_runs_persists_run_facts(
 
     assert result.summary == "运行车次同步完成"
     assert result.metrics_value == "1"
+
+
+@pytest.mark.asyncio
+async def test_handle_fetch_train_runs_dispatches_roots_when_keyword_missing(
+    handler_context: HandlerContext,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    handler_context.task = make_task("fetch-train-runs", {"date": "2026-04-05"})
+    calls: list[str] = []
+
+    async def fake_fetch_train_runs(date: str, keyword: str) -> list[dict[str, Any]]:
+        assert date == "2026-04-05"
+        calls.append(keyword)
+        return [
+            {
+                "train_no": f"TN-{keyword.upper()}",
+                "station_train_code": keyword.upper(),
+                "from_station": "北京南",
+                "to_station": "上海虹桥",
+                "total_num": 2,
+                "run_date": "2026-04-05",
+                "data_flag": "1",
+            }
+        ]
+
+    cast(Any, handler_context.crawler_client).fetch_train_runs = fake_fetch_train_runs
+
+    class FakeRepo:
+        def __init__(self, pool: object) -> None:
+            self.pool = pool
+
+        async def upsert_train_and_run_rows(
+            self,
+            train_rows: list[dict[str, object]],
+            run_rows: list[dict[str, object]],
+        ) -> tuple[int, int]:
+            return len(train_rows), len(run_rows)
+
+    monkeypatch.setattr("app.tasks.handlers.RailwayTaskRepository", FakeRepo)
+    monkeypatch.setattr("app.tasks.types.fetch_train_runs.seed_keywords", lambda: ["g", "d"])
+
+    result = await handle_fetch_train_runs(handler_context)
+
+    assert result.summary == "运行车次同步完成"
+    assert result.metrics_value == "2"
+    assert calls == ["g", "d"]
 
 
 def test_build_train_run_rows_filters_by_prefix_and_date() -> None:
@@ -339,7 +385,7 @@ def test_build_train_run_rows_filters_by_prefix_and_date() -> None:
             },
         ],
         run_date="2026-04-05",
-        train_code="G2",
+        keyword="G2",
     )
 
     assert [row["station_train_code"] for row in rows] == ["G2", "G20", "G219"]
@@ -353,7 +399,7 @@ async def test_handle_fetch_train_runs_filters_by_prefix_and_date(
 ) -> None:
     handler_context.task = make_task(
         "fetch-train-runs",
-        {"date": "2026-04-05", "train_code": "G2"},
+        {"date": "2026-04-05", "keyword": "G2"},
     )
     cast(Any, handler_context.crawler_client.fetch_train_runs).return_value = [
         {

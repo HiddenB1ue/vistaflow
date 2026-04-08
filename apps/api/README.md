@@ -98,7 +98,7 @@ root keyword set (`c d g k s t y z 0-9`) inside the same run.
 
 Behavior:
 
-- treat `keyword` as a recursive crawl seed rather than a single-shot query
+- treat `keyword` as a train-prefix crawl seed rather than a generic free-text query
 - recursively expand child keywords using the current 12306 search boundary
   rules (`result_limit=200`, `expand_span=3`, `max_keyword_length=6`)
 - normalize the payload date to `YYYY-MM-DD`
@@ -135,20 +135,21 @@ Payload:
 ```json
 {
   "date": "2026-04-05",
-  "train_code": "G1"
+  "keyword": "G1"
 }
 ```
 
 Behavior:
 
-- use `train_code` as a prefix seed rather than an exact single-train identifier
+- use `keyword` as a train-prefix seed rather than an exact single-train identifier
+- when `keyword` is omitted or empty, iterate the built-in root keyword set (`c d g k s t y z 0-9`) inside the same run
 - recursively collect the full matching prefix branch for the requested date
 - keep only rows whose normalized run date matches the payload date
-- keep only rows whose `station_train_code` starts with the requested prefix
+- keep only rows whose `station_train_code` starts with the requested keyword
 - preserve the upstream 12306 request and response contract
 - derive one-day run facts and normalize run status
 - idempotently upsert into `trains` and `train_runs`
-- fail the run when no matching run fact is returned
+- fail the run when no matching run fact is returned for the requested keyword set
 
 ## Architecture
 

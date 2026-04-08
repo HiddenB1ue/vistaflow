@@ -63,11 +63,11 @@ class AbstractCrawlerClient(ABC):
         """抓取指定 train_no 在某天的经停明细。"""
 
     @abstractmethod
-    async def fetch_train_runs(self, date: str, train_code: str) -> list[dict[str, Any]]:
-        """抓取指定日期与车次对应的运行候选数据。"""
+    async def fetch_train_runs(self, date: str, keyword: str) -> list[dict[str, Any]]:
+        """按日期和关键字抓取运行候选数据。"""
 
-    async def fetch_train_status(self, date: str, train_code: str) -> list[dict[str, Any]]:
-        return await self.fetch_train_runs(date, train_code)
+    async def fetch_train_status(self, date: str, keyword: str) -> list[dict[str, Any]]:
+        return await self.fetch_train_runs(date, keyword)
 
 
 class Live12306CrawlerClient(AbstractCrawlerClient):
@@ -190,8 +190,8 @@ class Live12306CrawlerClient(AbstractCrawlerClient):
             )
         return normalized
 
-    async def fetch_train_runs(self, date: str, train_code: str) -> list[dict[str, Any]]:
-        return await self.fetch_trains(date, train_code)
+    async def fetch_train_runs(self, date: str, keyword: str) -> list[dict[str, Any]]:
+        return await self.fetch_trains(date, keyword)
 
     async def _fetch_trains_once(
         self,
@@ -310,7 +310,7 @@ class NullCrawlerClient(AbstractCrawlerClient):
     async def fetch_train_stops(self, train_no: str, date: str) -> list[dict[str, Any]]:
         return []
 
-    async def fetch_train_runs(self, date: str, train_code: str) -> list[dict[str, Any]]:
+    async def fetch_train_runs(self, date: str, keyword: str) -> list[dict[str, Any]]:
         return []
 
 
