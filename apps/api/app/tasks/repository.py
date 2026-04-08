@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from datetime import datetime
 from typing import Any
 
@@ -10,6 +11,30 @@ from app.tasks.progress import phase_for_status, with_progress_state
 DEFAULT_METRICS_LABEL = "最近结果"
 DEFAULT_TIMING_LABEL = "最近耗时"
 RECOVERY_MESSAGE = "Worker 离线，任务未正常结束"
+
+
+def _encode_jsonb(value: dict[str, Any] | None) -> str | None:
+    if value is None:
+        return None
+    return json.dumps(value, ensure_ascii=False)
+
+
+def _decode_jsonb_object(value: Any) -> dict[str, Any]:
+    if value is None:
+        return {}
+    if isinstance(value, dict):
+        return value
+    if isinstance(value, str):
+        parsed = json.loads(value)
+        if isinstance(parsed, dict):
+            return parsed
+    raise ValueError(f"Expected JSON object payload, got {type(value).__name__}")
+
+
+def _decode_optional_jsonb_object(value: Any) -> dict[str, Any] | None:
+    if value is None:
+        return None
+    return _decode_jsonb_object(value)
 
 
 class TaskRepository(BaseRepository):
@@ -87,7 +112,7 @@ class TaskRepository(BaseRepository):
                 description,
                 enabled,
                 cron,
-                payload,
+                _encode_jsonb(payload),
                 DEFAULT_METRICS_LABEL,
                 DEFAULT_TIMING_LABEL,
             )
@@ -134,7 +159,7 @@ class TaskRepository(BaseRepository):
                 description,
                 enabled,
                 cron,
-                payload,
+                _encode_jsonb(payload),
             )
         if row is None:
             raise RuntimeError(f"Failed to update task {task_id}")
@@ -257,7 +282,7 @@ class TaskRepository(BaseRepository):
             description=record.get("description"),
             enabled=bool(record.get("enabled", True)),
             cron=record.get("cron"),
-            payload=dict(record.get("payload") or {}),
+            payload=_decode_jsonb_object(record.get("payload")),
             status=str(record["status"]),
             latest_run_id=(
                 int(record["latest_run_id"])
@@ -312,7 +337,12 @@ class TaskRunRepository(BaseRepository):
                       started_at, finished_at, created_at, updated_at
         """
         async with self._pool.acquire() as conn:
-            row = await conn.fetchrow(sql, task_id, requested_by, progress_snapshot)
+            row = await conn.fetchrow(
+                sql,
+                task_id,
+                requested_by,
+                _encode_jsonb(progress_snapshot),
+            )
         if row is None:
             raise RuntimeError(f"Failed to create run for task {task_id}")
         return self._row_to_run(row)
@@ -380,7 +410,7 @@ class TaskRunRepository(BaseRepository):
     ) -> TaskRun:
         sql = """
             UPDATE task_run
-            SET status = $2,
+            SET status = $2::VARCHAR,
                 summary = COALESCE($3, summary),
                 result_level = COALESCE($4, result_level),
                 metrics_value = COALESCE($5, metrics_value),
@@ -389,7 +419,7 @@ class TaskRunRepository(BaseRepository):
                 termination_reason = $8,
                 worker_id = COALESCE($9, worker_id),
                 heartbeat_at = CASE
-                    WHEN $2 = 'running' THEN NOW()
+                    WHEN $2::VARCHAR = 'running' THEN NOW()
                     ELSE heartbeat_at
                 END,
                 started_at = CASE
@@ -416,7 +446,7 @@ class TaskRunRepository(BaseRepository):
                 summary,
                 result_level,
                 metrics_value,
-                progress_snapshot,
+                _encode_jsonb(progress_snapshot),
                 error_message,
                 termination_reason,
                 worker_id,
@@ -444,7 +474,7 @@ class TaskRunRepository(BaseRepository):
                       started_at, finished_at, created_at, updated_at
         """
         async with self._pool.acquire() as conn:
-            row = await conn.fetchrow(sql, run_id, progress_snapshot)
+            row = await conn.fetchrow(sql, run_id, _encode_jsonb(progress_snapshot))
         if row is None:
             raise RuntimeError(f"Failed to update progress snapshot for run {run_id}")
         return self._row_to_run(row)
@@ -574,7 +604,7 @@ class TaskRunRepository(BaseRepository):
     def _row_to_run(row: Any) -> TaskRun:
         record = dict(row)
         status = str(record["status"])
-        progress_snapshot = record.get("progress_snapshot")
+        progress_snapshot = _decode_optional_jsonb_object(record.get("progress_snapshot"))
         return TaskRun(
             id=int(record["id"]),
             task_id=int(record["task_id"]),
