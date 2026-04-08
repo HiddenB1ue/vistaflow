@@ -1,3 +1,5 @@
+# ruff: noqa: E402
+
 from __future__ import annotations
 
 import asyncio
@@ -44,7 +46,11 @@ async def main() -> None:
         return
 
     station_train_codes = sorted(
-        {str(row.get("station_train_code") or "") for row in stop_rows if row.get("station_train_code")}
+        {
+            str(row.get("station_train_code") or "")
+            for row in stop_rows
+            if row.get("station_train_code")
+        }
     )
     station_names = [str(row.get("station_name") or "") for row in stop_rows]
 

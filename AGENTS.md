@@ -1,9 +1,10 @@
 ﻿# vista-flow Development Guidelines
 
-Auto-generated from all feature plans. Last updated: 2026-04-05
+Auto-generated from all feature plans. Last updated: 2026-04-07
 
 ## Active Technologies
 - PostgreSQL 16 with existing `task`, `task_run`, `task_run_log`, `trains`, `train_stops`, and `train_runs` tables under `infra/sql/` (002-railway-crawl-tasks)
+- PostgreSQL 16 with existing `task`, `task_run`, `task_run_log`, and related railway tables under `infra/sql/` (003-task-module-refactor)
 
 - Python 3.12 + FastAPI, Pydantic v2, asyncpg, httpx, pydantic-settings (001-task-management-api)
 
@@ -24,6 +25,7 @@ cd src; pytest; ruff check .
 Python 3.12: Follow standard conventions
 
 ## Recent Changes
+- 003-task-module-refactor: Added Python 3.12 + FastAPI, Pydantic v2, asyncpg, httpx, pydantic-settings
 - 002-railway-crawl-tasks: Added Python 3.12 + FastAPI, Pydantic v2, asyncpg, httpx, pydantic-settings
 
 - 001-task-management-api: Added Python 3.12 + FastAPI, Pydantic v2, asyncpg, httpx, pydantic-settings

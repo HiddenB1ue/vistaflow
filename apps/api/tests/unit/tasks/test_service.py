@@ -4,8 +4,14 @@ from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from pydantic import BaseModel, field_validator
 
 from app.models import TaskDefinition, TaskRun, TaskRunLog
+from app.tasks.definition import (
+    TaskCapabilityContract,
+    TaskParamDefinition,
+    TaskTypeDefinition,
+)
 from app.tasks.exceptions import (
     TaskAlreadyRunning,
     TaskDeleteConflict,
@@ -16,6 +22,7 @@ from app.tasks.exceptions import (
     TaskTypeUnsupported,
     TaskUpdateConflict,
 )
+from app.tasks.registry import TaskDefinitionRegistry
 from app.tasks.schemas import TaskCreateRequest, TaskUpdateRequest
 from app.tasks.service import TaskService
 
@@ -86,6 +93,18 @@ def make_log() -> TaskRunLog:
         message="started",
         created_at=NOW,
     )
+
+
+class DemoPayload(BaseModel):
+    code: str
+
+    @field_validator("code")
+    @classmethod
+    def normalize_code(cls, value: str) -> str:
+        cleaned = value.strip()
+        if not cleaned:
+            raise ValueError("code 不能为空")
+        return cleaned.upper()
 
 
 @pytest.fixture
@@ -261,6 +280,103 @@ async def test_create_fetch_train_stops_task_allows_missing_keyword(
     assert task_repo.create_task.await_args.kwargs["payload"] == {
         "date": "2026-04-05",
     }
+
+
+@pytest.mark.asyncio
+async def test_create_task_supports_registry_defined_custom_type() -> None:
+    task_repo = AsyncMock()
+    run_repo = AsyncMock()
+    run_log_repo = AsyncMock()
+    runner = MagicMock()
+    task_repo.find_by_name.return_value = None
+    task_repo.create_task.return_value = make_task(
+        task_type="demo-task",
+        type_label="演示任务",
+        payload={"code": "G123"},
+    )
+    registry = TaskDefinitionRegistry(
+        (
+            TaskTypeDefinition(
+                type="demo-task",
+                label="演示任务",
+                description="通过注册表定义的示例任务",
+                implemented=True,
+                capability=TaskCapabilityContract(),
+                param_schema=(
+                    TaskParamDefinition(
+                        key="code",
+                        label="车次编码",
+                        value_type="text",
+                        required=True,
+                        placeholder="例如 G123",
+                        description="用于验证注册表自描述能力",
+                    ),
+                ),
+                payload_model=DemoPayload,
+                executor=AsyncMock(),
+            ),
+        )
+    )
+    service = TaskService(
+        task_repo=task_repo,
+        run_repo=run_repo,
+        run_log_repo=run_log_repo,
+        runner=runner,
+        task_registry=registry,
+    )
+
+    result = await service.create_task(
+        TaskCreateRequest(
+            name="Demo task",
+            type="demo-task",
+            payload={"code": " g123 "},
+        )
+    )
+
+    assert result.type == "demo-task"
+    assert result.typeLabel == "演示任务"
+    assert task_repo.create_task.await_args.kwargs["payload"] == {"code": "G123"}
+
+
+@pytest.mark.asyncio
+async def test_list_task_types_reads_from_custom_registry() -> None:
+    registry = TaskDefinitionRegistry(
+        (
+            TaskTypeDefinition(
+                type="demo-task",
+                label="演示任务",
+                description="通过注册表定义的示例任务",
+                implemented=True,
+                capability=TaskCapabilityContract(supports_cron=False),
+                param_schema=(
+                    TaskParamDefinition(
+                        key="code",
+                        label="车次编码",
+                        value_type="text",
+                        required=True,
+                        placeholder="例如 G123",
+                        description="用于验证任务类型目录输出",
+                    ),
+                ),
+                payload_model=DemoPayload,
+                executor=AsyncMock(),
+            ),
+        )
+    )
+    service = TaskService(
+        task_repo=AsyncMock(),
+        run_repo=AsyncMock(),
+        run_log_repo=AsyncMock(),
+        runner=MagicMock(),
+        task_registry=registry,
+    )
+
+    task_types = await service.list_task_types()
+
+    assert [item.type for item in task_types] == ["demo-task"]
+    assert task_types[0].label == "演示任务"
+    assert task_types[0].supportsCron is False
+    assert task_types[0].paramSchema[0].key == "code"
 
 
 @pytest.mark.asyncio

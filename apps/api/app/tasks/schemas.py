@@ -1,13 +1,12 @@
 ﻿from __future__ import annotations
 
-from datetime import date as date_type
 from datetime import datetime
 from typing import Any
 
 from pydantic import BaseModel, Field, field_validator
 
-from app.tasks.constants import TaskParamDefinition
-from app.tasks.exceptions import TaskPayloadValidationError
+from app.tasks.definition import TaskParamDefinition
+from app.tasks.registry import get_builtin_task_registry
 
 
 class TaskMetrics(BaseModel):
@@ -141,97 +140,13 @@ class TaskRunLogResponse(BaseModel):
     createdAt: datetime
 
 
-class FetchTrainsPayload(BaseModel):
-    date: str
-    keyword: str | None = None
-
-    @field_validator("date")
-    @classmethod
-    def normalize_date_field(cls, value: str) -> str:
-        return normalize_payload_date(value)
-
-    @field_validator("keyword")
-    @classmethod
-    def normalize_keyword_field(cls, value: str | None) -> str | None:
-        return normalize_optional_text_field(value)
-
-
-class FetchTrainStopsPayload(BaseModel):
-    date: str
-    keyword: str | None = None
-
-    @field_validator("date")
-    @classmethod
-    def normalize_date_field(cls, value: str) -> str:
-        return normalize_payload_date(value)
-
-    @field_validator("keyword")
-    @classmethod
-    def normalize_keyword_field(cls, value: str | None) -> str | None:
-        return normalize_optional_text_field(value)
-
-
-class FetchTrainRunsPayload(BaseModel):
-    date: str
-    train_code: str
-
-    @field_validator("date")
-    @classmethod
-    def normalize_date_field(cls, value: str) -> str:
-        return normalize_payload_date(value)
-
-    @field_validator("train_code")
-    @classmethod
-    def normalize_train_code_field(cls, value: str) -> str:
-        return normalize_required_text_field(value, field_name="train_code")
-
-
-TASK_PAYLOAD_MODELS: dict[str, type[BaseModel]] = {
-    "fetch-trains": FetchTrainsPayload,
-    "fetch-train-stops": FetchTrainStopsPayload,
-    "fetch-train-runs": FetchTrainRunsPayload,
-}
-
-
-def normalize_required_text_field(value: str, *, field_name: str) -> str:
-    cleaned = value.strip()
-    if not cleaned:
-        raise ValueError(f"{field_name} 不能为空")
-    return cleaned
-
-
-def normalize_optional_text_field(value: str | None) -> str | None:
-    if value is None:
-        return None
-    cleaned = value.strip()
-    return cleaned or None
-
-
-def normalize_payload_date(value: str) -> str:
-    cleaned = value.strip()
-    try:
-        if len(cleaned) == 8 and cleaned.isdigit():
-            parsed = date_type.fromisoformat(f"{cleaned[:4]}-{cleaned[4:6]}-{cleaned[6:]}")
-        else:
-            parsed = date_type.fromisoformat(cleaned)
-    except ValueError as exc:
-        raise ValueError("日期必须是 YYYY-MM-DD 或 YYYYMMDD") from exc
-    return parsed.isoformat()
-
-
 def normalize_task_payload(task_type: str, payload: dict[str, Any]) -> dict[str, Any]:
-    model = TASK_PAYLOAD_MODELS.get(task_type)
-    if model is None:
-        return dict(payload)
-    try:
-        validated = model.model_validate(payload)
-    except Exception as exc:
-        raise TaskPayloadValidationError(task_type, str(exc)) from exc
-    return dict(validated.model_dump(exclude_none=True))
+    return get_builtin_task_registry().normalize_payload(task_type, payload)
 
 
 def get_task_payload_model(task_type: str) -> type[BaseModel] | None:
-    return TASK_PAYLOAD_MODELS.get(task_type)
+    definition = get_builtin_task_registry().get_optional(task_type)
+    return definition.payload_model if definition is not None else None
 
 
 def build_task_param_response(definition: TaskParamDefinition) -> TaskParamResponse:

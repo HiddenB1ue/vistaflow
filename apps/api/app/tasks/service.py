@@ -1,15 +1,8 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from dataclasses import replace
 
 from app.models import TaskDefinition, TaskRun, TaskRunLog
-from app.tasks.constants import (
-    TASK_TYPES,
-    get_task_type_definition,
-    get_task_type_label,
-    is_implemented_task_type,
-    is_supported_task_type,
-)
 from app.tasks.exceptions import (
     TaskAlreadyRunning,
     TaskDeleteConflict,
@@ -17,12 +10,15 @@ from app.tasks.exceptions import (
     TaskNameConflict,
     TaskNotFound,
     TaskRunNotFound,
+    TaskRunNotTerminable,
     TaskTypeNotImplemented,
+    TaskTypeUnavailable,
     TaskTypeUnsupported,
     TaskUpdateConflict,
 )
-from app.tasks.repository import TaskRepository, TaskRunLogRepository, TaskRunRepository
 from app.tasks.progress import build_progress_snapshot
+from app.tasks.registry import TaskDefinitionRegistry, get_builtin_task_registry
+from app.tasks.repository import TaskRepository, TaskRunLogRepository, TaskRunRepository
 from app.tasks.runner import TaskRunner
 from app.tasks.schemas import (
     TaskCreateRequest,
@@ -35,7 +31,6 @@ from app.tasks.schemas import (
     TaskTypeResponse,
     TaskUpdateRequest,
     build_task_param_response,
-    normalize_task_payload,
 )
 
 
@@ -46,11 +41,13 @@ class TaskService:
         run_repo: TaskRunRepository,
         run_log_repo: TaskRunLogRepository,
         runner: TaskRunner,
+        task_registry: TaskDefinitionRegistry | None = None,
     ) -> None:
         self._task_repo = task_repo
         self._run_repo = run_repo
         self._run_log_repo = run_log_repo
         self._runner = runner
+        self._task_registry = task_registry or get_builtin_task_registry()
 
     async def list_task_types(self) -> list[TaskTypeResponse]:
         return [
@@ -62,7 +59,7 @@ class TaskService:
                 supportsCron=definition.supports_cron,
                 paramSchema=[build_task_param_response(param) for param in definition.param_schema],
             )
-            for definition in TASK_TYPES.values()
+            for definition in self._task_registry.all()
         ]
 
     async def list_tasks(self) -> list[TaskResponse]:
@@ -74,13 +71,13 @@ class TaskService:
         return self._to_task_response(task)
 
     async def create_task(self, payload: TaskCreateRequest) -> TaskResponse:
-        self._validate_task_type(payload.type)
+        definition = self._require_task_type_definition(payload.type)
         await self._ensure_name_available(payload.name)
-        normalized_payload = normalize_task_payload(payload.type, payload.payload)
+        normalized_payload = self._task_registry.normalize_payload(payload.type, payload.payload)
         task = await self._task_repo.create_task(
             name=payload.name,
             task_type=payload.type,
-            type_label=get_task_type_label(payload.type),
+            type_label=definition.label,
             description=payload.description,
             enabled=payload.enabled,
             cron=payload.cron,
@@ -95,17 +92,17 @@ class TaskService:
             raise TaskUpdateConflict(task_id)
 
         task_type = payload.type or existing.type
-        self._validate_task_type(task_type)
+        definition = self._require_task_type_definition(task_type)
         name = payload.name or existing.name
         await self._ensure_name_available(name, exclude_task_id=task_id)
         candidate_payload = payload.payload if payload.payload is not None else existing.payload
-        normalized_payload = normalize_task_payload(task_type, candidate_payload)
+        normalized_payload = self._task_registry.normalize_payload(task_type, candidate_payload)
 
         updated = await self._task_repo.update_task(
             task_id,
             name=name,
             task_type=task_type,
-            type_label=get_task_type_label(task_type),
+            type_label=definition.label,
             description=(
                 payload.description if payload.description is not None else existing.description
             ),
@@ -124,15 +121,16 @@ class TaskService:
 
     async def trigger_task(self, task_id: int) -> TaskRunResponse:
         task = await self._require_task(task_id)
+        definition = self._require_task_type_definition(task.type)
         active = await self._run_repo.find_active_by_task(task_id)
         if active is not None:
             raise TaskAlreadyRunning(task_id)
         if not task.enabled:
             raise TaskDisabled(task_id)
-        if not is_implemented_task_type(task.type):
+        if not definition.implemented or not definition.capability.can_run:
             raise TaskTypeNotImplemented(task.type)
 
-        normalized_payload = normalize_task_payload(task.type, task.payload)
+        normalized_payload = self._task_registry.normalize_payload(task.type, task.payload)
         run = await self._run_repo.create_run(task_id=task_id)
         run = await self._run_repo.update_progress_snapshot(
             run.id,
@@ -150,6 +148,9 @@ class TaskService:
 
     async def terminate_run(self, run_id: int) -> TaskRunResponse:
         run = await self._require_run(run_id)
+        definition = self._require_task_type_definition(run.task_type)
+        if not definition.capability.can_terminate:
+            raise TaskRunNotTerminable(run_id)
         terminated = await self._runner.terminate(run)
         return self._to_run_response(terminated)
 
@@ -189,13 +190,13 @@ class TaskService:
             return
         raise TaskNameConflict(name)
 
-    @staticmethod
-    def _validate_task_type(task_type: str) -> None:
-        if not is_supported_task_type(task_type):
-            raise TaskTypeUnsupported(task_type)
-        definition = get_task_type_definition(task_type)
+    def _require_task_type_definition(self, task_type: str):
+        definition = self._task_registry.get_optional(task_type)
         if definition is None:
             raise TaskTypeUnsupported(task_type)
+        if definition.executor is None and definition.implemented:
+            raise TaskTypeUnavailable(task_type)
+        return definition
 
     @staticmethod
     def _to_task_response(task: TaskDefinition) -> TaskResponse:

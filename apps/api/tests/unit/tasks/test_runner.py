@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import asyncio
 from datetime import UTC, datetime
@@ -7,6 +7,9 @@ from unittest.mock import AsyncMock
 import pytest
 
 from app.models import TaskDefinition, TaskRun
+from app.tasks.definition import TaskCapabilityContract, TaskTypeDefinition
+from app.tasks.execution import TaskExecutionResult
+from app.tasks.registry import TaskDefinitionRegistry
 from app.tasks.runner import TASK_HANDLERS, TaskRunner
 from app.tasks.runtime import TaskRuntimeRegistry
 
@@ -64,9 +67,23 @@ def make_run(*, status: str = "pending", task_type: str = "fetch-station") -> Ta
     )
 
 
+def make_registry(**handlers: object) -> TaskDefinitionRegistry:
+    definitions = tuple(
+        TaskTypeDefinition(
+            type=task_type,
+            label=task_type,
+            description=task_type,
+            implemented=True,
+            capability=TaskCapabilityContract(),
+            executor=handler,
+        )
+        for task_type, handler in handlers.items()
+    )
+    return TaskDefinitionRegistry(definitions)
+
+
 @pytest.fixture
 def runner_deps() -> tuple[
-    TaskRunner,
     AsyncMock,
     AsyncMock,
     AsyncMock,
@@ -78,39 +95,48 @@ def runner_deps() -> tuple[
     run_log_repo = AsyncMock()
     log_repo = AsyncMock()
     runtime = TaskRuntimeRegistry()
-    runner = TaskRunner(
+    return task_repo, run_repo, run_log_repo, log_repo, runtime
+
+
+def build_runner(
+    *,
+    task_registry: TaskDefinitionRegistry,
+    task_repo: AsyncMock,
+    run_repo: AsyncMock,
+    run_log_repo: AsyncMock,
+    log_repo: AsyncMock,
+    runtime: TaskRuntimeRegistry,
+) -> TaskRunner:
+    return TaskRunner(
         pool=AsyncMock(),
         task_repo=task_repo,
         run_repo=run_repo,
         run_log_repo=run_log_repo,
         log_repo=log_repo,
         runtime_registry=runtime,
+        task_registry=task_registry,
         crawler_client=AsyncMock(),
         geo_client=AsyncMock(),
     )
-    return runner, task_repo, run_repo, run_log_repo, log_repo, runtime
 
 
 @pytest.mark.asyncio
 async def test_execute_marks_completed(
-    runner_deps: tuple[TaskRunner, AsyncMock, AsyncMock, AsyncMock, AsyncMock, TaskRuntimeRegistry],
-    monkeypatch: pytest.MonkeyPatch,
+    runner_deps: tuple[AsyncMock, AsyncMock, AsyncMock, AsyncMock, TaskRuntimeRegistry],
 ) -> None:
-    runner, task_repo, run_repo, run_log_repo, _, _ = runner_deps
+    task_repo, run_repo, run_log_repo, log_repo, runtime = runner_deps
 
-    async def fake_handler(ctx: object) -> object:
-        return type(
-            "Result",
-            (),
-            {
-                "summary": "done",
-                "metrics_value": "12",
-                "timing_value": "1s",
-                "progress_snapshot": None,
-            },
-        )()
+    async def fake_handler(ctx: object) -> TaskExecutionResult:
+        return TaskExecutionResult(summary="done", metrics_value="12", timing_value="1s")
 
-    monkeypatch.setitem(TASK_HANDLERS, "fetch-station", fake_handler)
+    runner = build_runner(
+        task_registry=make_registry(**{"fetch-station": fake_handler}),
+        task_repo=task_repo,
+        run_repo=run_repo,
+        run_log_repo=run_log_repo,
+        log_repo=log_repo,
+        runtime=runtime,
+    )
     run_repo.find_by_id.side_effect = [make_run(), make_run(status="completed")]
 
     await runner.execute(make_task(), 11)
@@ -124,20 +150,31 @@ async def test_execute_marks_completed(
         timing_value="1s",
     )
     run_log_repo.create_log.assert_awaited()
+    log_repo.write_log.assert_awaited()
 
 
 @pytest.mark.asyncio
 async def test_execute_marks_error_when_handler_raises(
-    runner_deps: tuple[TaskRunner, AsyncMock, AsyncMock, AsyncMock, AsyncMock, TaskRuntimeRegistry],
-    monkeypatch: pytest.MonkeyPatch,
+    runner_deps: tuple[AsyncMock, AsyncMock, AsyncMock, AsyncMock, TaskRuntimeRegistry],
 ) -> None:
-    runner, task_repo, run_repo, _, log_repo, _ = runner_deps
+    task_repo, run_repo, run_log_repo, log_repo, runtime = runner_deps
 
-    async def fake_handler(ctx: object) -> object:
+    async def fake_handler(ctx: object) -> TaskExecutionResult:
         raise RuntimeError("boom")
 
-    monkeypatch.setitem(TASK_HANDLERS, "fetch-trains", fake_handler)
-    run_repo.find_by_id.side_effect = [make_run(task_type="fetch-trains"), make_run(status="error", task_type="fetch-trains"), make_run(status="error", task_type="fetch-trains")]
+    runner = build_runner(
+        task_registry=make_registry(**{"fetch-trains": fake_handler}),
+        task_repo=task_repo,
+        run_repo=run_repo,
+        run_log_repo=run_log_repo,
+        log_repo=log_repo,
+        runtime=runtime,
+    )
+    run_repo.find_by_id.side_effect = [
+        make_run(task_type="fetch-trains"),
+        make_run(status="error", task_type="fetch-trains"),
+        make_run(status="error", task_type="fetch-trains"),
+    ]
 
     await runner.execute(make_task(task_type="fetch-trains"), 11)
 
@@ -150,6 +187,7 @@ async def test_execute_marks_error_when_handler_raises(
             task_repo.apply_run_result.await_args.kwargs["timing_value"], rel=0.0
         ),
     )
+    run_log_repo.create_log.assert_awaited()
     log_repo.write_log.assert_awaited()
 
 
@@ -159,9 +197,17 @@ def test_runner_registers_railway_handlers() -> None:
 
 @pytest.mark.asyncio
 async def test_terminate_cancels_active_task(
-    runner_deps: tuple[TaskRunner, AsyncMock, AsyncMock, AsyncMock, AsyncMock, TaskRuntimeRegistry],
+    runner_deps: tuple[AsyncMock, AsyncMock, AsyncMock, AsyncMock, TaskRuntimeRegistry],
 ) -> None:
-    runner, _, run_repo, _, _, runtime = runner_deps
+    task_repo, run_repo, run_log_repo, log_repo, runtime = runner_deps
+    runner = build_runner(
+        task_registry=make_registry(**{"fetch-station": AsyncMock()}),
+        task_repo=task_repo,
+        run_repo=run_repo,
+        run_log_repo=run_log_repo,
+        log_repo=log_repo,
+        runtime=runtime,
+    )
     gate = asyncio.Event()
 
     async def long_running() -> None:

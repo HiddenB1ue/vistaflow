@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
@@ -22,6 +22,7 @@ from app.journeys.router import router as journeys_router
 from app.railway.router import router as railway_router
 from app.schemas import APIResponse
 from app.system.router import router as system_router
+from app.tasks.registry import create_task_registry
 from app.tasks.repository import TaskRepository, TaskRunRepository
 from app.tasks.router import router as tasks_router
 from app.tasks.runtime import TaskRuntimeRegistry
@@ -38,6 +39,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         command_timeout=30,
     )
     app.state.task_runtime = TaskRuntimeRegistry()
+    app.state.task_registry = create_task_registry()
 
     task_repo = TaskRepository(app.state.db_pool)
     run_repo = TaskRunRepository(app.state.db_pool)

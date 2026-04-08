@@ -255,6 +255,7 @@ async def test_handle_fetch_train_runs_persists_run_facts(
             "from_station": "北京南",
             "to_station": "上海虹桥",
             "total_num": 2,
+            "run_date": "2026-04-05",
             "data_flag": "1",
         }
     ]

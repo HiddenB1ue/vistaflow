@@ -31,6 +31,16 @@ class TaskTypeNotImplemented(BusinessError):
         )
 
 
+class TaskTypeUnavailable(BusinessError):
+    def __init__(self, task_type: str) -> None:
+        super().__init__(f"任务类型“{task_type}”当前未正确注册，无法加载", http_status=500)
+
+
+class TaskDefinitionInvalid(BusinessError):
+    def __init__(self, detail: str) -> None:
+        super().__init__(f"任务类型定义无效：{detail}", http_status=500)
+
+
 class TaskPayloadValidationError(BusinessError):
     def __init__(self, task_type: str, detail: str) -> None:
         super().__init__(f"任务类型“{task_type}”的参数无效：{detail}", http_status=400)

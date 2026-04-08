@@ -1,7 +1,6 @@
 ﻿from __future__ import annotations
 
 import asyncio
-from collections.abc import Awaitable, Callable
 from time import monotonic
 
 import asyncpg
@@ -10,27 +9,21 @@ from app.integrations.crawler.client import AbstractCrawlerClient
 from app.integrations.geo.client import AbstractGeoClient
 from app.models import TaskDefinition, TaskRun
 from app.system.log_repository import LogRepository
-from app.tasks.constants import is_implemented_task_type
-from app.tasks.exceptions import TaskRunNotTerminable, TaskTypeNotImplemented
-from app.tasks.handlers import (
-    HandlerContext,
-    TaskExecutionResult,
-    handle_fetch_station,
-    handle_fetch_train_runs,
-    handle_fetch_train_stops,
-    handle_fetch_trains,
+from app.tasks.exceptions import TaskRunNotTerminable, TaskTypeNotImplemented, TaskTypeUnavailable
+from app.tasks.execution import (
+    TaskExecutionContext,
+    TaskFrameworkPorts,
+    TaskServiceAccess,
 )
 from app.tasks.progress import with_progress_state
+from app.tasks.registry import TaskDefinitionRegistry, get_builtin_task_registry
 from app.tasks.repository import TaskRepository, TaskRunLogRepository, TaskRunRepository
 from app.tasks.runtime import TaskRuntimeRegistry
 
-Handler = Callable[[HandlerContext], Awaitable[TaskExecutionResult]]
-
-TASK_HANDLERS: dict[str, Handler] = {
-    "fetch-station": handle_fetch_station,
-    "fetch-trains": handle_fetch_trains,
-    "fetch-train-stops": handle_fetch_train_stops,
-    "fetch-train-runs": handle_fetch_train_runs,
+TASK_HANDLERS = {
+    definition.type: definition.executor
+    for definition in get_builtin_task_registry().all()
+    if definition.executor is not None
 }
 
 
@@ -45,6 +38,7 @@ class TaskRunner:
         runtime_registry: TaskRuntimeRegistry,
         crawler_client: AbstractCrawlerClient,
         geo_client: AbstractGeoClient,
+        task_registry: TaskDefinitionRegistry | None = None,
     ) -> None:
         self._pool = pool
         self._task_repo = task_repo
@@ -52,6 +46,7 @@ class TaskRunner:
         self._run_log_repo = run_log_repo
         self._log_repo = log_repo
         self._runtime_registry = runtime_registry
+        self._task_registry = task_registry or get_builtin_task_registry()
         self._crawler_client = crawler_client
         self._geo_client = geo_client
 
@@ -90,22 +85,28 @@ class TaskRunner:
         await self._task_repo.mark_task_running(task.id, run_id)
         await self._run_log_repo.create_log(run_id, "SYSTEM", f"任务 {task.name} 已开始执行")
         started_at = monotonic()
-        handler = TASK_HANDLERS.get(task.type)
 
         try:
-            if not is_implemented_task_type(task.type) or handler is None:
+            definition = self._task_registry.get_optional(task.type)
+            if definition is None:
+                raise TaskTypeUnavailable(task.type)
+            if not definition.implemented or definition.executor is None:
                 raise TaskTypeNotImplemented(task.type)
 
-            result = await handler(
-                HandlerContext(
+            result = await definition.executor(
+                TaskExecutionContext(
                     task=task,
                     run_id=run_id,
-                    pool=self._pool,
-                    run_repo=self._run_repo,
-                    run_log_repo=self._run_log_repo,
-                    log_repo=self._log_repo,
-                    crawler_client=self._crawler_client,
-                    geo_client=self._geo_client,
+                    framework=TaskFrameworkPorts(
+                        pool=self._pool,
+                        run_repo=self._run_repo,
+                        run_log_repo=self._run_log_repo,
+                        log_repo=self._log_repo,
+                    ),
+                    service_access=TaskServiceAccess(
+                        crawler_client=self._crawler_client,
+                        geo_client=self._geo_client,
+                    ),
                 )
             )
             timing_value = self._format_elapsed(started_at)
