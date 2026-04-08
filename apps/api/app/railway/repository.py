@@ -29,13 +29,25 @@ class StationRepository(BaseRepository):
             for station in stations:
                 await conn.execute(
                     """
-                    INSERT INTO stations (telecode, name, pinyin, abbr, area_code)
-                    VALUES ($1, $2, $3, $4, $5)
+                    INSERT INTO stations (
+                        telecode,
+                        name,
+                        pinyin,
+                        abbr,
+                        area_code,
+                        area_name,
+                        country_code,
+                        country_name
+                    )
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
                     ON CONFLICT (telecode) DO UPDATE
                     SET name = EXCLUDED.name,
                         pinyin = EXCLUDED.pinyin,
                         abbr = EXCLUDED.abbr,
                         area_code = EXCLUDED.area_code,
+                        area_name = EXCLUDED.area_name,
+                        country_code = EXCLUDED.country_code,
+                        country_name = EXCLUDED.country_name,
                         updated_at = NOW()
                     """,
                     station.get("telecode", ""),
@@ -43,6 +55,9 @@ class StationRepository(BaseRepository):
                     station.get("pinyin", ""),
                     station.get("abbr", ""),
                     station.get("area_code", ""),
+                    station.get("area_name", ""),
+                    station.get("country_code", "cn"),
+                    station.get("country_name", "中国"),
                 )
                 count += 1
         return count
