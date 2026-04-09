@@ -29,6 +29,10 @@ const statusBadgeMap: Record<string, { variant: 'green' | 'yellow' | 'red'; labe
   missing: { variant: 'red', label: DATA_LABELS.statusMissing },
 };
 
+function formatCoordinate(value: number | null | undefined): string {
+  return typeof value === 'number' && Number.isFinite(value) ? value.toFixed(6) : '--';
+}
+
 export function buildStationColumns(onEdit: (station: Station) => void) {
   return [
     {
@@ -53,12 +57,12 @@ export function buildStationColumns(onEdit: (station: Station) => void) {
     {
       key: 'lng',
       header: '经度',
-      render: (station: Station) => <span className={`font-mono text-xs ${coordColorMap[station.coordinateStatus] ?? ''}`}>{station.longitude.toFixed(6)}</span>,
+      render: (station: Station) => <span className={`font-mono text-xs ${coordColorMap[station.coordinateStatus] ?? ''}`}>{formatCoordinate(station.longitude)}</span>,
     },
     {
       key: 'lat',
       header: '纬度',
-      render: (station: Station) => <span className={`font-mono text-xs ${coordColorMap[station.coordinateStatus] ?? ''}`}>{station.latitude.toFixed(6)}</span>,
+      render: (station: Station) => <span className={`font-mono text-xs ${coordColorMap[station.coordinateStatus] ?? ''}`}>{formatCoordinate(station.latitude)}</span>,
     },
     {
       key: 'status',

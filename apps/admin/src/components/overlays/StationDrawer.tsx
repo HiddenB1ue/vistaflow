@@ -29,6 +29,10 @@ const dataSourceOptions = [
   { value: 'scraped', label: STATION_DRAWER_LABELS.dataSources.scraped },
 ];
 
+function formatCoordinateInput(value: number | null | undefined): string {
+  return typeof value === 'number' && Number.isFinite(value) ? value.toFixed(6) : '';
+}
+
 export function StationDrawer({ isOpen, station, onClose, onSave, onDelete }: StationDrawerProps) {
   const [name, setName] = useState('');
   const [code, setCode] = useState('');
@@ -43,8 +47,8 @@ export function StationDrawer({ isOpen, station, onClose, onSave, onDelete }: St
       setName(station.name);
       setCode(station.code);
       setCity(station.city);
-      setLng(station.longitude.toFixed(6));
-      setLat(station.latitude.toFixed(6));
+      setLng(formatCoordinateInput(station.longitude));
+      setLat(formatCoordinateInput(station.latitude));
       setDataSource(station.dataSource);
       setNotes(station.notes ?? '');
       return;
