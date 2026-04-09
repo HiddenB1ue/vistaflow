@@ -15,6 +15,10 @@ def test_task_management_routes_exist() -> None:
 
     assert "GET" in route_map["/api/v1/admin/tasks/types"]
     assert {"GET", "POST"}.issubset(route_map["/api/v1/admin/tasks"])
+    assert "GET" in route_map["/api/v1/admin/data/stations"]
+    assert "PATCH" in route_map["/api/v1/admin/data/stations/{station_id}/geo"]
+    assert "GET" in route_map["/api/v1/admin/data/trains"]
+    assert "GET" in route_map["/api/v1/admin/data/trains/{train_id}/stops"]
     assert {"GET", "PATCH", "DELETE"}.issubset(route_map["/api/v1/admin/tasks/{task_id}"])
     assert "POST" in route_map["/api/v1/admin/tasks/{task_id}/runs"]
     assert "GET" in route_map["/api/v1/admin/tasks/{task_id}/runs"]

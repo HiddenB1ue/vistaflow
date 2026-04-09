@@ -9,6 +9,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+from app.admin_data.router import router as admin_data_router
 from app.config import get_settings
 from app.exceptions import BusinessError
 from app.integrations.crawler.client import Live12306CrawlerClient
@@ -103,6 +104,7 @@ def create_app() -> FastAPI:
     app.include_router(journeys_router, prefix=API_V1_PREFIX)
     app.include_router(tasks_router, prefix=ADMIN_API_V1_PREFIX)
     app.include_router(health_router)
+    app.include_router(admin_data_router, prefix=ADMIN_API_V1_PREFIX)
     app.include_router(system_router, prefix=ADMIN_API_V1_PREFIX)
     return app
 

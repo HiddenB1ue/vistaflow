@@ -1,15 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Outlet, useLocation } from 'react-router-dom';
 import { AuraBackground, DrawerBackdrop, ErrorBoundary, NoiseTexture, ToastContainer } from '@vistaflow/ui';
-import { PreviewModal } from '@/components/overlays/PreviewModal';
-import { StationDrawer } from '@/components/overlays/StationDrawer';
 import { TaskDetailDrawer } from '@/components/overlays/TaskDetailDrawer';
 import { TaskDrawer } from '@/components/overlays/TaskDrawer';
 import { ROUTE_META_LABELS, TOAST_MESSAGES } from '@/constants/labels';
 import { fetchTasks } from '@/services/taskService';
 import { useDrawerStore } from '@/stores/drawerStore';
-import { useModalStore } from '@/stores/modalStore';
 import { useTaskStore } from '@/stores/taskStore';
 import { useToastStore } from '@/stores/toastStore';
 import { Header } from './Header';
@@ -35,6 +32,7 @@ function formatTimestamp(date: Date) {
 }
 
 export function AdminLayout() {
+  const queryClient = useQueryClient();
   const mainRef = useRef<HTMLElement | null>(null);
   const location = useLocation();
   const [headerScrolled, setHeaderScrolled] = useState(false);
@@ -46,13 +44,8 @@ export function AdminLayout() {
   const taskDrawerOpen = useDrawerStore((state) => state.taskDrawerOpen);
   const taskDetailDrawerOpen = useDrawerStore((state) => state.taskDetailDrawerOpen);
   const taskDetailDrawerTaskId = useDrawerStore((state) => state.taskDetailDrawerTaskId);
-  const stationDrawerOpen = useDrawerStore((state) => state.stationDrawerOpen);
-  const stationDrawerData = useDrawerStore((state) => state.stationDrawerData);
-  const previewModalOpen = useModalStore((state) => state.previewModalOpen);
   const closeTaskDrawer = useDrawerStore((state) => state.closeTaskDrawer);
   const closeTaskDetailDrawer = useDrawerStore((state) => state.closeTaskDetailDrawer);
-  const closeStationDrawer = useDrawerStore((state) => state.closeStationDrawer);
-  const closePreviewModal = useModalStore((state) => state.closePreviewModal);
 
   const meta = ROUTE_META[location.pathname as keyof typeof ROUTE_META] ?? ROUTE_META['/'];
   const pendingTaskCount = tasks.filter((task) => task.status === 'pending').length;
@@ -70,48 +63,34 @@ export function AdminLayout() {
   }, [setTasks, taskData]);
 
   const handleRefresh = useCallback(async () => {
-    await refetchTasks();
+    await Promise.all([
+      refetchTasks(),
+      queryClient.invalidateQueries({ queryKey: ['admin', 'data'] }),
+      queryClient.invalidateQueries({ queryKey: ['admin', 'system'] }),
+    ]);
     addToast(TOAST_MESSAGES.dataRefreshed, 'info');
-  }, [addToast, refetchTasks]);
+  }, [addToast, queryClient, refetchTasks]);
 
   const handleTaskDrawerSubmit = useCallback((taskName: string) => {
     closeTaskDrawer();
     addToast(TOAST_MESSAGES.taskCreated(taskName), 'success');
   }, [addToast, closeTaskDrawer]);
 
-  const handleStationSave = useCallback(() => {
-    closeStationDrawer();
-    addToast(TOAST_MESSAGES.stationSaved, 'success');
-  }, [addToast, closeStationDrawer]);
-
-  const handleStationDelete = useCallback(() => {
-    closeStationDrawer();
-    addToast(TOAST_MESSAGES.stationDeleted, 'error');
-  }, [addToast, closeStationDrawer]);
-
-  const handlePreviewConfirm = useCallback((_selectedIds: string[]) => {
-    closePreviewModal();
-    addToast(TOAST_MESSAGES.previewConfirmed, 'success');
-  }, [addToast, closePreviewModal]);
-
   const handleCloseBackdrop = useCallback(() => {
     closeTaskDrawer();
     closeTaskDetailDrawer();
-    closeStationDrawer();
-  }, [closeStationDrawer, closeTaskDetailDrawer, closeTaskDrawer]);
+  }, [closeTaskDetailDrawer, closeTaskDrawer]);
 
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
       if (event.key !== 'Escape') return;
       if (taskDrawerOpen) closeTaskDrawer();
       if (taskDetailDrawerOpen) closeTaskDetailDrawer();
-      if (stationDrawerOpen) closeStationDrawer();
-      if (previewModalOpen) closePreviewModal();
     }
 
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [closePreviewModal, closeStationDrawer, closeTaskDetailDrawer, closeTaskDrawer, previewModalOpen, stationDrawerOpen, taskDetailDrawerOpen, taskDrawerOpen]);
+  }, [closeTaskDetailDrawer, closeTaskDrawer, taskDetailDrawerOpen, taskDrawerOpen]);
 
   useEffect(() => {
     const main = mainRef.current;
@@ -131,21 +110,13 @@ export function AdminLayout() {
       <AuraBackground enableMouseTracking />
       <NoiseTexture opacity={0.03} />
       <ToastContainer toasts={toasts} onDismiss={removeToast} />
-      <DrawerBackdrop isActive={taskDrawerOpen || taskDetailDrawerOpen || stationDrawerOpen} onClick={handleCloseBackdrop} />
+      <DrawerBackdrop isActive={taskDrawerOpen || taskDetailDrawerOpen} onClick={handleCloseBackdrop} />
       <TaskDrawer isOpen={taskDrawerOpen} onClose={closeTaskDrawer} onSubmit={handleTaskDrawerSubmit} />
       <TaskDetailDrawer
         isOpen={taskDetailDrawerOpen}
         taskId={taskDetailDrawerTaskId}
         onClose={closeTaskDetailDrawer}
       />
-      <StationDrawer
-        isOpen={stationDrawerOpen}
-        station={stationDrawerData}
-        onClose={closeStationDrawer}
-        onSave={handleStationSave}
-        onDelete={handleStationDelete}
-      />
-      <PreviewModal isOpen={previewModalOpen} onClose={closePreviewModal} onConfirm={handlePreviewConfirm} />
 
       <div className="flex h-screen overflow-hidden text-starlight">
         <Sidebar pendingTaskCount={pendingTaskCount} />
