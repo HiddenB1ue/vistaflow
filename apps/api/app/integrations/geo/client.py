@@ -46,12 +46,18 @@ class AmapGeoClient(AbstractGeoClient):
         http_client: httpx.AsyncClient,
         *,
         max_retries: int = 3,
-        retry_delay_seconds: float = 0.2,
+        retry_delay_seconds: float = 1.0,
+        min_interval_seconds: float = 0.35,
+        rate_limit_cooldown_seconds: float = 3.0,
     ) -> None:
         self._api_key = api_key
         self._http = http_client
         self._max_retries = max_retries
         self._retry_delay_seconds = retry_delay_seconds
+        self._min_interval_seconds = max(0.0, min_interval_seconds)
+        self._rate_limit_cooldown_seconds = max(0.0, rate_limit_cooldown_seconds)
+        self._request_lock = asyncio.Lock()
+        self._next_request_at = 0.0
 
     def is_configured(self) -> bool:
         return True
@@ -65,6 +71,7 @@ class AmapGeoClient(AbstractGeoClient):
             "output": "JSON",
         }
         for attempt in range(self._max_retries):
+            await self._wait_for_request_slot()
             resp = await self._http.get(
                 self.GEOCODE_URL, params=params, timeout=10.0
             )
@@ -88,11 +95,36 @@ class AmapGeoClient(AbstractGeoClient):
             if infocode == self.RATE_LIMIT_INFOCODE:
                 if attempt >= self._max_retries - 1:
                     raise GeoRateLimitError(info)
-                await asyncio.sleep(self._retry_delay_seconds * (attempt + 1))
+                backoff_seconds = max(
+                    self._rate_limit_cooldown_seconds,
+                    self._retry_delay_seconds * (2**attempt),
+                )
+                await self._push_back_request_slot(backoff_seconds)
+                await asyncio.sleep(backoff_seconds)
                 continue
             return None
 
         return None
+
+    async def _wait_for_request_slot(self) -> None:
+        if self._min_interval_seconds <= 0:
+            return
+
+        loop = asyncio.get_running_loop()
+        async with self._request_lock:
+            now = loop.time()
+            wait_seconds = max(0.0, self._next_request_at - now)
+            if wait_seconds > 0:
+                await asyncio.sleep(wait_seconds)
+            self._next_request_at = loop.time() + self._min_interval_seconds
+
+    async def _push_back_request_slot(self, delay_seconds: float) -> None:
+        if delay_seconds <= 0:
+            return
+
+        loop = asyncio.get_running_loop()
+        async with self._request_lock:
+            self._next_request_at = max(self._next_request_at, loop.time() + delay_seconds)
 
 
 class NullGeoClient(AbstractGeoClient):

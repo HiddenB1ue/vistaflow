@@ -15,3 +15,4 @@
 \ir migrations/0009_task_run_log.sql
 \ir migrations/0010_task_run_progress_snapshot.sql
 \ir migrations/0011_task_worker_kernel.sql
+\ir migrations/0012_task_fetch_station_geo.sql

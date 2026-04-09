@@ -72,6 +72,29 @@ async def test_geocode_address_retries_rate_limit(monkeypatch: pytest.MonkeyPatc
 
 
 @pytest.mark.asyncio
+async def test_geocode_address_applies_rate_limit_cooldown(monkeypatch: pytest.MonkeyPatch) -> None:
+    http_client = AsyncMock()
+    http_client.get.side_effect = [
+        _make_response({"status": "0", "infocode": "10021", "info": "RATE_LIMIT"}),
+        _make_response({"status": "1", "geocodes": [{"location": "121.327512,31.200759"}]}),
+    ]
+    sleep = AsyncMock()
+    monkeypatch.setattr("app.integrations.geo.client.asyncio.sleep", sleep)
+    client = AmapGeoClient(
+        api_key="demo-key",
+        http_client=http_client,
+        retry_delay_seconds=0.5,
+        rate_limit_cooldown_seconds=2.0,
+        min_interval_seconds=0.0,
+    )
+
+    result = await client.geocode_address("上海虹桥站")
+
+    assert result == (121.327512, 31.200759)
+    sleep.assert_awaited_once_with(2.0)
+
+
+@pytest.mark.asyncio
 async def test_geocode_address_raises_on_auth_error() -> None:
     http_client = AsyncMock()
     http_client.get.return_value = _make_response(

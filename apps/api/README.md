@@ -67,6 +67,7 @@ uv run python -m app.tasks.worker
 Implemented executable task types:
 
 - `fetch-station`
+- `fetch-station-geo`
 - `fetch-trains`
 - `fetch-train-stops`
 - `fetch-train-runs`
@@ -150,6 +151,34 @@ Behavior:
 - derive one-day run facts and normalize run status
 - idempotently upsert into `trains` and `train_runs`
 - fail the run when no matching run fact is returned for the requested keyword set
+
+#### 4. `fetch-station-geo`
+
+Payload:
+
+```json
+{
+  "address": "北京南站"
+}
+```
+
+Behavior:
+
+- when `address` is provided, query Amap geocoding once with `address` only and do not persist results
+- when `address` is omitted or empty, select stations whose coordinates are missing
+- build query text from `stations.name`, appending `站` only when absent
+- do not send `city`
+- persist successful batch results back to `stations` with `geo_source='amap'`
+- fail fast when `AMAP_API_KEY` is missing
+
+Suggested Amap throttling settings for local batch runs:
+
+```env
+AMAP_MAX_RETRIES=3
+AMAP_RETRY_DELAY_SECONDS=1.0
+AMAP_MIN_INTERVAL_SECONDS=0.35
+AMAP_RATE_LIMIT_COOLDOWN_SECONDS=3.0
+```
 
 ## Architecture
 

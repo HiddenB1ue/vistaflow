@@ -17,6 +17,10 @@ class Settings(BaseSettings):
 
     # 高德地图（可选）
     amap_api_key: str = ""
+    amap_max_retries: int = 3
+    amap_retry_delay_seconds: float = 1.0
+    amap_min_interval_seconds: float = 0.35
+    amap_rate_limit_cooldown_seconds: float = 3.0
 
     # 应用
     app_env: str = "development"

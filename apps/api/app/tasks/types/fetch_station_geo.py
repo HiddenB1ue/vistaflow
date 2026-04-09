@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from app.integrations.geo.client import GeoAuthError, GeoRateLimitError
 from app.railway.repository import StationRepository
 from app.tasks.definition import TaskCapabilityContract, TaskTypeDefinition
 from app.tasks.exceptions import TaskExecutionError
@@ -9,13 +10,13 @@ from app.tasks.payloads import FetchStationGeoPayload
 from app.tasks.type_params import STATION_ADDRESS_PARAM
 
 
-def _build_station_address(name: object) -> str:
+def _build_station_address(name: object, area_name: object) -> str:
     normalized = str(name or "").strip()
+    normalized_area = str(area_name or "").strip()
     if not normalized:
         raise TaskExecutionError("站点名称为空，无法构造高德查询地址")
-    if normalized.endswith("站"):
-        return normalized
-    return f"{normalized}站"
+    station_name = normalized if normalized.endswith("站") else f"{normalized}站"
+    return f"{normalized_area} {station_name}" if normalized_area else station_name
 
 
 async def execute_fetch_station_geo(ctx: TaskExecutionContext):
@@ -135,7 +136,7 @@ async def execute_fetch_station_geo(ctx: TaskExecutionContext):
         await helper.checkpoint()
         station_id = int(candidate["id"])
         station_name = str(candidate["name"])
-        address = _build_station_address(candidate.get("name"))
+        address = _build_station_address(candidate.get("name"), candidate.get("area_name"))
         try:
             coords = await ctx.geo_client.geocode_address(address)
             if coords is None:
@@ -191,6 +192,18 @@ async def execute_fetch_station_geo(ctx: TaskExecutionContext):
                     "lastFailedAddress": last_failed_address,
                 },
             )
+        except GeoAuthError as exc:
+            await ctx.log(
+                "ERROR",
+                f"fetch-station-geo 高德鉴权失败，任务中止：address={address} error={exc}",
+            )
+            raise TaskExecutionError(f"高德 API Key 不可用，任务已中止：{exc}") from exc
+        except GeoRateLimitError as exc:
+            await ctx.log(
+                "ERROR",
+                f"fetch-station-geo 触发高德限流，任务中止：address={address} error={exc}",
+            )
+            raise TaskExecutionError(f"高德接口触发限流，请稍后重试：{exc}") from exc
         except Exception as exc:
             failed_count += 1
             last_failed_address = address

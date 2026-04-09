@@ -51,7 +51,14 @@ async def run_worker() -> None:
         log_repo = LogRepository(pool)
         crawler_client = Live12306CrawlerClient(http_client=http_client)
         if settings.amap_api_key:
-            geo_client = AmapGeoClient(api_key=settings.amap_api_key, http_client=http_client)
+            geo_client = AmapGeoClient(
+                api_key=settings.amap_api_key,
+                http_client=http_client,
+                max_retries=settings.amap_max_retries,
+                retry_delay_seconds=settings.amap_retry_delay_seconds,
+                min_interval_seconds=settings.amap_min_interval_seconds,
+                rate_limit_cooldown_seconds=settings.amap_rate_limit_cooldown_seconds,
+            )
         else:
             geo_client = NullGeoClient()
 

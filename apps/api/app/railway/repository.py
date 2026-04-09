@@ -75,7 +75,7 @@ class StationRepository(BaseRepository):
 
     async def find_geo_enrichment_candidates(self) -> list[dict[str, object]]:
         sql = """
-            SELECT id, name, longitude, latitude
+            SELECT id, name, area_name, longitude, latitude
             FROM stations
             WHERE longitude IS NULL OR latitude IS NULL
             ORDER BY id

@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from app.integrations.geo.client import GeoRateLimitError
 from app.models import TaskDefinition
 from app.tasks.exceptions import TaskExecutionError
 from app.tasks.execution import TaskExecutionContext
@@ -118,13 +119,13 @@ async def test_single_query_mode_returns_warning_when_not_found(
 
 
 @pytest.mark.asyncio
-async def test_batch_mode_updates_missing_coordinates_and_appends_station_suffix(
+async def test_batch_mode_uses_area_name_plus_station_name_for_lookup(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     geo_client = FakeGeoClient(
         {
-            "上海虹桥站": (121.327512, 31.200759),
-            "北京南站": None,
+            "上海市上海虹桥站": (121.327512, 31.200759),
+            "北京市北京南站": None,
         }
     )
     context = make_context({}, geo_client)
@@ -136,8 +137,20 @@ async def test_batch_mode_updates_missing_coordinates_and_appends_station_suffix
 
         async def find_geo_enrichment_candidates(self) -> list[dict[str, object]]:
             return [
-                {"id": 1, "name": "上海虹桥", "longitude": None, "latitude": None},
-                {"id": 2, "name": "北京南站", "longitude": None, "latitude": None},
+                {
+                    "id": 1,
+                    "name": "上海虹桥",
+                    "area_name": "上海市",
+                    "longitude": None,
+                    "latitude": None,
+                },
+                {
+                    "id": 2,
+                    "name": "北京南站",
+                    "area_name": "北京市",
+                    "longitude": None,
+                    "latitude": None,
+                },
             ]
 
         async def update_geo(
@@ -157,7 +170,45 @@ async def test_batch_mode_updates_missing_coordinates_and_appends_station_suffix
     assert result.summary == "站点坐标补全完成，部分站点查询失败"
     assert result.result_level == "warning"
     assert result.metrics_value == "1"
-    assert geo_client.calls == ["上海虹桥站", "北京南站"]
+    assert geo_client.calls == ["上海市上海虹桥站", "北京市北京南站"]
+    assert fake_repo.updated == [(1, 121.327512, 31.200759, "amap")]
+
+
+@pytest.mark.asyncio
+async def test_batch_mode_falls_back_to_station_name_when_area_name_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    geo_client = FakeGeoClient({"上海虹桥站": (121.327512, 31.200759)})
+    context = make_context({}, geo_client)
+
+    class FakeRepo:
+        def __init__(self, pool: object) -> None:
+            self.pool = pool
+            self.updated: list[tuple[int, float, float, str]] = []
+
+        async def find_geo_enrichment_candidates(self) -> list[dict[str, object]]:
+            return [
+                {"id": 1, "name": "上海虹桥", "area_name": "", "longitude": None, "latitude": None}
+            ]
+
+        async def update_geo(
+            self,
+            station_id: int,
+            longitude: float,
+            latitude: float,
+            geo_source: str,
+        ) -> None:
+            self.updated.append((station_id, longitude, latitude, geo_source))
+
+    fake_repo = FakeRepo(context.pool)
+    monkeypatch.setattr("app.tasks.types.fetch_station_geo.StationRepository", lambda pool: fake_repo)
+
+    result = await execute_fetch_station_geo(context)
+
+    assert result.summary == "站点坐标补全完成"
+    assert result.result_level == "success"
+    assert result.metrics_value == "1"
+    assert geo_client.calls == ["上海虹桥站"]
     assert fake_repo.updated == [(1, 121.327512, 31.200759, "amap")]
 
 
@@ -196,7 +247,7 @@ async def test_batch_mode_raises_when_all_candidates_fail(
             self.pool = pool
 
         async def find_geo_enrichment_candidates(self) -> list[dict[str, object]]:
-            return [{"id": 1, "name": "上海虹桥", "longitude": None, "latitude": None}]
+            return [{"id": 1, "name": "上海虹桥", "area_name": "上海市", "longitude": None, "latitude": None}]
 
         async def update_geo(
             self,
@@ -219,4 +270,33 @@ async def test_task_fails_fast_when_geo_client_is_not_configured() -> None:
     context = make_context({}, geo_client)
 
     with pytest.raises(TaskExecutionError):
+        await execute_fetch_station_geo(context)
+
+
+@pytest.mark.asyncio
+async def test_batch_mode_aborts_when_rate_limited(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    geo_client = FakeGeoClient(errors={"上海市上海虹桥站": GeoRateLimitError("RATE_LIMIT")})
+    context = make_context({}, geo_client)
+
+    class FakeRepo:
+        def __init__(self, pool: object) -> None:
+            self.pool = pool
+
+        async def find_geo_enrichment_candidates(self) -> list[dict[str, object]]:
+            return [{"id": 1, "name": "上海虹桥", "area_name": "上海市", "longitude": None, "latitude": None}]
+
+        async def update_geo(
+            self,
+            station_id: int,
+            longitude: float,
+            latitude: float,
+            geo_source: str,
+        ) -> None:
+            raise AssertionError("rate-limited path should not persist coordinates")
+
+    monkeypatch.setattr("app.tasks.types.fetch_station_geo.StationRepository", FakeRepo)
+
+    with pytest.raises(TaskExecutionError, match="高德接口触发限流"):
         await execute_fetch_station_geo(context)
