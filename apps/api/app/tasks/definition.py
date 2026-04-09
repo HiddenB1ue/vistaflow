@@ -11,6 +11,7 @@ if TYPE_CHECKING:
 
 TaskType = Literal[
     "fetch-station",
+    "fetch-station-geo",
     "fetch-trains",
     "fetch-train-stops",
     "fetch-train-runs",

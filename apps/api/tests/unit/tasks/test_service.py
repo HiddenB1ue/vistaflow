@@ -342,6 +342,54 @@ async def test_create_fetch_train_runs_task_allows_missing_keyword(
 
 
 @pytest.mark.asyncio
+async def test_create_fetch_station_geo_task_normalizes_address(
+    service: tuple[TaskService, AsyncMock, AsyncMock, AsyncMock],
+) -> None:
+    task_service, task_repo, _, _ = service
+    task_repo.find_by_name.return_value = None
+    task_repo.create_task.return_value = make_task(
+        task_type="fetch-station-geo",
+        type_label="站点坐标补全",
+        payload={"address": "上海虹桥站"},
+    )
+
+    await task_service.create_task(
+        TaskCreateRequest(
+            name="Geo lookup",
+            type="fetch-station-geo",
+            payload={"address": " 上海虹桥站 "},
+        )
+    )
+
+    assert task_repo.create_task.await_args.kwargs["payload"] == {
+        "address": "上海虹桥站",
+    }
+
+
+@pytest.mark.asyncio
+async def test_create_fetch_station_geo_task_allows_missing_address(
+    service: tuple[TaskService, AsyncMock, AsyncMock, AsyncMock],
+) -> None:
+    task_service, task_repo, _, _ = service
+    task_repo.find_by_name.return_value = None
+    task_repo.create_task.return_value = make_task(
+        task_type="fetch-station-geo",
+        type_label="站点坐标补全",
+        payload={},
+    )
+
+    await task_service.create_task(
+        TaskCreateRequest(
+            name="Geo batch",
+            type="fetch-station-geo",
+            payload={},
+        )
+    )
+
+    assert task_repo.create_task.await_args.kwargs["payload"] == {}
+
+
+@pytest.mark.asyncio
 async def test_create_task_supports_registry_defined_custom_type() -> None:
     task_repo = AsyncMock()
     run_repo = AsyncMock()

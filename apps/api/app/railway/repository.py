@@ -73,6 +73,17 @@ class StationRepository(BaseRepository):
             rows = await conn.fetch(sql)
         return [dict(row) for row in rows]
 
+    async def find_geo_enrichment_candidates(self) -> list[dict[str, object]]:
+        sql = """
+            SELECT id, name, longitude, latitude
+            FROM stations
+            WHERE longitude IS NULL OR latitude IS NULL
+            ORDER BY id
+        """
+        async with self._pool.acquire() as conn:
+            rows = await conn.fetch(sql)
+        return [dict(row) for row in rows]
+
     async def update_geo(
         self,
         station_id: int,

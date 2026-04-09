@@ -46,6 +46,7 @@ SeatLookupKey = tuple[str, str, str]
 
 TaskType = Literal[
     "fetch-station",
+    "fetch-station-geo",
     "fetch-trains",
     "fetch-train-stops",
     "fetch-train-runs",

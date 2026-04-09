@@ -10,6 +10,7 @@ from app.tasks.railway_support import (
     run_status_from_flag,
 )
 from app.tasks.types import fetch_station as fetch_station_module
+from app.tasks.types import fetch_station_geo as fetch_station_geo_module
 from app.tasks.types import fetch_train_runs as fetch_train_runs_module
 from app.tasks.types import fetch_train_stops as fetch_train_stops_module
 from app.tasks.types import fetch_trains as fetch_trains_module
@@ -21,6 +22,10 @@ seed_keywords = fetch_trains_module.seed_keywords
 
 async def handle_fetch_station(ctx: TaskExecutionContext) -> TaskExecutionResult:
     return await fetch_station_module.execute_fetch_station(ctx)
+
+
+async def handle_fetch_station_geo(ctx: TaskExecutionContext) -> TaskExecutionResult:
+    return await fetch_station_geo_module.execute_fetch_station_geo(ctx)
 
 
 async def handle_fetch_trains(ctx: TaskExecutionContext) -> TaskExecutionResult:
@@ -47,6 +52,7 @@ __all__ = [
     "build_train_run_rows",
     "derive_train_rows_from_runs",
     "handle_fetch_station",
+    "handle_fetch_station_geo",
     "handle_fetch_train_runs",
     "handle_fetch_train_stops",
     "handle_fetch_trains",

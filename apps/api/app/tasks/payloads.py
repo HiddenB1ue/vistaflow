@@ -53,6 +53,15 @@ class FetchTrainRunsPayload(BaseModel):
         return normalize_optional_text_field(value)
 
 
+class FetchStationGeoPayload(BaseModel):
+    address: str | None = None
+
+    @field_validator("address")
+    @classmethod
+    def normalize_address_field(cls, value: str | None) -> str | None:
+        return normalize_optional_text_field(value)
+
+
 PayloadModel = type[BaseModel]
 
 

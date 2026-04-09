@@ -33,3 +33,12 @@ TRAIN_LOOKUP_KEYWORD_PARAM: Final[TaskParamDefinition] = TaskParamDefinition(
         "留空时处理库内全部车次。"
     ),
 )
+
+STATION_ADDRESS_PARAM: Final[TaskParamDefinition] = TaskParamDefinition(
+    key="address",
+    label="地址",
+    value_type="text",
+    required=False,
+    placeholder="例如 上海虹桥站",
+    description="手动输入地址时只查询该地址且不落库；留空时从 stations 表中批量补全缺失坐标。",
+)

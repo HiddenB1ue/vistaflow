@@ -247,3 +247,54 @@ def test_create_fetch_train_runs_task_allows_missing_keyword(
     assert task_repo.create_task.await_args.kwargs["payload"] == {
         "date": "2026-04-05",
     }
+
+
+def test_create_fetch_station_geo_task_normalizes_address(
+    client: TestClient,
+    service_bundle: tuple[TaskService, AsyncMock, AsyncMock, AsyncMock],
+) -> None:
+    service, task_repo, _, _ = service_bundle
+    task_repo.find_by_name.return_value = None
+    task_repo.create_task.return_value = _make_task(
+        "fetch-station-geo",
+        {"address": "上海虹桥站"},
+    )
+    app.dependency_overrides[get_task_service] = lambda: service
+
+    response = client.post(
+        "/api/v1/admin/tasks",
+        json={
+            "name": "Station geo lookup",
+            "type": "fetch-station-geo",
+            "enabled": True,
+            "payload": {"address": " 上海虹桥站 "},
+        },
+    )
+
+    assert response.status_code == 201
+    assert task_repo.create_task.await_args.kwargs["payload"] == {
+        "address": "上海虹桥站",
+    }
+
+
+def test_create_fetch_station_geo_task_allows_missing_address(
+    client: TestClient,
+    service_bundle: tuple[TaskService, AsyncMock, AsyncMock, AsyncMock],
+) -> None:
+    service, task_repo, _, _ = service_bundle
+    task_repo.find_by_name.return_value = None
+    task_repo.create_task.return_value = _make_task("fetch-station-geo", {})
+    app.dependency_overrides[get_task_service] = lambda: service
+
+    response = client.post(
+        "/api/v1/admin/tasks",
+        json={
+            "name": "Station geo batch",
+            "type": "fetch-station-geo",
+            "enabled": True,
+            "payload": {},
+        },
+    )
+
+    assert response.status_code == 201
+    assert task_repo.create_task.await_args.kwargs["payload"] == {}
