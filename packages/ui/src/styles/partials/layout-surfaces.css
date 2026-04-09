@@ -203,6 +203,8 @@
 }
 
 .vf-control-toolbar {
+  position: relative;
+  z-index: 20;
   overflow: visible;
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;

@@ -38,7 +38,7 @@ export function CustomSelect({ options, value, onChange, className = '' }: Custo
   }, []);
 
   return (
-    <div className={`custom-select-wrapper ${className}`} ref={wrapperRef}>
+    <div className={`custom-select-wrapper ${isOpen ? 'open' : ''} ${className}`.trim()} ref={wrapperRef}>
       <div className={`custom-select-trigger ${isOpen ? 'open' : ''}`} onClick={() => setIsOpen(!isOpen)} tabIndex={0}>
         <span className="select-label">{selectedLabel}</span>
         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
