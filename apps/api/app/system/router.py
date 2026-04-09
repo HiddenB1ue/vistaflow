@@ -7,12 +7,20 @@ from fastapi import APIRouter, Depends, Query
 from app.auth.dependencies import require_admin_auth
 from app.config import get_settings
 from app.schemas import APIResponse
-from app.system.dependencies import CredentialServiceDep, LogServiceDep, OverviewServiceDep
+from app.system.dependencies import (
+    CredentialServiceDep,
+    LogServiceDep,
+    OverviewServiceDep,
+    SystemSettingServiceDep,
+)
 from app.system.schemas import (
     CredentialResponse,
     LogResponse,
     QuotaResponse,
     SparklineResponse,
+    SystemSettingBatchUpdateRequest,
+    SystemSettingBatchUpdateResponse,
+    SystemSettingResponse,
     ToggleResponse,
 )
 
@@ -82,29 +90,37 @@ async def get_quota(
 
 
 @router.get(
+    "/settings",
+    response_model=APIResponse[list[SystemSettingResponse]],
+    dependencies=[Depends(require_admin_auth)],
+)
+async def list_settings(
+    service: SystemSettingServiceDep,
+) -> APIResponse[list[SystemSettingResponse]]:
+    settings = await service.list_settings()
+    return APIResponse.ok(settings)
+
+
+@router.patch(
+    "/settings",
+    response_model=APIResponse[SystemSettingBatchUpdateResponse],
+    dependencies=[Depends(require_admin_auth)],
+)
+async def update_settings(
+    payload: SystemSettingBatchUpdateRequest,
+    service: SystemSettingServiceDep,
+) -> APIResponse[SystemSettingBatchUpdateResponse]:
+    result = await service.update_settings(payload)
+    return APIResponse.ok(result)
+
+
+@router.get(
     "/toggles",
     response_model=APIResponse[list[ToggleResponse]],
     dependencies=[Depends(require_admin_auth)],
 )
-async def list_toggles() -> APIResponse[list[ToggleResponse]]:
-    toggles = [
-        ToggleResponse(
-            id="auto-crawl",
-            label="自动爬取",
-            description="启用后系统将按 cron 计划自动执行爬取任务",
-            enabled=False,
-        ),
-        ToggleResponse(
-            id="price-sync",
-            label="票价同步",
-            description="启用后系统将定期同步 12306 票价数据",
-            enabled=False,
-        ),
-        ToggleResponse(
-            id="geo-enrich",
-            label="坐标补全",
-            description="启用后新增站点将自动调用高德 API 补全经纬度",
-            enabled=False,
-        ),
-    ]
+async def list_toggles(
+    service: SystemSettingServiceDep,
+) -> APIResponse[list[ToggleResponse]]:
+    toggles = await service.list_toggles()
     return APIResponse.ok(toggles)

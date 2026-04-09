@@ -11,8 +11,10 @@ import httpx
 
 from app.config import get_settings
 from app.integrations.crawler.client import Live12306CrawlerClient
-from app.integrations.geo.client import AmapGeoClient, NullGeoClient
+from app.integrations.geo.client import DynamicGeoClient
+from app.system.constants import SYSTEM_SETTING_CACHE_TTL_SECONDS
 from app.system.log_repository import LogRepository
+from app.system.settings_provider import SystemSettingsProvider
 from app.tasks.registry import create_task_registry
 from app.tasks.repository import TaskRepository, TaskRunLogRepository, TaskRunRepository
 from app.tasks.runner import TaskRunner
@@ -50,17 +52,14 @@ async def run_worker() -> None:
         run_log_repo = TaskRunLogRepository(pool)
         log_repo = LogRepository(pool)
         crawler_client = Live12306CrawlerClient(http_client=http_client)
-        if settings.amap_api_key:
-            geo_client = AmapGeoClient(
-                api_key=settings.amap_api_key,
-                http_client=http_client,
-                max_retries=settings.amap_max_retries,
-                retry_delay_seconds=settings.amap_retry_delay_seconds,
-                min_interval_seconds=settings.amap_min_interval_seconds,
-                rate_limit_cooldown_seconds=settings.amap_rate_limit_cooldown_seconds,
-            )
-        else:
-            geo_client = NullGeoClient()
+        settings_provider = SystemSettingsProvider(
+            pool,
+            ttl_seconds=SYSTEM_SETTING_CACHE_TTL_SECONDS,
+        )
+        geo_client = DynamicGeoClient(
+            settings_provider=settings_provider,
+            http_client=http_client,
+        )
 
         runner = TaskRunner(
             pool=pool,

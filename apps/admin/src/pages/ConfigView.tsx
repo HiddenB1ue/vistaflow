@@ -1,119 +1,262 @@
-import { useEffect, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { CONFIG_LABELS, TOAST_MESSAGES } from '@/constants/labels';
-import { fetchCredentials, fetchToggles } from '@/services/configService';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { CONFIG_LABELS } from '@/constants/labels';
+import { fetchSystemSettings, updateSystemSettings } from '@/services/configService';
+import { extractApiErrorMessage } from '@/services/taskService';
 import { useToastStore } from '@/stores/toastStore';
-import { Badge, Button, PanelBody, PanelCard, SectionHeader, ToggleSwitch } from '@vistaflow/ui';
+import type { SystemSetting, SystemSettingValue } from '@/types/config';
+import { Button, InputBox, PanelBody, PanelCard, SectionHeader, ToggleSwitch } from '@vistaflow/ui';
+
+interface SettingDraft {
+  value: SystemSettingValue;
+  enabled: boolean;
+}
 
 export default function ConfigView() {
   const addToast = useToastStore((state) => state.addToast);
-  const [testing, setTesting] = useState(false);
-  const [toggleStates, setToggleStates] = useState<Record<string, boolean>>({});
+  const queryClient = useQueryClient();
+  const [drafts, setDrafts] = useState<Record<string, SettingDraft>>({});
+  const [savingToggleKey, setSavingToggleKey] = useState<string | null>(null);
+  const [isSavingIntegration, setIsSavingIntegration] = useState(false);
+  const refreshPriorityKeysRef = useRef<Set<string>>(new Set());
 
-  const { data: credentials = [] } = useQuery({
-    queryKey: ['admin', 'credentials'],
-    queryFn: fetchCredentials,
+  const { data: settings = [] } = useQuery({
+    queryKey: ['admin', 'system-settings'],
+    queryFn: fetchSystemSettings,
   });
 
-  const { data: toggles = [] } = useQuery({
-    queryKey: ['admin', 'toggles'],
-    queryFn: fetchToggles,
-  });
+  function draftEqualsSetting(draft: SettingDraft | undefined, setting: SystemSetting): boolean {
+    if (!draft) {
+      return true;
+    }
+    return (
+      JSON.stringify(draft.value) === JSON.stringify(setting.value) &&
+      draft.enabled === setting.enabled
+    );
+  }
 
   useEffect(() => {
-    if (toggles.length === 0) return;
-    setToggleStates(Object.fromEntries(toggles.map((toggle) => [toggle.id, toggle.enabled])));
-  }, [toggles]);
+    if (settings.length === 0) {
+      return;
+    }
+    setDrafts((current) => {
+      const next = { ...current };
+      for (const setting of settings) {
+        const shouldRefresh =
+          refreshPriorityKeysRef.current.has(setting.key) ||
+          draftEqualsSetting(current[setting.key], setting);
+        if (shouldRefresh) {
+          next[setting.key] = {
+            value: setting.value,
+            enabled: setting.enabled,
+          };
+        }
+      }
+      refreshPriorityKeysRef.current.clear();
+      return next;
+    });
+  }, [settings]);
 
-  const handleTestConnection = () => {
-    setTesting(true);
-    setTimeout(() => {
-      setTesting(false);
-      addToast(CONFIG_LABELS.connectionOk, 'success');
-    }, 1600);
-  };
+  const updateMutation = useMutation({
+    mutationFn: updateSystemSettings,
+    onSuccess: async (result) => {
+      refreshPriorityKeysRef.current = new Set(result.updatedKeys);
+      await queryClient.invalidateQueries({ queryKey: ['admin', 'system-settings'] });
+    },
+    onError: (error: unknown, variables) => {
+      const firstItem = variables.items[0];
+      const singleToggle =
+        variables.items.length === 1 &&
+        firstItem !== undefined &&
+        toggleSettings.some((item) => item.key === firstItem.key);
+      if (singleToggle && firstItem !== undefined) {
+        const key = firstItem.key;
+        const original = settings.find((item) => item.key === key);
+        if (original) {
+          setDrafts((current) => ({
+            ...current,
+            [key]: {
+              value: original.value,
+              enabled: original.enabled,
+            },
+          }));
+        }
+      }
+      addToast(extractApiErrorMessage(error), 'error');
+    },
+    onSettled: () => {
+      setSavingToggleKey(null);
+      setIsSavingIntegration(false);
+    },
+  });
 
-  const healthyCred = credentials.find((credential) => credential.health === 'healthy');
-  const expiredCred = credentials.find((credential) => credential.health === 'expired');
+  const integrationSettings = useMemo(
+    () => settings.filter((setting) => ['amap', 'ticket_12306'].includes(setting.category)),
+    [settings],
+  );
+
+  const toggleSettings = useMemo(
+    () => settings.filter((setting) => ['task', 'system'].includes(setting.category) && setting.valueType === 'bool'),
+    [settings],
+  );
+
+  function getDraft(setting: SystemSetting): SettingDraft {
+    return (
+      drafts[setting.key] ?? {
+        value: setting.value,
+        enabled: setting.enabled,
+      }
+    );
+  }
+
+  function isDirty(setting: SystemSetting): boolean {
+    const draft = getDraft(setting);
+    return JSON.stringify(draft.value) !== JSON.stringify(setting.value) || draft.enabled !== setting.enabled;
+  }
+
+  function updateDraftValue(setting: SystemSetting, value: SystemSettingValue) {
+    setDrafts((current) => ({
+      ...current,
+      [setting.key]: {
+        enabled: current[setting.key]?.enabled ?? setting.enabled,
+        value,
+      },
+    }));
+  }
+
+  const integrationDirtySettings = useMemo(
+    () => integrationSettings.filter((setting) => isDirty(setting)),
+    [integrationSettings, drafts],
+  );
+
+  function handleSaveIntegrationSettings() {
+    if (integrationDirtySettings.length === 0) {
+      return;
+    }
+    setIsSavingIntegration(true);
+    updateMutation.mutate(
+      {
+        items: integrationDirtySettings.map((setting) => {
+          const draft = getDraft(setting);
+          return {
+            key: setting.key,
+            value: draft.value,
+            enabled: draft.enabled,
+          };
+        }),
+      },
+      {
+        onSuccess: () => {
+          addToast(CONFIG_LABELS.saveSuccess, 'success');
+        },
+      },
+    );
+  }
+
+  function handleToggleChange(setting: SystemSetting, value: boolean) {
+    if (updateMutation.isPending) {
+      return;
+    }
+    setDrafts((current) => ({
+      ...current,
+      [setting.key]: {
+        value,
+        enabled: current[setting.key]?.enabled ?? setting.enabled,
+      },
+    }));
+    setSavingToggleKey(setting.key);
+    updateMutation.mutate(
+      {
+        items: [
+          {
+            key: setting.key,
+            value,
+            enabled: getDraft(setting).enabled,
+          },
+        ],
+      },
+      {
+        onSuccess: () => {
+          addToast(CONFIG_LABELS.saveSuccess, 'success');
+        },
+      },
+    );
+  }
 
   return (
     <div className="vf-page-stack">
       <p className="max-w-2xl text-sm leading-relaxed text-muted">{CONFIG_LABELS.description}</p>
 
-      <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
-        {healthyCred && (
-          <PanelCard>
-            <SectionHeader
-              eyebrow={CONFIG_LABELS.credentialEyebrow}
-              title={healthyCred.name}
-              subtitle={healthyCred.description}
-              actions={<Badge variant="green">{CONFIG_LABELS.healthyStatus}</Badge>}
-            />
-            <PanelBody>
-              <div className="break-all rounded-lg border border-white/5 bg-black/30 p-4 font-mono text-xs leading-relaxed text-muted/80">
-                <div>API_KEY: {healthyCred.maskedKey}</div>
-                {healthyCred.quotaInfo ? <div>{healthyCred.quotaInfo}</div> : null}
+      <PanelCard>
+        <SectionHeader
+          eyebrow={CONFIG_LABELS.integrationEyebrow}
+          title={CONFIG_LABELS.integrationSettings}
+          subtitle={CONFIG_LABELS.integrationSubtitle}
+          actions={
+            <div className="flex items-center gap-3">
+              {integrationDirtySettings.length > 0 ? (
+                <div className="text-xs text-muted">{CONFIG_LABELS.integrationChangedCount(integrationDirtySettings.length)}</div>
+              ) : null}
+              <Button
+                variant="outline"
+                onClick={handleSaveIntegrationSettings}
+                disabled={integrationDirtySettings.length === 0 || isSavingIntegration || updateMutation.isPending}
+              >
+                {isSavingIntegration ? CONFIG_LABELS.saving : CONFIG_LABELS.saveIntegrationSettings}
+              </Button>
+            </div>
+          }
+        />
+        <PanelBody className="divide-y divide-white/5">
+          {integrationSettings.map((setting) => {
+            const draft = getDraft(setting);
+            return (
+              <div key={setting.key} className="py-4">
+                <div className="min-w-0 flex-1">
+                  <div className="text-sm text-starlight">{setting.label}</div>
+                  <div className="mt-0.5 text-xs text-muted">{setting.description}</div>
+                  <div className="mt-3 text-[11px] uppercase tracking-[0.24em] text-muted/60">
+                    {CONFIG_LABELS.settingValue}
+                  </div>
+                  <InputBox
+                    className="mt-2 w-full font-mono text-sm"
+                    value={String(draft.value ?? '')}
+                    placeholder={CONFIG_LABELS.emptyValueHint}
+                    onChange={(event) => updateDraftValue(setting, event.target.value)}
+                  />
+                </div>
               </div>
-              <div className="flex gap-3 border-t border-white/8 pt-4">
-                <Button variant="outline" className="flex-1" onClick={() => addToast(TOAST_MESSAGES.featureInDev(CONFIG_LABELS.credentialEditorInDev), 'info')}>
-                  {CONFIG_LABELS.editConfig}
-                </Button>
-                <Button variant="outline" className="flex-1 border-[#8B5CF6]/30 text-[#8B5CF6] hover:bg-[#8B5CF6]/10" onClick={handleTestConnection} disabled={testing}>
-                  {testing ? (
-                    <>
-                      <svg className="h-3.5 w-3.5 animate-spin" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                        <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" strokeDasharray="32" className="opacity-30" />
-                        <path d="M4 12a8 8 0 018-8" stroke="currentColor" strokeWidth="4" strokeLinecap="round" />
-                      </svg>
-                      {CONFIG_LABELS.testing}
-                    </>
-                  ) : (
-                    CONFIG_LABELS.testConnection
-                  )}
-                </Button>
-              </div>
-            </PanelBody>
-          </PanelCard>
-        )}
-
-        {expiredCred && (
-          <PanelCard className="border border-[#F87171]/25 bg-[#F87171]/[0.03]">
-            <SectionHeader
-              eyebrow={CONFIG_LABELS.credentialEyebrow}
-              title={expiredCred.name}
-              subtitle={expiredCred.description}
-              actions={<Badge variant="red">{CONFIG_LABELS.expiredStatus}</Badge>}
-            />
-            <PanelBody>
-              <div className="break-all rounded-lg border border-[#F87171]/15 bg-black/30 p-4 font-mono text-xs leading-relaxed text-red-400/80">
-                <div>TOKEN: {expiredCred.maskedKey}</div>
-                {expiredCred.expiryWarning ? <div className="text-red-400">{expiredCred.expiryWarning}</div> : null}
-              </div>
-              <div className="flex gap-3 border-t border-[#F87171]/15 pt-4">
-                <Button variant="outline" className="flex-1" onClick={() => addToast(TOAST_MESSAGES.featureInDev(CONFIG_LABELS.updatePanelInDev), 'info')}>
-                  {CONFIG_LABELS.updateCredential}
-                </Button>
-                <Button variant="danger" className="flex-1" onClick={() => addToast(CONFIG_LABELS.overrideCleared, 'info')}>
-                  {CONFIG_LABELS.clearOverride}
-                </Button>
-              </div>
-            </PanelBody>
-          </PanelCard>
-        )}
-      </div>
+            );
+          })}
+        </PanelBody>
+      </PanelCard>
 
       <PanelCard>
-        <SectionHeader eyebrow={CONFIG_LABELS.runtimeEyebrow} title={CONFIG_LABELS.globalToggles} subtitle={CONFIG_LABELS.togglesSubtitle} />
+        <SectionHeader
+          eyebrow={CONFIG_LABELS.runtimeEyebrow}
+          title={CONFIG_LABELS.globalToggles}
+          subtitle={CONFIG_LABELS.togglesSubtitle}
+        />
         <PanelBody className="divide-y divide-white/5">
-          {toggles.map((toggle) => (
-            <div key={toggle.id} className="flex items-center justify-between gap-4 py-4">
-              <div>
-                <div className="text-sm text-starlight">{toggle.label}</div>
-                <div className="mt-0.5 text-xs text-muted">{toggle.description}</div>
+          {toggleSettings.map((setting) => {
+            const draft = getDraft(setting);
+            const isSaving = savingToggleKey === setting.key && updateMutation.isPending;
+            return (
+              <div key={setting.key} className="flex flex-col gap-3 py-4 lg:flex-row lg:items-center lg:justify-between">
+                <div className="min-w-0 flex-1">
+                  <div className="text-sm text-starlight">{setting.label}</div>
+                  <div className="mt-0.5 text-xs text-muted">{setting.description}</div>
+                </div>
+                <div className="flex items-center gap-3">
+                  <ToggleSwitch
+                    checked={Boolean(draft.value)}
+                    onChange={(value) => handleToggleChange(setting, value)}
+                  />
+                  {isSaving ? <div className="text-xs text-muted">{CONFIG_LABELS.saving}</div> : null}
+                </div>
               </div>
-              <ToggleSwitch checked={toggleStates[toggle.id] ?? toggle.enabled} onChange={(value) => setToggleStates((prev) => ({ ...prev, [toggle.id]: value }))} />
-            </div>
-          ))}
+            );
+          })}
         </PanelBody>
       </PanelCard>
     </div>

@@ -15,6 +15,7 @@ from app.integrations.ticket_12306.parser import (
     segment_min_price,
 )
 from app.models import SeatLookupKey
+from app.system.settings_provider import SystemSettingsDataError, SystemSettingsProvider
 
 
 @dataclass(frozen=True)
@@ -164,3 +165,50 @@ class Live12306TicketClient(AbstractTicketClient):
             if stc and stc not in rows:
                 rows[stc] = entry
         return rows
+
+
+class DynamicTicketClient(AbstractTicketClient):
+    def __init__(
+        self,
+        settings_provider: SystemSettingsProvider,
+        http_client: httpx.AsyncClient,
+    ) -> None:
+        self._settings_provider = settings_provider
+        self._http = http_client
+        self._signature: str | None = None
+        self._client: AbstractTicketClient = NullTicketClient()
+
+    async def fetch_tickets(
+        self,
+        run_date: str,
+        segments: set[SeatLookupKey],
+        telecodes: dict[str, str],
+        train_codes: dict[SeatLookupKey, str],
+    ) -> dict[SeatLookupKey, TicketSegmentData]:
+        client = await self._resolve_client()
+        return await client.fetch_tickets(
+            run_date=run_date,
+            segments=segments,
+            telecodes=telecodes,
+            train_codes=train_codes,
+        )
+
+    async def _resolve_client(self) -> AbstractTicketClient:
+        try:
+            cookie = await self._settings_provider.get_optional_string("ticket_12306_cookie")
+        except SystemSettingsDataError:
+            return NullTicketClient()
+
+        signature = cookie
+        if signature == self._signature:
+            return self._client
+
+        self._signature = signature
+        if not cookie.strip():
+            self._client = NullTicketClient()
+        else:
+            self._client = Live12306TicketClient(
+                config=TicketClientConfig(cookie=cookie),
+                http_client=self._http,
+            )
+        return self._client

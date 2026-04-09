@@ -12,15 +12,14 @@ from fastapi.responses import JSONResponse
 from app.config import get_settings
 from app.exceptions import BusinessError
 from app.integrations.crawler.client import Live12306CrawlerClient
-from app.integrations.geo.client import AmapGeoClient, NullGeoClient
+from app.integrations.geo.client import DynamicGeoClient
 from app.integrations.ticket_12306.client import (
-    Live12306TicketClient,
-    NullTicketClient,
-    TicketClientConfig,
+    DynamicTicketClient,
 )
 from app.journeys.router import router as journeys_router
 from app.railway.router import router as railway_router
 from app.schemas import APIResponse
+from app.system.dependencies import build_system_settings_provider
 from app.system.router import health_router, router as system_router
 from app.tasks.registry import create_task_registry
 from app.tasks.router import router as tasks_router
@@ -40,33 +39,20 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         command_timeout=30,
     )
     app.state.task_registry = create_task_registry()
+    app.state.system_settings_provider = build_system_settings_provider(app.state.db_pool)
 
     http_client = httpx.AsyncClient()
     app.state.http_client = http_client
 
-    if settings.ticket_12306_cookie.strip():
-        app.state.ticket_client = Live12306TicketClient(
-            config=TicketClientConfig(
-                cookie=settings.ticket_12306_cookie,
-            ),
-            http_client=http_client,
-        )
-    else:
-        app.state.ticket_client = NullTicketClient()
-
+    app.state.ticket_client = DynamicTicketClient(
+        settings_provider=app.state.system_settings_provider,
+        http_client=http_client,
+    )
     app.state.crawler_client = Live12306CrawlerClient(http_client=http_client)
-
-    if settings.amap_api_key:
-        app.state.geo_client = AmapGeoClient(
-            api_key=settings.amap_api_key,
-            http_client=http_client,
-            max_retries=settings.amap_max_retries,
-            retry_delay_seconds=settings.amap_retry_delay_seconds,
-            min_interval_seconds=settings.amap_min_interval_seconds,
-            rate_limit_cooldown_seconds=settings.amap_rate_limit_cooldown_seconds,
-        )
-    else:
-        app.state.geo_client = NullGeoClient()
+    app.state.geo_client = DynamicGeoClient(
+        settings_provider=app.state.system_settings_provider,
+        http_client=http_client,
+    )
 
     yield
 

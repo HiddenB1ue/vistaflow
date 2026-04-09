@@ -16,3 +16,4 @@
 \ir migrations/0010_task_run_progress_snapshot.sql
 \ir migrations/0011_task_worker_kernel.sql
 \ir migrations/0012_task_fetch_station_geo.sql
+\ir migrations/0013_system_setting.sql

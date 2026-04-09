@@ -5,6 +5,8 @@ import asyncio
 
 import httpx
 
+from app.system.settings_provider import SystemSettingsDataError, SystemSettingsProvider
+
 
 class GeoRateLimitError(RuntimeError):
     """Raised when the upstream geocoder rate-limits requests."""
@@ -137,3 +139,64 @@ class NullGeoClient(AbstractGeoClient):
 
     def is_configured(self) -> bool:
         return False
+
+
+class DynamicGeoClient(AbstractGeoClient):
+    def __init__(
+        self,
+        settings_provider: SystemSettingsProvider,
+        http_client: httpx.AsyncClient,
+    ) -> None:
+        self._settings_provider = settings_provider
+        self._http = http_client
+        self._signature: tuple[str, int, float, float, float] | None = None
+        self._client: AbstractGeoClient = NullGeoClient()
+        self._lock = asyncio.Lock()
+
+    def is_configured(self) -> bool:
+        return bool(self._settings_provider.get_cached_optional_string("amap_api_key").strip())
+
+    async def geocode_address(self, address: str) -> tuple[float, float] | None:
+        client = await self._resolve_client()
+        if not client.is_configured():
+            raise GeoAuthError("未配置高德 API Key")
+        return await client.geocode_address(address)
+
+    async def _resolve_client(self) -> AbstractGeoClient:
+        try:
+            api_key = await self._settings_provider.get_optional_string("amap_api_key")
+            max_retries = await self._settings_provider.get_int("amap_max_retries")
+            retry_delay_seconds = await self._settings_provider.get_float("amap_retry_delay_seconds")
+            min_interval_seconds = await self._settings_provider.get_float("amap_min_interval_seconds")
+            cooldown_seconds = await self._settings_provider.get_float(
+                "amap_rate_limit_cooldown_seconds"
+            )
+        except SystemSettingsDataError as exc:
+            raise GeoAuthError(str(exc)) from exc
+
+        if not api_key.strip():
+            return NullGeoClient()
+
+        signature = (
+            api_key,
+            max_retries,
+            retry_delay_seconds,
+            min_interval_seconds,
+            cooldown_seconds,
+        )
+        if signature == self._signature:
+            return self._client
+
+        async with self._lock:
+            if signature == self._signature:
+                return self._client
+            self._signature = signature
+            self._client = AmapGeoClient(
+                api_key=api_key,
+                http_client=self._http,
+                max_retries=max_retries,
+                retry_delay_seconds=retry_delay_seconds,
+                min_interval_seconds=min_interval_seconds,
+                rate_limit_cooldown_seconds=cooldown_seconds,
+            )
+            return self._client

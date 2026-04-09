@@ -22,8 +22,6 @@ def _build_station_address(name: object, area_name: object) -> str:
 async def execute_fetch_station_geo(ctx: TaskExecutionContext):
     helper = TaskExecutorHelper(ctx)
     payload = helper.parse_payload(FetchStationGeoPayload)
-    if not ctx.geo_client.is_configured():
-        raise TaskExecutionError("未配置高德 API Key，无法执行站点坐标补全任务")
 
     if payload.address is not None:
         await helper.begin(

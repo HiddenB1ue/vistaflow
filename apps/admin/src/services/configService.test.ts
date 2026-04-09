@@ -1,26 +1,23 @@
 import { describe, it, expect } from 'vitest';
-import { fetchCredentials, fetchToggles } from './configService';
+import { fetchSystemSettings, updateSystemSettings } from './configService';
 
 describe('configService', () => {
-  it('fetchCredentials returns mock data in mock mode', async () => {
-    const creds = await fetchCredentials();
-    expect(Array.isArray(creds)).toBe(true);
-    expect(creds.length).toBeGreaterThan(0);
-    for (const cred of creds) {
-      expect(cred).toHaveProperty('id');
-      expect(cred).toHaveProperty('name');
-      expect(cred).toHaveProperty('health');
+  it('fetchSystemSettings returns mock data in mock mode', async () => {
+    const settings = await fetchSystemSettings();
+    expect(Array.isArray(settings)).toBe(true);
+    expect(settings.length).toBeGreaterThan(0);
+    for (const item of settings) {
+      expect(item).toHaveProperty('key');
+      expect(item).toHaveProperty('valueType');
+      expect(item).toHaveProperty('enabled');
     }
   });
 
-  it('fetchToggles returns mock data in mock mode', async () => {
-    const toggles = await fetchToggles();
-    expect(Array.isArray(toggles)).toBe(true);
-    expect(toggles.length).toBeGreaterThan(0);
-    for (const toggle of toggles) {
-      expect(toggle).toHaveProperty('id');
-      expect(toggle).toHaveProperty('label');
-      expect(typeof toggle.enabled).toBe('boolean');
-    }
+  it('updateSystemSettings returns updated mock result in mock mode', async () => {
+    const updated = await updateSystemSettings({
+      items: [{ key: 'maintenance_mode', value: true, enabled: true }],
+    });
+    expect(updated.updatedCount).toBe(1);
+    expect(updated.updatedKeys).toEqual(['maintenance_mode']);
   });
 });

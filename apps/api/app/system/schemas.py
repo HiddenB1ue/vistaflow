@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from datetime import datetime
+from typing import Any
+
 from pydantic import BaseModel
 
 
@@ -37,3 +40,30 @@ class ToggleResponse(BaseModel):
     label: str
     description: str
     enabled: bool
+
+
+class SystemSettingResponse(BaseModel):
+    key: str
+    value: Any
+    valueType: str
+    category: str
+    label: str
+    description: str | None = None
+    enabled: bool
+    updatedAt: datetime
+
+
+class SystemSettingBatchUpdateItemRequest(BaseModel):
+    key: str
+    value: Any
+    enabled: bool
+
+
+class SystemSettingBatchUpdateRequest(BaseModel):
+    items: list[SystemSettingBatchUpdateItemRequest]
+
+
+class SystemSettingBatchUpdateResponse(BaseModel):
+    updatedCount: int
+    updatedKeys: list[str]
+    updatedAt: datetime

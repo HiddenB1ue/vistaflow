@@ -142,3 +142,17 @@ class LogRecord:
     message: str
     highlighted_terms: list[str] | None
     created_at: datetime
+
+
+@dataclass
+class SystemSetting:
+    id: int
+    key: str
+    value: str
+    value_type: str
+    category: str
+    label: str
+    description: str | None
+    enabled: bool
+    created_at: datetime
+    updated_at: datetime
