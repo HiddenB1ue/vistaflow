@@ -47,7 +47,6 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     if settings.ticket_12306_cookie.strip():
         app.state.ticket_client = Live12306TicketClient(
             config=TicketClientConfig(
-                endpoint=settings.ticket_12306_endpoint,
                 cookie=settings.ticket_12306_cookie,
             ),
             http_client=http_client,

@@ -4,7 +4,7 @@ from typing import Any
 
 from app.models import SeatInfo
 
-LEFT_TICKET_BASE = "https://kyfw.12306.cn/otn/leftTicket"
+LEFT_TICKET_QUERY_URL = "https://kyfw.12306.cn/otn/leftTicket/queryG"
 
 DISPLAY_SEATS = ["swz", "tz", "zy", "ze", "gr", "rw", "yw", "yz", "wz", "gg"]
 

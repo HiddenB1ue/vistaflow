@@ -9,7 +9,7 @@ import httpx
 from app.integrations.ticket_12306.models import TicketSegmentData
 from app.integrations.ticket_12306.parser import (
     BASE_HEADERS,
-    LEFT_TICKET_BASE,
+    LEFT_TICKET_QUERY_URL,
     build_seat_infos,
     parse_result_row,
     segment_min_price,
@@ -19,7 +19,6 @@ from app.models import SeatLookupKey
 
 @dataclass(frozen=True)
 class TicketClientConfig:
-    endpoint: str = "queryG"
     cookie: str = ""
     timeout_seconds: float = 20.0
 
@@ -123,7 +122,6 @@ class Live12306TicketClient(AbstractTicketClient):
         to_telecode: str,
     ) -> dict[str, Any]:
         """查询单条区间，返回 {train_no_or_code: (seat_status, seat_prices)}。"""
-        url = f"{LEFT_TICKET_BASE}/{self._config.endpoint}"
         params = {
             "leftTicketDTO.train_date": run_date,
             "leftTicketDTO.from_station": from_telecode,
@@ -136,7 +134,7 @@ class Live12306TicketClient(AbstractTicketClient):
 
         try:
             resp = await self._http.get(
-                url,
+                LEFT_TICKET_QUERY_URL,
                 params=params,
                 headers=headers,
                 timeout=self._config.timeout_seconds,

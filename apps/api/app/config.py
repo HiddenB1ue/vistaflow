@@ -13,7 +13,6 @@ class Settings(BaseSettings):
 
     # 12306 集成（可选）
     ticket_12306_cookie: str = ""
-    ticket_12306_endpoint: str = "queryG"
 
     # 高德地图（可选）
     amap_api_key: str = ""

@@ -20,8 +20,7 @@ BASE_HEADERS = {
     "sec-ch-ua-platform": '"Windows"',
 }
 
-LEFT_TICKET_BASE = "https://kyfw.12306.cn/otn/leftTicket"
-DEFAULT_ENDPOINT = "queryG"
+LEFT_TICKET_QUERY_URL = "https://kyfw.12306.cn/otn/leftTicket/queryG"
 DEFAULT_COOKIE = (
     "_uab_collina=177028072603985136749915; "
     "JSESSIONID=AC542969CC756F45F348F632EC5B4B88; "
@@ -170,10 +169,8 @@ def fetch_left_ticket_payload(
     train_date: str,
     from_station: str,
     to_station: str,
-    endpoint: str,
     cookie: str,
 ) -> dict[str, Any]:
-    url = f"{LEFT_TICKET_BASE}/{endpoint}"
     params = {
         "leftTicketDTO.train_date": train_date,
         "leftTicketDTO.from_station": from_station,
@@ -200,7 +197,7 @@ def fetch_left_ticket_payload(
         headers["Cookie"] = cookie.strip()
 
     with httpx.Client(follow_redirects=False, timeout=20) as client:
-        resp = client.get(url, params=params, headers=headers)
+        resp = client.get(LEFT_TICKET_QUERY_URL, params=params, headers=headers)
 
     if resp.status_code == 302:
         raise RuntimeError(
@@ -250,20 +247,14 @@ def main() -> None:
     train_date = "2026-03-06"
     from_station = "JXH"  # 例如 CCT=长春
     to_station = "IMH"  # 例如 SHH=上海
-    endpoint = DEFAULT_ENDPOINT  # 可选: queryG / query
     cookie = DEFAULT_COOKIE  # 建议粘贴浏览器 Cookie，避免 302
     limit = 0  # 仅打印前 N 条；<=0 表示全打印
     # ==================================
-
-    endpoint = endpoint.strip()
-    if endpoint not in {"queryG", "query"}:
-        raise ValueError("endpoint must be queryG or query")
 
     payload = fetch_left_ticket_payload(
         train_date=train_date,
         from_station=from_station,
         to_station=to_station,
-        endpoint=endpoint,
         cookie=cookie,
     )
 
