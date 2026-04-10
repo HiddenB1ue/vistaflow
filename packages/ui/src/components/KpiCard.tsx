@@ -25,7 +25,7 @@ export function KpiCard({
   return (
     <div className={`glass-panel vf-kpi-card ${className}`.trim()} style={borderStyle}>
       <div className="flex items-center gap-2 mb-1">
-        <div className="text-[10px] text-[#8A8A8E] tracking-widest uppercase">{label}</div>
+        <div className="text-xs text-[#8A8A8E] tracking-widest uppercase">{label}</div>
         {alertDot && <span className="w-2 h-2 rounded-full bg-[#FACC15] animate-ping" />}
       </div>
       <div className={`text-3xl font-display font-light count-up ${valueClassName}`}>{value}</div>

@@ -39,7 +39,7 @@
   background: transparent;
   color: #fff;
   cursor: pointer;
-  font-family: 'Space Grotesk', sans-serif;
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
   font-size: 1.125rem;
   font-weight: 500;
   letter-spacing: 0.22em;
@@ -109,7 +109,7 @@
 }
 .vf-page-header__eyebrow {
   color: var(--color-pulse);
-  font-family: 'Space Grotesk', sans-serif;
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
   font-size: 0.7rem;
   letter-spacing: 0.24em;
   text-transform: uppercase;
@@ -118,7 +118,7 @@
 .vf-page-header__title {
   margin: 0;
   color: #F5F5F7;
-  font-family: 'Cormorant Garamond', serif;
+  font-family: 'Crimson Pro', 'Noto Serif SC', serif;
   font-size: clamp(2rem, 3.4vw, 3.25rem);
   font-style: italic;
   font-weight: 300;
@@ -160,7 +160,7 @@
 }
 .vf-section-header__eyebrow {
   color: var(--color-pulse);
-  font-family: 'Space Grotesk', sans-serif;
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
   font-size: 0.65rem;
   letter-spacing: 0.2em;
   text-transform: uppercase;
@@ -168,7 +168,7 @@
 }
 .vf-section-header__title {
   color: #F5F5F7;
-  font-family: 'Cormorant Garamond', serif;
+  font-family: 'Crimson Pro', 'Noto Serif SC', serif;
   font-size: clamp(1.5rem, 2vw, 2.25rem);
   font-style: italic;
   font-weight: 300;

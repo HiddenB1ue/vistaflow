@@ -20,8 +20,8 @@
   color: var(--color-text-secondary);
   cursor: pointer;
   transition: background 0.2s ease, color 0.2s ease, transform 0.2s ease;
-  font-family: 'Space Grotesk', sans-serif;
-  font-size: 0.76rem;
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: var(--text-sm);
   letter-spacing: 0.12em;
   text-transform: uppercase;
 }
@@ -40,7 +40,7 @@
 }
 .vf-segmented-control--sm .vf-segmented-control__item {
   padding: 0.5rem 0.8rem;
-  font-size: 0.68rem;
+  font-size: var(--text-sm);
 }
 .vf-segmented-control__badge,
 .vf-segmented-control__icon {
@@ -66,7 +66,7 @@
   outline: none;
   transition: border-color 0.3s, background 0.3s;
   font-family: 'Inter', sans-serif;
-  font-size: 0.875rem;
+  font-size: var(--text-base);
 }
 .input-box:focus { border-color: var(--color-pulse); background: rgba(0,0,0,0.5); }
 .input-box::placeholder { color: rgba(255,255,255,0.25); }
@@ -93,12 +93,12 @@
   border: none;
   border-bottom: 1px solid rgba(255,255,255,0.2);
   color: var(--color-pulse);
-  font-family: 'Space Grotesk', sans-serif;
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
   text-align: center;
   outline: none;
   transition: border-color 0.4s ease, width 0.4s ease;
   width: 140px;
-  font-size: 1.5rem;
+  font-size: var(--text-2xl);
   cursor: text;
 }
 .vf-combobox__input--hero:focus {
@@ -132,7 +132,7 @@
   padding: 0.85rem 1rem;
   text-align: left;
   font-family: 'Inter', sans-serif;
-  font-size: 0.95rem;
+  font-size: var(--text-md);
 }
 .vf-combobox__option {
   border: 0;
@@ -152,7 +152,7 @@
 .vf-combobox__option-description,
 .vf-combobox__empty {
   color: rgba(255,255,255,0.42);
-  font-size: 0.75rem;
+  font-size: var(--text-xs);
 }
 
 /* === Date Picker === */
@@ -166,12 +166,12 @@
   border: none;
   border-bottom: 1px solid rgba(255,255,255,0.2);
   color: var(--color-pulse);
-  font-family: 'Space Grotesk', sans-serif;
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
   text-align: center;
   outline: none;
   transition: border-color 0.4s ease, width 0.4s ease;
   width: 160px;
-  font-size: 1.5rem;
+  font-size: var(--text-2xl);
   cursor: pointer;
 }
 .vf-date-trigger--hero:hover,
@@ -220,8 +220,8 @@
 }
 .vf-calendar__month {
   color: #F5F5F7;
-  font-family: 'Space Grotesk', sans-serif;
-  font-size: 0.95rem;
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: var(--text-md);
   letter-spacing: 0.18em;
   text-transform: uppercase;
 }
@@ -230,8 +230,8 @@
   grid-template-columns: repeat(7, minmax(0, 1fr));
   gap: 0.5rem;
   text-align: center;
-  font-family: 'Space Grotesk', sans-serif;
-  font-size: 0.68rem;
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: var(--text-sm);
   letter-spacing: 0.18em;
   text-transform: uppercase;
   color: var(--color-text-secondary);
@@ -289,11 +289,11 @@
 /* === Button Variants === */
 .btn {
   display: inline-flex; align-items: center; justify-content: center; gap: 8px;
-  border-radius: 8px; font-size: 0.75rem; font-weight: 500;
+  border-radius: 8px; font-size: var(--text-xs); font-weight: 500;
   letter-spacing: 0.08em; text-transform: uppercase;
   transition: all 0.25s ease; cursor: pointer; outline: none;
   border: 1px solid transparent;
-  font-family: 'Space Grotesk', sans-serif;
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
 }
 .btn-primary { background: var(--color-pulse); color: #fff; padding: 10px 24px; box-shadow: 0 4px 15px rgba(139,92,246,0.3); }
 .btn-primary:hover { background: #7C3AED; box-shadow: 0 6px 20px rgba(139,92,246,0.5); transform: translateY(-1px); }
@@ -305,7 +305,7 @@
 .btn-warning:hover { background: #EAB308; box-shadow: 0 6px 20px rgba(250,204,21,0.45); }
 .btn-success { background: rgba(74,222,128,0.12); color: #4ADE80; padding: 8px 16px; border-color: rgba(74,222,128,0.25); }
 .btn-success:hover { background: rgba(74,222,128,0.22); }
-.btn-sm { padding: 6px 12px !important; font-size: 0.7rem !important; }
+.btn-sm { padding: 6px 12px !important; font-size: var(--text-sm) !important; }
 
 /* === Toggle === */
 .custom-toggle {
@@ -330,7 +330,7 @@
   border-radius: 8px; padding: 10px 16px; color: #F5F5F7;
   cursor: pointer; outline: none;
   transition: border-color 0.25s, background 0.25s;
-  font-family: 'Inter', sans-serif; font-size: 0.875rem;
+  font-family: 'Inter', sans-serif; font-size: var(--text-base);
   user-select: none; white-space: nowrap;
 }
 .custom-select-trigger:hover { border-color: rgba(255,255,255,0.2); }
@@ -347,7 +347,7 @@
 }
 .custom-select-dropdown.open { opacity: 1; transform: translateY(0) scale(1); pointer-events: auto; }
 .custom-select-option {
-  padding: 10px 16px; font-size: 0.875rem; font-family: 'Inter', sans-serif;
+  padding: 10px 16px; font-size: var(--text-base); font-family: 'Inter', sans-serif;
   color: rgba(245,245,247,0.7); cursor: pointer;
   transition: background 0.15s, color 0.15s;
   display: flex; align-items: center; gap: 10px;

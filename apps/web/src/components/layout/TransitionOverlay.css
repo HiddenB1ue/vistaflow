@@ -13,11 +13,16 @@
   justify-content: center;
   border-top: 1px solid rgba(255, 255, 255, 0.1);
 }
+
+/* 使用统一的 typography 样式 */
 .loading-text {
-  font-family: 'Space Grotesk', sans-serif;
-  font-size: 1.2rem;
-  color: var(--color-pulse);
-  letter-spacing: 0.2em;
+  /* 继承 text-display-lg 的所有样式 */
+  font-family: var(--font-display);
+  font-size: var(--text-5xl);
+  font-weight: var(--font-medium);
+  letter-spacing: var(--tracking-ultra);
   text-transform: uppercase;
+  color: var(--color-pulse);
+  /* 组件特定样式 */
   opacity: 0;
 }

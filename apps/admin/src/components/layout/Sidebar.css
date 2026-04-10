@@ -40,15 +40,25 @@
 /* === Nav Item (admin-specific) === */
 .nav-item {
   width: 100%; display: flex; align-items: center; gap: 12px;
-  padding: 11px 16px; font-size: 0.8125rem; letter-spacing: 0.04em;
+  padding: 11px 16px;
+  font-size: var(--text-base);
+  font-weight: var(--font-normal);
+  letter-spacing: var(--tracking-tight);
   transition: all 0.25s; border-left: 2px solid transparent;
   color: var(--color-text-secondary); border-radius: 0 8px 8px 0;
-  cursor: pointer; font-family: 'Inter', sans-serif;
+  cursor: pointer; font-family: var(--font-body);
 }
 .nav-item:hover { color: #F5F5F7; background: rgba(255,255,255,0.04); }
 .nav-item.active { border-left-color: var(--color-pulse); background: rgba(139,92,246,0.08); color: #F5F5F7; }
+/* 使用统一的 typography 样式 */
 .nav-section-label {
-  font-family: 'Space Grotesk', sans-serif; font-size: 0.65rem;
-  letter-spacing: 0.2em; text-transform: uppercase;
-  color: rgba(138,138,142,0.5); padding: 20px 20px 6px;
+  /* 继承 text-section-label 的所有样式 */
+  font-family: var(--font-display);
+  font-size: var(--text-xs);
+  font-weight: var(--font-normal);
+  letter-spacing: var(--tracking-ultra);
+  text-transform: uppercase;
+  color: rgba(138, 138, 142, 0.5);
+  /* 组件特定样式 */
+  padding: 20px 20px 6px;
 }

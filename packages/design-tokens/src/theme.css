@@ -4,6 +4,60 @@
   --color-dawn: #E5C07B;
   --color-dusk: #8B5CF6;
   --color-muted: #8A8A8E;
-  --font-display: "Space Grotesk", sans-serif;
-  --font-serif: "Cormorant Garamond", serif;
+  
+  /* Font Families */
+  --font-body: "Inter", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --font-display: "Space Grotesk", "Noto Sans SC", sans-serif;
+  --font-serif: "Crimson Pro", "Noto Serif SC", serif;
+  
+  /* Font Sizes - New Scale (1.125 ratio, 14px base) */
+  --text-xs: 0.75rem;      /* 12px - minimum readable size */
+  --text-sm: 0.8125rem;    /* 13px - small UI text */
+  --text-base: 0.875rem;   /* 14px - body text (NEW BASE) */
+  --text-md: 1rem;         /* 16px - emphasized body */
+  --text-lg: 1.125rem;     /* 18px - large body / small headings */
+  --text-xl: 1.25rem;      /* 20px - headings */
+  --text-2xl: 1.5rem;      /* 24px - large headings */
+  --text-3xl: 1.875rem;    /* 30px - display headings */
+  --text-4xl: 2.25rem;     /* 36px - hero headings */
+  --text-5xl: 3rem;        /* 48px - large hero */
+  
+  /* Font Weights */
+  --font-light: 300;
+  --font-normal: 400;
+  --font-medium: 500;
+  --font-semibold: 600;
+  --font-bold: 700;
+  
+  /* Line Heights */
+  --leading-none: 1;           /* For single-line elements */
+  --leading-tight: 1.25;       /* For large headings */
+  --leading-snug: 1.375;       /* For medium headings */
+  --leading-normal: 1.5;       /* For body text (default) */
+  --leading-relaxed: 1.625;    /* For long-form content */
+  --leading-loose: 2;          /* For special emphasis */
+  
+  /* Letter Spacing - Optimized for CJK */
+  --tracking-tighter: -0.02em;  /* For large headings */
+  --tracking-tight: 0;          /* For body text */
+  --tracking-normal: 0.02em;    /* Slight spacing */
+  --tracking-wide: 0.05em;      /* For uppercase labels */
+  --tracking-wider: 0.08em;     /* For display text */
+  --tracking-widest: 0.1em;     /* Maximum spacing */
+  
+  /* Deprecated Token Aliases - Maintain for backward compatibility */
+  /* TODO: Remove in v2.0 */
+  --text-xxs: var(--text-xs);   /* DEPRECATED: Use --text-xs instead (old 10px → new 12px) */
+  --text-6xl: var(--text-5xl);  /* DEPRECATED: Use --text-5xl instead (old 24px → new 48px) */
+  --tracking-ultra: var(--tracking-widest);  /* DEPRECATED: Use --tracking-widest instead */
+  --tracking-mega: var(--tracking-widest);   /* DEPRECATED: Use --tracking-widest instead */
+  --tracking-super: var(--tracking-widest);  /* DEPRECATED: Use --tracking-widest instead */
+}
+
+/* Responsive Typography - Mobile Adjustments */
+@media (max-width: 640px) {
+  @theme {
+    --text-base: 0.9375rem;  /* 15px on mobile for better readability */
+    --text-md: 1.0625rem;    /* 17px on mobile */
+  }
 }
