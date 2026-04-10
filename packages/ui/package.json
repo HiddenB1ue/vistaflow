@@ -15,7 +15,8 @@
   },
   "dependencies": {
     "@vistaflow/design-tokens": "workspace:*",
-    "@vistaflow/utils": "workspace:*"
+    "@vistaflow/utils": "workspace:*",
+    "recharts": "^3.8.1"
   },
   "peerDependencies": {
     "gsap": "^3.12.0",

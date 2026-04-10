@@ -14,10 +14,13 @@ from app.system.dependencies import (
     SystemSettingServiceDep,
 )
 from app.system.schemas import (
+    ActiveTaskResponse,
     CredentialResponse,
+    KpiStatsResponse,
     LogResponse,
     QuotaResponse,
     SparklineResponse,
+    SystemAlertResponse,
     SystemSettingBatchUpdateRequest,
     SystemSettingBatchUpdateResponse,
     SystemSettingResponse,
@@ -74,8 +77,10 @@ async def list_logs(
 )
 async def get_sparkline(
     service: OverviewServiceDep,
+    days: int = Query(default=7, ge=1, le=30),
 ) -> APIResponse[SparklineResponse]:
-    return APIResponse.ok(service.get_sparkline())
+    sparkline = await service.get_sparkline(days=days)
+    return APIResponse.ok(sparkline)
 
 
 @router.get(
@@ -86,7 +91,44 @@ async def get_sparkline(
 async def get_quota(
     service: OverviewServiceDep,
 ) -> APIResponse[QuotaResponse]:
-    return APIResponse.ok(service.get_quota())
+    quota = await service.get_quota()
+    return APIResponse.ok(quota)
+
+
+@router.get(
+    "/overview/kpi",
+    response_model=APIResponse[KpiStatsResponse],
+    dependencies=[Depends(require_admin_auth)],
+)
+async def get_kpi_stats(
+    service: OverviewServiceDep,
+) -> APIResponse[KpiStatsResponse]:
+    kpi_stats = await service.get_kpi_stats()
+    return APIResponse.ok(kpi_stats)
+
+
+@router.get(
+    "/overview/tasks",
+    response_model=APIResponse[list[ActiveTaskResponse]],
+    dependencies=[Depends(require_admin_auth)],
+)
+async def get_active_tasks(
+    service: OverviewServiceDep,
+) -> APIResponse[list[ActiveTaskResponse]]:
+    tasks = await service.get_active_tasks()
+    return APIResponse.ok(tasks)
+
+
+@router.get(
+    "/overview/alerts",
+    response_model=APIResponse[list[SystemAlertResponse]],
+    dependencies=[Depends(require_admin_auth)],
+)
+async def get_system_alerts(
+    service: OverviewServiceDep,
+) -> APIResponse[list[SystemAlertResponse]]:
+    alerts = await service.get_system_alerts()
+    return APIResponse.ok(alerts)
 
 
 @router.get(

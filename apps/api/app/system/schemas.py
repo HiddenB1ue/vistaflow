@@ -67,3 +67,28 @@ class SystemSettingBatchUpdateResponse(BaseModel):
     updatedCount: int
     updatedKeys: list[str]
     updatedAt: datetime
+
+
+class KpiStatsResponse(BaseModel):
+    totalRecords: int
+    stationCoverage: int
+    coordCompletionRate: float
+    pendingAlerts: int
+    todayApiCalls: int
+    remainingQuota: int
+
+
+class ActiveTaskResponse(BaseModel):
+    id: int
+    name: str
+    status: str
+    elapsedTime: str | None = None
+    startedAt: str | None = None
+
+
+class SystemAlertResponse(BaseModel):
+    id: int
+    severity: str
+    title: str
+    message: str
+    timestamp: str

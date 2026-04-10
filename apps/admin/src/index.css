@@ -10,3 +10,77 @@
 
 ::-webkit-scrollbar { width: 4px; height: 4px; }
 ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 4px; }
+
+/* Tooltip fade-in animation */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Remove focus outline from Recharts elements */
+.recharts-wrapper,
+.recharts-wrapper *,
+.recharts-surface,
+.recharts-surface *,
+.recharts-layer,
+.recharts-layer *,
+.recharts-area,
+.recharts-area *,
+.recharts-pie,
+.recharts-pie *,
+.recharts-sector,
+.recharts-sector *,
+.recharts-dot,
+.recharts-dot *,
+.recharts-active-dot,
+.recharts-active-dot *,
+.recharts-cartesian-grid,
+.recharts-cartesian-grid *,
+.recharts-xaxis,
+.recharts-xaxis *,
+.recharts-yaxis,
+.recharts-yaxis * {
+  outline: none !important;
+}
+
+.recharts-wrapper:focus,
+.recharts-wrapper *:focus,
+.recharts-surface:focus,
+.recharts-surface *:focus,
+.recharts-layer:focus,
+.recharts-layer *:focus,
+.recharts-area:focus,
+.recharts-area *:focus,
+.recharts-pie:focus,
+.recharts-pie *:focus,
+.recharts-sector:focus,
+.recharts-sector *:focus,
+.recharts-dot:focus,
+.recharts-dot *:focus,
+.recharts-active-dot:focus,
+.recharts-active-dot *:focus,
+.recharts-cartesian-grid:focus,
+.recharts-cartesian-grid *:focus,
+.recharts-xaxis:focus,
+.recharts-xaxis *:focus,
+.recharts-yaxis:focus,
+.recharts-yaxis *:focus {
+  outline: none !important;
+}
+
+/* Remove focus outline from all interactive elements */
+* {
+  outline: none !important;
+}
+
+*:focus,
+*:focus-visible {
+  outline: none !important;
+  box-shadow: none !important;
+}

@@ -10,6 +10,7 @@ from app.system.credential_service import CredentialService
 from app.system.constants import SYSTEM_SETTING_CACHE_TTL_SECONDS
 from app.system.log_repository import LogRepository
 from app.system.log_service import LogService
+from app.system.overview_repository import OverviewRepository
 from app.system.overview_service import OverviewService
 from app.system.setting_repository import SystemSettingRepository
 from app.system.settings_provider import SystemSettingsProvider
@@ -24,8 +25,8 @@ def get_log_service(pool: DbPool) -> LogService:
     return LogService(repo=LogRepository(pool))
 
 
-async def get_overview_service() -> OverviewService:
-    return OverviewService()
+async def get_overview_service(pool: DbPool) -> OverviewService:
+    return OverviewService(repo=OverviewRepository(pool))
 
 
 def get_system_settings_provider(request: Request) -> SystemSettingsProvider:
