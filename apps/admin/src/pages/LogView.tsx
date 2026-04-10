@@ -1,10 +1,12 @@
 
-import { useMemo, useState, type ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { LOG_LABELS, TOAST_MESSAGES } from '@/constants/labels';
 import { LogEntry } from '@/components/ui/LogEntry';
 import { fetchLogs } from '@/services/logService';
 import { useToastStore } from '@/stores/toastStore';
+import { usePaginationFooter } from '@/utils/pagination';
+import type { SystemLogsQuery } from '@/types/pagination';
 import {
   Button,
   ControlToolbar,
@@ -14,6 +16,7 @@ import {
   InputBox,
   PanelBody,
   PanelCard,
+  PaginationFooter,
 } from '@vistaflow/ui';
 
 const severityOptions = [
@@ -60,33 +63,57 @@ function renderHighlightedMessage(message: string, terms?: string[]): ReactNode 
   return <>{parts}</>;
 }
 
+
+
 export default function LogView() {
   const addToast = useToastStore((state) => state.addToast);
-  const { data: logs = [] } = useQuery({
-    queryKey: ['admin', 'logs'],
-    queryFn: fetchLogs,
+  
+  const [query, setQuery] = useState<SystemLogsQuery>({
+    page: 1,
+    pageSize: 20,
+    keyword: '',
+    severity: 'all',
   });
-  const [search, setSearch] = useState('');
-  const [severityFilter, setSeverityFilter] = useState('all');
 
-  const filteredLogs = useMemo(() => {
-    const keyword = search.trim().toLowerCase();
+  const logsQuery = useQuery({
+    queryKey: ['admin', 'logs', query],
+    queryFn: () => fetchLogs(query),
+  });
 
-    return logs.filter((log) => {
-      const matchesKeyword = keyword.length === 0 || [log.timestamp, log.severity, log.message].some((field) => field.toLowerCase().includes(keyword));
-      const matchesSeverity = severityFilter === 'all' || log.severity === severityFilter;
-      return matchesKeyword && matchesSeverity;
-    });
-  }, [logs, search, severityFilter]);
+  const logs = logsQuery.data?.items ?? [];
+
+  const handleSearchChange = (value: string) => {
+    setQuery((q) => ({ ...q, keyword: value, page: 1 }));
+  };
+
+  const handleSeverityChange = (value: string) => {
+    setQuery((q) => ({ ...q, severity: value, page: 1 }));
+  };
+
+  const paginationProps = usePaginationFooter({
+    query,
+    data: logsQuery.data,
+    onQueryChange: setQuery,
+  });
 
   return (
     <div className="vf-page-stack">
       <ControlToolbar>
         <ControlToolbarMain>
-          <InputBox placeholder={LOG_LABELS.searchPlaceholder} className="min-w-0 w-full" value={search} onChange={(event) => setSearch(event.target.value)} />
+          <InputBox 
+            placeholder={LOG_LABELS.searchPlaceholder} 
+            className="min-w-0 w-full" 
+            value={query.keyword} 
+            onChange={(event) => handleSearchChange(event.target.value)} 
+          />
         </ControlToolbarMain>
         <ControlToolbarActions>
-          <CustomSelect options={severityOptions} value={severityFilter} onChange={setSeverityFilter} className="w-full md:w-[180px]" />
+          <CustomSelect 
+            options={severityOptions} 
+            value={query.severity} 
+            onChange={handleSeverityChange} 
+            className="w-full md:w-[180px]" 
+          />
           <Button variant="outline" size="sm" onClick={() => addToast(TOAST_MESSAGES.logsExported, 'success')}>
             {LOG_LABELS.exportLogs}
           </Button>
@@ -95,11 +122,12 @@ export default function LogView() {
 
       <PanelCard>
         <PanelBody className="font-mono">
-          {filteredLogs.map((log) => (
+          {logs.map((log) => (
             <LogEntry key={log.id} timestamp={log.timestamp} severity={log.severity} message={renderHighlightedMessage(log.message, log.highlightedTerms)} />
           ))}
         </PanelBody>
       </PanelCard>
+      <PaginationFooter {...paginationProps} />
     </div>
   );
 }

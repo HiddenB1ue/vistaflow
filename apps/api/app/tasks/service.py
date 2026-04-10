@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from app.models import TaskDefinition, TaskRun, TaskRunLog
+from app.pagination import PaginatedResponse, create_paginated_response
 from app.tasks.exceptions import (
     TaskAlreadyRunning,
     TaskDeleteConflict,
@@ -57,9 +58,23 @@ class TaskService:
             for definition in self._task_registry.all()
         ]
 
-    async def list_tasks(self) -> list[TaskResponse]:
-        tasks = await self._task_repo.find_all()
-        return [self._to_task_response(task) for task in tasks]
+    async def list_tasks(
+        self,
+        *,
+        page: int = 1,
+        page_size: int = 20,
+        keyword: str = "",
+        status: str = "all",
+    ) -> PaginatedResponse[TaskResponse]:
+        """List tasks with pagination, filtering, and search."""
+        tasks, total = await self._task_repo.find_all_paginated(
+            page=page,
+            page_size=page_size,
+            keyword=keyword,
+            status=status,
+        )
+        items = [self._to_task_response(task) for task in tasks]
+        return create_paginated_response(items, page, page_size, total)
 
     async def get_task(self, task_id: int) -> TaskResponse:
         task = await self._require_task(task_id)
@@ -176,10 +191,22 @@ class TaskService:
 
         raise TaskRunNotTerminable(run_id)
 
-    async def list_runs(self, task_id: int) -> list[TaskRunResponse]:
+    async def list_runs(
+        self,
+        task_id: int,
+        *,
+        page: int = 1,
+        page_size: int = 20,
+    ) -> PaginatedResponse[TaskRunResponse]:
+        """List task runs with pagination."""
         await self._require_task(task_id)
-        runs = await self._run_repo.list_by_task(task_id)
-        return [self._to_run_response(run) for run in runs]
+        runs, total = await self._run_repo.list_by_task_paginated(
+            task_id,
+            page=page,
+            page_size=page_size,
+        )
+        items = [self._to_run_response(run) for run in runs]
+        return create_paginated_response(items, page, page_size, total)
 
     async def get_run(self, run_id: int) -> TaskRunResponse:
         run = await self._require_run(run_id)
@@ -189,6 +216,23 @@ class TaskService:
         await self._require_run(run_id)
         logs = await self._run_log_repo.list_by_run(run_id)
         return [self._to_run_log_response(log) for log in logs]
+
+    async def list_run_logs_paginated(
+        self,
+        run_id: int,
+        *,
+        page: int = 1,
+        page_size: int = 100,
+    ) -> PaginatedResponse[TaskRunLogResponse]:
+        """List task run logs with pagination."""
+        await self._require_run(run_id)
+        logs, total = await self._run_log_repo.list_by_run_paginated(
+            run_id,
+            page=page,
+            page_size=page_size,
+        )
+        items = [self._to_run_log_response(log) for log in logs]
+        return create_paginated_response(items, page, page_size, total)
 
     async def _require_task(self, task_id: int) -> TaskDefinition:
         task = await self._task_repo.find_by_id(task_id)

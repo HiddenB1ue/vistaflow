@@ -31,6 +31,7 @@ export { Topbar, TopbarBrand, TopbarActions } from './components/Topbar';
 export { ComboboxInput } from './components/ComboboxInput';
 export { DatePicker } from './components/DatePicker';
 export { LogRow } from './components/LogRow';
+export { PaginationFooter } from './components/PaginationFooter';
 
 // Types
 export type { ButtonProps, ButtonVariant, ButtonSize } from './components/Button';
@@ -78,3 +79,4 @@ export type { TopbarProps, TopbarBrandProps, TopbarActionsProps, TopbarBlendMode
 export type { ComboboxInputProps, ComboboxInputAppearance } from './components/ComboboxInput';
 export type { DatePickerProps, DatePickerAppearance, DatePickerLabels } from './components/DatePicker';
 export type { LogRowProps } from './components/LogRow';
+export type { PaginationFooterProps } from './components/PaginationFooter';

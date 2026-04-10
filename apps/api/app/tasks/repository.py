@@ -52,6 +52,76 @@ class TaskRepository(BaseRepository):
             rows = await conn.fetch(sql)
         return [self._row_to_task(row) for row in rows]
 
+    async def find_all_paginated(
+        self,
+        *,
+        page: int,
+        page_size: int,
+        keyword: str = "",
+        status: str = "all",
+    ) -> tuple[list[TaskDefinition], int]:
+        """
+        Find tasks with pagination, filtering, and search.
+
+        Args:
+            page: Page number (1-indexed)
+            page_size: Number of items per page
+            keyword: Search keyword for name, type, description
+            status: Filter by status (or "all" for no filter)
+
+        Returns:
+            Tuple of (items, total_count)
+        """
+        # Build WHERE clause conditions
+        conditions = []
+        params: list[str | int] = []
+        param_idx = 1
+
+        # Keyword search across name, type, description
+        if keyword.strip():
+            keyword_pattern = f"%{keyword.strip()}%"
+            conditions.append(
+                f"(name ILIKE ${param_idx} OR type ILIKE ${param_idx} OR COALESCE(description, '') ILIKE ${param_idx})"
+            )
+            params.append(keyword_pattern)
+            param_idx += 1
+
+        # Status filter
+        if status != "all":
+            conditions.append(f"status = ${param_idx}")
+            params.append(status)
+            param_idx += 1
+
+        where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+
+        # Calculate offset
+        offset = (page - 1) * page_size
+
+        # Query with COUNT(*) OVER() for efficient total count
+        sql = f"""
+            SELECT id, name, type, type_label, description, enabled, cron, payload,
+                   status, latest_run_id, latest_run_status, latest_run_started_at,
+                   latest_run_finished_at, latest_error_message, latest_result_level,
+                   metrics_label, metrics_value, timing_label, timing_value, error_message,
+                   created_at, updated_at,
+                   COUNT(*) OVER() as total_count
+            FROM task
+            {where_clause}
+            ORDER BY updated_at DESC, id DESC
+            LIMIT ${param_idx} OFFSET ${param_idx + 1}
+        """
+        params.extend([page_size, offset])
+
+        async with self._pool.acquire() as conn:
+            rows = await conn.fetch(sql, *params)
+
+        if not rows:
+            return [], 0
+
+        total_count = int(rows[0]["total_count"])
+        tasks = [self._row_to_task(row) for row in rows]
+        return tasks, total_count
+
     async def find_by_id(self, task_id: int) -> TaskDefinition | None:
         sql = """
             SELECT id, name, type, type_label, description, enabled, cron, payload,
@@ -393,6 +463,50 @@ class TaskRunRepository(BaseRepository):
             rows = await conn.fetch(sql, task_id)
         return [self._row_to_run(row) for row in rows]
 
+    async def list_by_task_paginated(
+        self,
+        task_id: int,
+        *,
+        page: int,
+        page_size: int,
+    ) -> tuple[list[TaskRun], int]:
+        """
+        Find task runs with pagination.
+
+        Args:
+            task_id: Task ID to filter by
+            page: Page number (1-indexed)
+            page_size: Number of items per page
+
+        Returns:
+            Tuple of (items, total_count)
+        """
+        # Calculate offset
+        offset = (page - 1) * page_size
+
+        # Query with COUNT(*) OVER() for efficient total count
+        sql = """
+            SELECT id, task_id, task_name, task_type, trigger_mode, status,
+                   requested_by, summary, result_level, metrics_value,
+                   progress_snapshot, error_message, termination_reason,
+                   worker_id, heartbeat_at, cancel_requested, cancel_requested_at,
+                   started_at, finished_at, created_at, updated_at,
+                   COUNT(*) OVER() as total_count
+            FROM task_run
+            WHERE task_id = $1
+            ORDER BY created_at DESC, id DESC
+            LIMIT $2 OFFSET $3
+        """
+        async with self._pool.acquire() as conn:
+            rows = await conn.fetch(sql, task_id, page_size, offset)
+
+        if not rows:
+            return [], 0
+
+        total_count = int(rows[0]["total_count"])
+        runs = [self._row_to_run(row) for row in rows]
+        return runs, total_count
+
     async def update_run_status(
         self,
         run_id: int,
@@ -662,6 +776,46 @@ class TaskRunLogRepository(BaseRepository):
         async with self._pool.acquire() as conn:
             rows = await conn.fetch(sql, run_id)
         return [self._row_to_log(row) for row in rows]
+
+    async def list_by_run_paginated(
+        self,
+        run_id: int,
+        *,
+        page: int,
+        page_size: int,
+    ) -> tuple[list[TaskRunLog], int]:
+        """
+        Find task run logs with pagination.
+
+        Args:
+            run_id: Run ID to filter by
+            page: Page number (1-indexed)
+            page_size: Number of items per page
+
+        Returns:
+            Tuple of (items, total_count)
+        """
+        # Calculate offset
+        offset = (page - 1) * page_size
+
+        # Query with COUNT(*) OVER() for efficient total count
+        sql = """
+            SELECT id, run_id, severity, message, created_at,
+                   COUNT(*) OVER() as total_count
+            FROM task_run_log
+            WHERE run_id = $1
+            ORDER BY created_at ASC, id ASC
+            LIMIT $2 OFFSET $3
+        """
+        async with self._pool.acquire() as conn:
+            rows = await conn.fetch(sql, run_id, page_size, offset)
+
+        if not rows:
+            return [], 0
+
+        total_count = int(rows[0]["total_count"])
+        logs = [self._row_to_log(row) for row in rows]
+        return logs, total_count
 
     @staticmethod
     def _row_to_log(row: Any) -> TaskRunLog:

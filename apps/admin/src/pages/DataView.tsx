@@ -17,6 +17,7 @@ import { extractApiErrorMessage } from '@/services/taskService';
 import { useToastStore } from '@/stores/toastStore';
 import { StationDrawer } from '@/components/overlays/StationDrawer';
 import { TrainStopsDrawer } from '@/components/overlays/TrainStopsDrawer';
+import { usePaginationFooter } from '@/utils/pagination';
 import {
   Button,
   ContentSection,
@@ -29,6 +30,7 @@ import {
   InputBox,
   PanelBody,
   PanelCard,
+  PaginationFooter,
   SegmentedControl,
 } from '@vistaflow/ui';
 import {
@@ -77,36 +79,7 @@ function parseCoordinateInput(value: string): { value: number | null; valid: boo
   return { value: parsed, valid: true };
 }
 
-function PaginationFooter({
-  page,
-  totalPages,
-  total,
-  onPrev,
-  onNext,
-}: {
-  page: number;
-  totalPages: number;
-  total: number;
-  onPrev: () => void;
-  onNext: () => void;
-}) {
-  return (
-    <div className="flex items-center justify-between border-t border-white/5 px-5 py-4 text-xs text-muted">
-      <div className="flex items-center gap-4">
-        <span>{DATA_LABELS.recordsCount(total)}</span>
-        <span>{DATA_LABELS.pageSummary(page, totalPages)}</span>
-      </div>
-      <div className="flex gap-2">
-        <Button variant="outline" size="sm" onClick={onPrev} disabled={page <= 1}>
-          {DATA_LABELS.prevPage}
-        </Button>
-        <Button variant="outline" size="sm" onClick={onNext} disabled={totalPages === 0 || page >= totalPages}>
-          {DATA_LABELS.nextPage}
-        </Button>
-      </div>
-    </div>
-  );
-}
+
 
 export default function DataView() {
   const queryClient = useQueryClient();
@@ -192,6 +165,18 @@ export default function DataView() {
     await activeQuery.refetch();
     addToast(TOAST_MESSAGES.dataRefreshed, 'info');
   };
+
+  const stationPaginationProps = usePaginationFooter({
+    query: stationQuery,
+    data: stationListQuery.data,
+    onQueryChange: setStationQuery,
+  });
+
+  const trainPaginationProps = usePaginationFooter({
+    query: trainQuery,
+    data: trainListQuery.data,
+    onQueryChange: setTrainQuery,
+  });
 
   return (
     <div className="vf-page-stack">
@@ -289,15 +274,9 @@ export default function DataView() {
               ) : (
                 <div className="px-5 py-8 text-sm text-muted">{DATA_LABELS.noStations}</div>
               )}
-              <PaginationFooter
-                page={stationListQuery.data?.page ?? stationQuery.page}
-                totalPages={stationListQuery.data?.totalPages ?? 0}
-                total={stationListQuery.data?.total ?? 0}
-                onPrev={() => setStationQuery((current) => ({ ...current, page: Math.max(1, current.page - 1) }))}
-                onNext={() => setStationQuery((current) => ({ ...current, page: current.page + 1 }))}
-              />
             </PanelBody>
           </PanelCard>
+          <PaginationFooter {...stationPaginationProps} />
         </ContentSection>
       ) : (
         <ContentSection spacing="dense">
@@ -355,15 +334,9 @@ export default function DataView() {
               ) : (
                 <div className="px-5 py-8 text-sm text-muted">{DATA_LABELS.noTrains}</div>
               )}
-              <PaginationFooter
-                page={trainListQuery.data?.page ?? trainQuery.page}
-                totalPages={trainListQuery.data?.totalPages ?? 0}
-                total={trainListQuery.data?.total ?? 0}
-                onPrev={() => setTrainQuery((current) => ({ ...current, page: Math.max(1, current.page - 1) }))}
-                onNext={() => setTrainQuery((current) => ({ ...current, page: current.page + 1 }))}
-              />
             </PanelBody>
           </PanelCard>
+          <PaginationFooter {...trainPaginationProps} />
         </ContentSection>
       )}
     </div>

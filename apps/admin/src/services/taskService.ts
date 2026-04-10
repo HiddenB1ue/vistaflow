@@ -1,5 +1,6 @@
 import { TASK_FEEDBACK_LABELS } from '@/constants/labels';
 import type { Task, TaskCreateRequest, TaskRun, TaskRunLog, TaskTypeDefinition } from '@/types/task';
+import type { PaginatedResponse, TaskListQuery } from '@/types/pagination';
 import * as taskApiService from './taskApiService';
 import * as taskMockService from './mock/taskMockService';
 
@@ -31,8 +32,8 @@ export function extractApiErrorMessage(error: unknown): string {
   return TASK_FEEDBACK_LABELS.requestFailed;
 }
 
-export async function fetchTasks(): Promise<Task[]> {
-  return taskServiceImpl.fetchTasks();
+export async function fetchTasks(query: TaskListQuery): Promise<PaginatedResponse<Task>> {
+  return taskServiceImpl.fetchTasks(query);
 }
 
 export async function fetchTask(taskId: number): Promise<Task> {
@@ -55,10 +56,22 @@ export async function terminateTaskRun(runId: number): Promise<TaskRun> {
   return taskServiceImpl.terminateTaskRun(runId);
 }
 
-export async function fetchTaskRuns(taskId: number): Promise<TaskRun[]> {
-  return taskServiceImpl.fetchTaskRuns(taskId);
+export async function fetchTaskRuns(
+  taskId: number,
+  page: number = 1,
+  pageSize: number = 20
+): Promise<PaginatedResponse<TaskRun>> {
+  return taskServiceImpl.fetchTaskRuns(taskId, page, pageSize);
 }
 
 export async function fetchTaskRunLogs(runId: number): Promise<TaskRunLog[]> {
   return taskServiceImpl.fetchTaskRunLogs(runId);
+}
+
+export async function fetchTaskRunLogsPaginated(
+  runId: number,
+  page: number = 1,
+  pageSize: number = 100
+): Promise<PaginatedResponse<TaskRunLog>> {
+  return taskServiceImpl.fetchTaskRunLogsPaginated(runId, page, pageSize);
 }

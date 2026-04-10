@@ -3,6 +3,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, Response, status
 
 from app.auth.dependencies import require_admin_auth
+from app.pagination import PaginatedResponse, TaskListQuery, TaskRunLogsQuery, TaskRunsQuery
 from app.schemas import APIResponse
 from app.tasks.dependencies import TaskServiceDep
 from app.tasks.schemas import (
@@ -24,9 +25,18 @@ async def list_task_types(service: TaskServiceDep) -> APIResponse[list[TaskTypeR
     return APIResponse.ok(await service.list_task_types())
 
 
-@router.get("/tasks", response_model=APIResponse[list[TaskResponse]])
-async def list_tasks(service: TaskServiceDep) -> APIResponse[list[TaskResponse]]:
-    return APIResponse.ok(await service.list_tasks())
+@router.get("/tasks", response_model=APIResponse[PaginatedResponse[TaskResponse]])
+async def list_tasks(
+    service: TaskServiceDep,
+    query: TaskListQuery = Depends(),
+) -> APIResponse[PaginatedResponse[TaskResponse]]:
+    result = await service.list_tasks(
+        page=query.page,
+        page_size=query.pageSize,
+        keyword=query.keyword,
+        status=query.status,
+    )
+    return APIResponse.ok(result)
 
 
 @router.post(
@@ -75,13 +85,19 @@ async def create_task_run(
 
 @router.get(
     "/tasks/{task_id}/runs",
-    response_model=APIResponse[list[TaskRunResponse]],
+    response_model=APIResponse[PaginatedResponse[TaskRunResponse]],
 )
 async def list_task_runs(
     task_id: int,
     service: TaskServiceDep,
-) -> APIResponse[list[TaskRunResponse]]:
-    return APIResponse.ok(await service.list_runs(task_id))
+    query: TaskRunsQuery = Depends(),
+) -> APIResponse[PaginatedResponse[TaskRunResponse]]:
+    result = await service.list_runs(
+        task_id,
+        page=query.page,
+        page_size=query.pageSize,
+    )
+    return APIResponse.ok(result)
 
 
 @router.get("/task-runs/{run_id}", response_model=APIResponse[TaskRunResponse])
@@ -101,6 +117,23 @@ async def list_task_run_logs(
     service: TaskServiceDep,
 ) -> APIResponse[list[TaskRunLogResponse]]:
     return APIResponse.ok(await service.list_run_logs(run_id))
+
+
+@router.get(
+    "/task-runs/{run_id}/logs/paginated",
+    response_model=APIResponse[PaginatedResponse[TaskRunLogResponse]],
+)
+async def list_task_run_logs_paginated(
+    run_id: int,
+    service: TaskServiceDep,
+    query: TaskRunLogsQuery = Depends(),
+) -> APIResponse[PaginatedResponse[TaskRunLogResponse]]:
+    result = await service.list_run_logs_paginated(
+        run_id,
+        page=query.page,
+        page_size=query.pageSize,
+    )
+    return APIResponse.ok(result)
 
 
 @router.post(

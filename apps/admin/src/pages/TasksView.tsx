@@ -1,5 +1,5 @@
-import { useMemo, useState } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   TASK_FEEDBACK_LABELS,
   TASK_LABELS,
@@ -8,11 +8,12 @@ import {
   TOAST_MESSAGES,
 } from '@/constants/labels';
 import { TaskCard } from '@/components/ui/TaskCard';
-import { triggerTask, terminateTaskRun, extractApiErrorMessage } from '@/services/taskService';
+import { triggerTask, terminateTaskRun, extractApiErrorMessage, fetchTasks } from '@/services/taskService';
 import { useDrawerStore } from '@/stores/drawerStore';
-import { useTaskStore } from '@/stores/taskStore';
 import { useToastStore } from '@/stores/toastStore';
+import { usePaginationFooter } from '@/utils/pagination';
 import type { Task, TaskStatus } from '@/types/task';
+import type { TaskListQuery } from '@/types/pagination';
 import {
   Button,
   ContentSection,
@@ -22,6 +23,7 @@ import {
   CustomSelect,
   InputBox,
   KpiCard,
+  PaginationFooter,
 } from '@vistaflow/ui';
 
 type TaskFilter = 'all' | TaskStatus;
@@ -36,15 +38,25 @@ const statusOptions: Array<{ value: TaskFilter; label: string }> = [
   { value: 'terminated', label: TASK_STATUS_LABELS.terminated },
 ];
 
+
+
 export default function TasksView() {
   const queryClient = useQueryClient();
-  const tasks = useTaskStore((state) => state.tasks);
   const addToast = useToastStore((state) => state.addToast);
   const openTaskDrawer = useDrawerStore((state) => state.openTaskDrawer);
   const openTaskDetailDrawer = useDrawerStore((state) => state.openTaskDetailDrawer);
 
-  const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState<TaskFilter>('all');
+  const [query, setQuery] = useState<TaskListQuery>({
+    page: 1,
+    pageSize: 20,
+    keyword: '',
+    status: 'all',
+  });
+
+  const tasksQuery = useQuery({
+    queryKey: ['admin', 'tasks', query],
+    queryFn: () => fetchTasks(query),
+  });
 
   const runTaskMutation = useMutation({
     mutationFn: (task: Task) => triggerTask(task.id),
@@ -76,27 +88,30 @@ export default function TasksView() {
     },
   });
 
+  const tasks = tasksQuery.data?.items ?? [];
   const runningCount = tasks.filter((task) => task.status === 'running').length;
   const pendingCount = tasks.filter((task) => task.status === 'pending').length;
   const errorCount = tasks.filter((task) => task.status === 'error' || task.status === 'terminated').length;
-
-  const filteredTasks = useMemo(() => {
-    const keyword = search.trim().toLowerCase();
-    return tasks.filter((task) => {
-      const searchableFields = [task.name, task.typeLabel, task.description ?? '', task.type];
-      const matchesKeyword =
-        keyword.length === 0 ||
-        searchableFields.some((field) => field.toLowerCase().includes(keyword));
-      const matchesStatus = statusFilter === 'all' || task.status === statusFilter;
-      return matchesKeyword && matchesStatus;
-    });
-  }, [search, statusFilter, tasks]);
 
   const busyTaskId = runTaskMutation.isPending
     ? runTaskMutation.variables.id
     : terminateTaskMutation.isPending
       ? terminateTaskMutation.variables.id
       : null;
+
+  const handleSearchChange = (value: string) => {
+    setQuery((q) => ({ ...q, keyword: value, page: 1 }));
+  };
+
+  const handleStatusChange = (value: string) => {
+    setQuery((q) => ({ ...q, status: value as TaskFilter, page: 1 }));
+  };
+
+  const paginationProps = usePaginationFooter({
+    query,
+    data: tasksQuery.data,
+    onQueryChange: setQuery,
+  });
 
   return (
     <div className="vf-page-stack">
@@ -106,7 +121,7 @@ export default function TasksView() {
             label={TASK_LABELS.activeTotal}
             value={
               <>
-                {runningCount + pendingCount} <span className="text-lg text-muted">/ {tasks.length}</span>
+                {runningCount + pendingCount} <span className="text-lg text-muted">/ {tasksQuery.data?.total ?? 0}</span>
               </>
             }
           />
@@ -137,15 +152,15 @@ export default function TasksView() {
           <InputBox
             placeholder={TASK_LABELS.searchPlaceholder}
             className="min-w-0 w-full"
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
+            value={query.keyword}
+            onChange={(event) => handleSearchChange(event.target.value)}
           />
         </ControlToolbarMain>
         <ControlToolbarActions>
           <CustomSelect
             options={statusOptions}
-            value={statusFilter}
-            onChange={(value) => setStatusFilter(value as TaskFilter)}
+            value={query.status}
+            onChange={handleStatusChange}
             className="w-full md:w-[180px]"
           />
           <Button variant="primary" size="sm" onClick={openTaskDrawer}>
@@ -159,7 +174,7 @@ export default function TasksView() {
 
       <ContentSection spacing="dense">
         <div className="space-y-3">
-          {filteredTasks.map((task) => (
+          {tasks.map((task) => (
             <TaskCard
               key={task.id}
               task={task}
@@ -170,6 +185,7 @@ export default function TasksView() {
             />
           ))}
         </div>
+        <PaginationFooter {...paginationProps} />
       </ContentSection>
     </div>
   );

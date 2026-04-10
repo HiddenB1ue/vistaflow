@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, Query
 
 from app.auth.dependencies import require_admin_auth
 from app.config import get_settings
+from app.pagination import PaginatedResponse, SystemLogsQuery
 from app.schemas import APIResponse
 from app.system.dependencies import (
     CredentialServiceDep,
@@ -59,15 +60,20 @@ async def list_credentials(
 
 @router.get(
     "/logs",
-    response_model=APIResponse[list[LogResponse]],
+    response_model=APIResponse[PaginatedResponse[LogResponse]],
     dependencies=[Depends(require_admin_auth)],
 )
 async def list_logs(
     service: LogServiceDep,
-    limit: int = Query(default=100, ge=1, le=500),
-) -> APIResponse[list[LogResponse]]:
-    logs = await service.list_logs(limit=limit)
-    return APIResponse.ok(logs)
+    query: SystemLogsQuery = Depends(),
+) -> APIResponse[PaginatedResponse[LogResponse]]:
+    result = await service.list_logs(
+        page=query.page,
+        page_size=query.pageSize,
+        keyword=query.keyword,
+        severity=query.severity,
+    )
+    return APIResponse.ok(result)
 
 
 @router.get(

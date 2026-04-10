@@ -109,6 +109,8 @@ function severityVariant(severity: TaskRunLog['severity']): 'green' | 'yellow' |
   }
 }
 
+
+
 export function TaskDetailDrawer({ isOpen, taskId, onClose }: TaskDetailDrawerProps) {
   const [selectedRunId, setSelectedRunId] = useState<number | null>(null);
 
@@ -118,11 +120,13 @@ export function TaskDetailDrawer({ isOpen, taskId, onClose }: TaskDetailDrawerPr
     enabled: isOpen && taskId !== null,
   });
 
-  const { data: runs = [], isLoading: runsLoading } = useQuery({
+  const { data: runsData, isLoading: runsLoading } = useQuery({
     queryKey: ['admin', 'task-runs', taskId],
     queryFn: () => fetchTaskRuns(taskId!),
     enabled: isOpen && taskId !== null,
   });
+
+  const runs = runsData?.items ?? [];
 
   useEffect(() => {
     if (!isOpen) {
@@ -152,7 +156,7 @@ export function TaskDetailDrawer({ isOpen, taskId, onClose }: TaskDetailDrawerPr
     [runs, selectedRunId],
   );
 
-  const { data: logs = [], isLoading: logsLoading } = useQuery({
+  const { data: logs, isLoading: logsLoading } = useQuery({
     queryKey: ['admin', 'task-run-logs', selectedRunId],
     queryFn: () => fetchTaskRunLogs(selectedRunId!),
     enabled: isOpen && selectedRunId !== null,
@@ -257,7 +261,7 @@ export function TaskDetailDrawer({ isOpen, taskId, onClose }: TaskDetailDrawerPr
               ) : null}
               {logsLoading ? (
                 <div className="vf-drawer-meta">{TASK_DETAIL_LABELS.loadingLogs}</div>
-              ) : logs.length === 0 ? (
+              ) : !logs || logs.length === 0 ? (
                 <div className="vf-drawer-meta">{TASK_DETAIL_LABELS.noLogs}</div>
               ) : (
                 <div className="space-y-3">

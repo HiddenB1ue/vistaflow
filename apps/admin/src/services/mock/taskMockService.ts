@@ -1,5 +1,6 @@
 import { TASK_STATUS_LABELS } from '@/constants/labels';
 import type { Task, TaskCreateRequest, TaskRun, TaskRunLog, TaskTypeDefinition } from '@/types/task';
+import type { PaginatedResponse, TaskListQuery } from '@/types/pagination';
 import { MOCK_TASKS, MOCK_TASK_TYPES } from './tasks.mock';
 
 let mockTasksState: Task[] = MOCK_TASKS.map((task) => ({
@@ -114,9 +115,39 @@ async function sleep(timeoutMs: number): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, timeoutMs));
 }
 
-export async function fetchTasks(): Promise<Task[]> {
+export async function fetchTasks(query: TaskListQuery): Promise<PaginatedResponse<Task>> {
   await sleep(300);
-  return mockTasksState.map(cloneTask);
+  
+  // Filter tasks based on query
+  let filtered = mockTasksState;
+  
+  // Apply keyword search
+  if (query.keyword.trim()) {
+    const keyword = query.keyword.trim().toLowerCase();
+    filtered = filtered.filter((task) => {
+      const searchableFields = [task.name, task.typeLabel, task.description ?? '', task.type];
+      return searchableFields.some((field) => field.toLowerCase().includes(keyword));
+    });
+  }
+  
+  // Apply status filter
+  if (query.status !== 'all') {
+    filtered = filtered.filter((task) => task.status === query.status);
+  }
+  
+  // Calculate pagination
+  const total = filtered.length;
+  const totalPages = Math.ceil(total / query.pageSize) || 0;
+  const offset = (query.page - 1) * query.pageSize;
+  const items = filtered.slice(offset, offset + query.pageSize).map(cloneTask);
+  
+  return {
+    items,
+    page: query.page,
+    pageSize: query.pageSize,
+    total,
+    totalPages,
+  };
 }
 
 export async function fetchTask(taskId: number): Promise<Task> {
@@ -257,11 +288,29 @@ export async function terminateTaskRun(runId: number): Promise<TaskRun> {
   return terminatedRun;
 }
 
-export async function fetchTaskRuns(taskId: number): Promise<TaskRun[]> {
+export async function fetchTaskRuns(
+  taskId: number,
+  page: number = 1,
+  pageSize: number = 20
+): Promise<PaginatedResponse<TaskRun>> {
   await sleep(150);
   const task = mockTasksState.find((candidate) => candidate.id === taskId);
   const run = task ? buildMockRun(task) : null;
-  return run ? [run] : [];
+  const allRuns = run ? [run] : [];
+  
+  // Calculate pagination
+  const total = allRuns.length;
+  const totalPages = Math.ceil(total / pageSize) || 0;
+  const offset = (page - 1) * pageSize;
+  const items = allRuns.slice(offset, offset + pageSize);
+  
+  return {
+    items,
+    page,
+    pageSize,
+    total,
+    totalPages,
+  };
 }
 
 export async function fetchTaskRunLogs(runId: number): Promise<TaskRunLog[]> {
@@ -269,4 +318,26 @@ export async function fetchTaskRunLogs(runId: number): Promise<TaskRunLog[]> {
   const task = mockTasksState.find((candidate) => candidate.latestRun?.id === runId);
   const run = task ? buildMockRun(task) : null;
   return run ? buildMockLogs(run) : [];
+}
+
+export async function fetchTaskRunLogsPaginated(
+  runId: number,
+  page: number = 1,
+  pageSize: number = 100
+): Promise<PaginatedResponse<TaskRunLog>> {
+  await sleep(150);
+  const allLogs = await fetchTaskRunLogs(runId);
+  const total = allLogs.length;
+  const totalPages = Math.ceil(total / pageSize);
+  const start = (page - 1) * pageSize;
+  const end = start + pageSize;
+  const items = allLogs.slice(start, end);
+
+  return {
+    items,
+    page,
+    pageSize,
+    total,
+    totalPages,
+  };
 }
