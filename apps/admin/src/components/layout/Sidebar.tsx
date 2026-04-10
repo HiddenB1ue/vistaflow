@@ -1,5 +1,6 @@
 
-import { NavLink } from 'react-router-dom';
+import { NavLink, useNavigate } from 'react-router-dom';
+import { useAuth } from '@/contexts/AuthContext';
 import { SIDEBAR_LABELS } from '@/constants/labels';
 import './Sidebar.css';
 
@@ -45,6 +46,14 @@ const systemItems: NavItem[] = [
 ];
 
 export function Sidebar({ pendingTaskCount }: SidebarProps) {
+  const { logout } = useAuth();
+  const navigate = useNavigate();
+
+  const handleLogout = () => {
+    logout();
+    navigate('/login', { replace: true });
+  };
+
   return (
     <aside className="admin-sidebar z-20 flex w-64 shrink-0 flex-col border-r border-white/8">
       <div className="border-b border-white/5 p-6">
@@ -80,9 +89,16 @@ export function Sidebar({ pendingTaskCount }: SidebarProps) {
             <div className="text-xs font-medium text-starlight">{SIDEBAR_LABELS.adminName}</div>
             <div className="text-[10px] text-muted">{SIDEBAR_LABELS.adminRole}</div>
           </div>
-          <svg className="ml-auto h-4 w-4 cursor-pointer text-muted transition-colors hover:text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-          </svg>
+          <button
+            onClick={handleLogout}
+            className="ml-auto h-4 w-4 cursor-pointer text-muted transition-colors hover:text-white"
+            title="退出登录"
+            aria-label="退出登录"
+          >
+            <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+            </svg>
+          </button>
         </div>
       </div>
     </aside>
