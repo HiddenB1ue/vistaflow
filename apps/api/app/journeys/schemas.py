@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import date, time
+from typing import Literal
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -33,21 +34,40 @@ class JourneyResult(BaseModel):
 
 
 class JourneySearchRequest(BaseModel):
+    # Basic search parameters
     from_station: str = Field(min_length=1)
     to_station: str = Field(min_length=1)
     date: date
-    transfer_count: int = Field(default=0, ge=0, le=3)
-    include_fewer_transfers: bool = True
+    transfer_count: int = Field(default=2, ge=0, le=3)
+    include_fewer_transfers: bool = Field(default=True)
+    
+    # Train filtering
     allowed_train_types: list[str] = Field(default_factory=list)
     excluded_train_types: list[str] = Field(default_factory=list)
+    allowed_trains: list[str] = Field(default_factory=list)
+    excluded_trains: list[str] = Field(default_factory=list)
+    
+    # Time constraints
     departure_time_start: time | None = None
     departure_time_end: time | None = None
     arrival_deadline: time | None = None
+    
+    # Transfer constraints
     min_transfer_minutes: int = Field(default=30, ge=0)
     max_transfer_minutes: int | None = Field(default=None, ge=0)
-    filter_running_only: bool = False
-    enable_ticket_enrich: bool = False
-    display_limit: int = Field(default=20, ge=1, le=100)
+    allowed_transfer_stations: list[str] = Field(default_factory=list)
+    excluded_transfer_stations: list[str] = Field(default_factory=list)
+    
+    # Sorting and display
+    sort_by: Literal["duration", "price", "departure"] = Field(default="duration")
+    train_sequence_top_n: int = Field(default=3, ge=0, le=10)
+    display_limit: int = Field(default=50, ge=1, le=100)
+    display_train_types: list[str] = Field(default_factory=list)
+    
+    # Optimization options
+    exclude_direct_train_codes_in_transfer_routes: bool = Field(default=True)
+    filter_running_only: bool = Field(default=True)
+    enable_ticket_enrich: bool = Field(default=True)
 
     @model_validator(mode="after")
     def validate_stations_differ(self) -> JourneySearchRequest:

@@ -19,7 +19,7 @@ def _route_key(route: list[Segment]) -> tuple[tuple[str, str, str, int, int], ..
 def search_journeys(
     from_stations: set[str],
     to_stations: set[str],
-    transfer_count: int,
+    transfer_values: list[int],
     min_transfer_minutes: int,
     max_transfer_minutes: int | None,
     arrival_deadline_abs_min: int | None,
@@ -37,12 +37,33 @@ def search_journeys(
 ) -> list[list[Segment]]:
     """DFS 搜索满足条件的行程方案列表。
 
-    每个方案是一个 Segment 列表，列表长度 = transfer_count + 1。
-    包含换乘次数更少的方案（transfer_count=0 时仅返回直达）。
+    支持多换乘次数搜索（如 transfer_values=[0, 1, 2] 表示搜索直达、1次换乘、2次换乘）。
+    使用 seen 集合去重，避免重复路线。
+    
+    Args:
+        from_stations: 出发站集合
+        to_stations: 到达站集合
+        transfer_values: 换乘次数列表（如 [0, 1, 2] 或 [2]）
+        min_transfer_minutes: 最小换乘时间（分钟）
+        max_transfer_minutes: 最大换乘时间（分钟），None 表示无限制
+        arrival_deadline_abs_min: 到达截止时间（绝对分钟数），None 表示无限制
+        departure_time_start_min: 出发时间窗口开始（分钟数），None 表示无限制
+        departure_time_end_min: 出发时间窗口结束（分钟数），None 表示无限制
+        departure_time_cross_day: 出发时间窗口是否跨天
+        excluded_transfer_stations: 排除的换乘站集合
+        allowed_transfer_stations: 允许的换乘站集合（空表示不限制）
+        allowed_train_type_prefixes: 允许的车型前缀元组（空表示不限制）
+        excluded_train_type_prefixes: 排除的车型前缀集合
+        excluded_train_tokens: 排除的车次标识符集合
+        allowed_train_tokens: 允许的车次标识符集合（空表示不限制）
+        timetable: 时刻表
+        station_index: 站点索引
+    
+    Returns:
+        满足条件的路线列表，每个路线是 Segment 列表
     """
     results: list[list[Segment]] = []
     seen: set[tuple[tuple[str, str, str, int, int], ...]] = set()
-    required_legs = transfer_count + 1
 
     def dfs(
         current_station: str,
@@ -133,9 +154,9 @@ def search_journeys(
 
                 path.pop()
 
-    # 支持更少换乘的方案（如请求2次换乘，也返回直达和1次换乘）
-    min_legs = 1
-    for legs in range(min_legs, required_legs + 1):
+    # 支持多换乘次数搜索（单次 DFS 遍历）
+    for transfer_count in transfer_values:
+        legs = transfer_count + 1
         for start_station in sorted(from_stations):
             dfs(
                 current_station=start_station,

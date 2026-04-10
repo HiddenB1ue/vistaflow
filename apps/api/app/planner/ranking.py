@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Literal
 
 from app.models import SeatInfo, SeatLookupKey, Segment
+from app.planner.filters import get_train_type
 
 
 def route_duration(route: list[Segment]) -> int:
@@ -30,11 +31,21 @@ def route_sort_key(
     route: list[Segment],
     sort_by: Literal["duration", "price", "departure"],
     seat_data: dict[SeatLookupKey, list[SeatInfo]] | None,
-) -> tuple[int, float, int, int]:
-    """生成路线排序键，优先级：换乘次数 → 主排序字段 → 总耗时 → 出发时间。"""
+) -> tuple[int, float, int, int, int]:
+    """生成路线排序键，优先级：换乘次数 → 主排序字段 → 总耗时 → 出发时间 → 到达时间。
+    
+    Args:
+        route: 路线（Segment 列表）
+        sort_by: 排序字段（"duration", "price", "departure"）
+        seat_data: 座位数据字典，用于价格排序
+    
+    Returns:
+        排序键元组 (换乘次数, 主排序字段, 总耗时, 出发时间, 到达时间)
+    """
     transfers = len(route) - 1
     duration = route_duration(route)
     departure = route[0].depart_abs_min
+    arrival = route[-1].arrive_abs_min
 
     if sort_by == "price" and seat_data:
         price = route_min_price(route, seat_data)
@@ -44,7 +55,7 @@ def route_sort_key(
     else:  # duration（默认）
         primary = float(duration)
 
-    return (transfers, primary, duration, departure)
+    return (transfers, primary, duration, departure, arrival)
 
 
 def route_train_signature(route: list[Segment]) -> tuple[str, ...]:
@@ -84,3 +95,73 @@ def apply_display_limit(routes: list[list[Segment]], limit: int) -> list[list[Se
     if limit <= 0:
         return routes
     return routes[:limit]
+
+
+
+def exclude_direct_train_codes_in_transfer_routes(
+    routes: list[list[Segment]],
+    enabled: bool,
+) -> list[list[Segment]]:
+    """排除在换乘方案中使用直达车次代码的路线。
+    
+    逻辑：
+    1. 收集所有直达方案的 train_code
+    2. 过滤掉包含这些 train_code 的换乘方案
+    3. 保留所有直达方案
+    
+    Args:
+        routes: 路线列表
+        enabled: 是否启用此过滤
+    
+    Returns:
+        过滤后的路线列表
+    """
+    if not enabled:
+        return routes
+    
+    # 收集所有直达方案的 train_code（大写）
+    direct_train_codes = {
+        route[0].train_code.upper()
+        for route in routes
+        if len(route) == 1
+    }
+    
+    if not direct_train_codes:
+        return routes
+    
+    # 过滤：保留直达方案，或不包含直达 train_code 的换乘方案
+    return [
+        route
+        for route in routes
+        if len(route) == 1  # 保留所有直达方案
+        or all(  # 或换乘方案中不包含任何直达 train_code
+            segment.train_code.upper() not in direct_train_codes
+            for segment in route
+        )
+    ]
+
+
+def filter_routes_by_display_train_types(
+    routes: list[list[Segment]],
+    display_train_type_prefixes: set[str],
+) -> list[list[Segment]]:
+    """仅保留所有 Segment 都属于指定车型的路线。
+    
+    Args:
+        routes: 路线列表
+        display_train_type_prefixes: 允许显示的车型前缀集合（空表示不过滤）
+    
+    Returns:
+        过滤后的路线列表
+    """
+    if not display_train_type_prefixes:
+        return routes
+    
+    return [
+        route
+        for route in routes
+        if all(
+            get_train_type(segment.train_code) in display_train_type_prefixes
+            for segment in route
+        )
+    ]
