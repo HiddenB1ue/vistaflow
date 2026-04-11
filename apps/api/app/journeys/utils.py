@@ -56,6 +56,7 @@ def _build_journey_result(
                 departure_time=abs_min_to_hhmm(seg.depart_abs_min),
                 arrival_time=abs_min_to_hhmm(seg.arrive_abs_min),
                 duration_minutes=seg.arrive_abs_min - seg.depart_abs_min,
+                stops_count=seg.total_stops or 0,
                 seats=seats,
             )
         )

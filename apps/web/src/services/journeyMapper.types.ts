@@ -13,6 +13,7 @@ export interface BackendJourneySegment {
   departure_time: string;
   arrival_time: string;
   duration_minutes: number;
+  stops_count: number;
   seats: BackendSeatSchema[];
 }
 

@@ -29,6 +29,7 @@ export interface TrainSegment {
   departureTime: string;
   arrivalTime: string;
   stops: TrainStop[];
+  stopsCount?: number; // 经停数量（可选，用于显示按钮文本）
   seats: SeatClass[];
 }
 

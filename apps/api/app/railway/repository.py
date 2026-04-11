@@ -502,6 +502,10 @@ MINUTES_PER_DAY = 1440
 
 class TimetableRepository(BaseRepository):
     async def load_timetable(self, run_date: str, filter_running_only: bool) -> Timetable:
+        # Convert ISO format string to date object for database query
+        from datetime import date as date_type
+        run_date_obj = date_type.fromisoformat(run_date) if isinstance(run_date, str) else run_date
+        
         if filter_running_only:
             sql = """
                 SELECT
@@ -511,7 +515,8 @@ class TimetableRepository(BaseRepository):
                     COALESCE(ts.station_train_code, '') AS station_train_code,
                     ts.arrive_time,
                     ts.start_time,
-                    COALESCE(ts.arrive_day_diff, 0) AS arrive_day_diff
+                    COALESCE(ts.arrive_day_diff, 0) AS arrive_day_diff,
+                    t.total_num
                 FROM train_stops ts
                 JOIN trains t ON t.train_no = ts.train_no
                 JOIN train_runs tr
@@ -520,7 +525,7 @@ class TimetableRepository(BaseRepository):
                    AND tr.status = 'running'
                 ORDER BY ts.train_no, ts.station_no
             """
-            params: tuple[str, ...] = (run_date,)
+            params: tuple[date_type, ...] = (run_date_obj,)
         else:
             sql = """
                 SELECT
@@ -530,8 +535,10 @@ class TimetableRepository(BaseRepository):
                     COALESCE(ts.station_train_code, '') AS station_train_code,
                     ts.arrive_time,
                     ts.start_time,
-                    COALESCE(ts.arrive_day_diff, 0) AS arrive_day_diff
+                    COALESCE(ts.arrive_day_diff, 0) AS arrive_day_diff,
+                    t.total_num
                 FROM train_stops ts
+                JOIN trains t ON t.train_no = ts.train_no
                 ORDER BY ts.train_no, ts.station_no
             """
             params = ()
@@ -716,6 +723,9 @@ async def _prepare_train_values(
 def _parse_stop_rows(train_no: str, rows: list[asyncpg.Record]) -> list[StopEvent]:
     events: list[StopEvent] = []
     previous_depart: int | None = None
+    
+    # 从第一行获取 total_num（所有行的 total_num 都相同）
+    total_stops = rows[0]["total_num"] if rows else None
 
     for row in rows:
         station_name = (row["station_name"] or "").strip()
@@ -757,6 +767,7 @@ def _parse_stop_rows(train_no: str, rows: list[asyncpg.Record]) -> list[StopEven
                 train_code=(row["station_train_code"] or "").strip(),
                 arrive_abs_min=arrive_abs,
                 depart_abs_min=depart_abs,
+                total_stops=total_stops,
             )
         )
 

@@ -20,6 +20,7 @@ class JourneySegment(BaseModel):
     departure_time: str  # "HH:mm"
     arrival_time: str    # "HH:mm"
     duration_minutes: int
+    stops_count: int = 0  # 区间经停数量（不含起终点）
     seats: list[SeatSchema]
 
 

@@ -70,7 +70,8 @@ function buildTrainSegment(
     destination: buildStation(segment.to_station, geoMap),
     departureTime: segment.departure_time,
     arrivalTime: segment.arrival_time,
-    stops: [],
+    stops: [], // 初始为空，按需加载
+    stopsCount: segment.stops_count, // 经停数量
     seats: mapSeats(segment.seats),
   };
 }

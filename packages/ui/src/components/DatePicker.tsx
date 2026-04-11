@@ -55,6 +55,15 @@ function formatLabel(date: Date): string {
   return `${date.getMonth() + 1}月${date.getDate()}日`;
 }
 
+function formatISO(date: Date): string {
+  // Use local date components to avoid timezone conversion issues
+  // This ensures the date stays consistent regardless of user's timezone
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
 function parseDateValue(value: string, reference: Date, minimumDate: Date): Date | null {
   const isoMatch = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if (isoMatch) {
@@ -111,7 +120,7 @@ export function DatePicker({
     }
 
     if (!value) {
-      onChange(formatLabel(today));
+      onChange(formatISO(today));
     }
   }, [minimumDate, onChange, today, value]);
 
@@ -137,7 +146,7 @@ export function DatePicker({
 
     setSelectedDate(nextDate);
     setPickerDate(nextDate);
-    onChange(formatLabel(nextDate));
+    onChange(formatISO(nextDate));
     close();
   };
 
@@ -147,7 +156,7 @@ export function DatePicker({
 
     setSelectedDate(nextDate);
     setPickerDate(nextDate);
-    onChange(formatLabel(nextDate));
+    onChange(formatISO(nextDate));
     close();
   };
 

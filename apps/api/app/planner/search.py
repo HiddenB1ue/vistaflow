@@ -118,6 +118,7 @@ def search_journeys(
                     to_station=alight_event.station_name,
                     depart_abs_min=depart_abs,
                     arrive_abs_min=arrive_abs,
+                    total_stops=board_event.total_stops,
                 )
                 path.append(segment)
 

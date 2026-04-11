@@ -22,10 +22,23 @@ async function fetchStationGeo(names: string[]): Promise<BackendStationGeoRespon
   if (names.length === 0) return { items: [] };
   const params = new URLSearchParams();
   names.forEach((n) => params.append('names', n));
-  const { data } = await apiClient.get<{ data: BackendStationGeoResponse }>(
+  const { data } = await apiClient.get<{ data: Array<{
+    name: string;
+    longitude: number | null;
+    latitude: number | null;
+  }> }>(
     `/stations?${params.toString()}`,
   );
-  return data.data;
+  
+  // 将 StationFullResponse 转换为 StationGeoResponse 格式
+  return {
+    items: data.data.map(station => ({
+      name: station.name,
+      longitude: station.longitude,
+      latitude: station.latitude,
+      found: station.longitude !== null && station.latitude !== null,
+    })),
+  };
 }
 
 export async function fetchRoutes(params: SearchParams): Promise<RouteList> {
