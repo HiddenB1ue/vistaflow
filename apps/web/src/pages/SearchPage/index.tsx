@@ -1,6 +1,6 @@
 
-import { useEffect, type RefObject } from 'react';
-import { AuraBackground, ContentSection, DrawerBackdrop, NoiseTexture } from '@vistaflow/ui';
+import { useEffect, useRef, useState, type RefObject } from 'react';
+import { AuraBackground, ContentSection, DrawerBackdrop, NoiseTexture, type ComboboxInputRef } from '@vistaflow/ui';
 import { Navbar } from '@/components/layout/Navbar';
 import { FilterDrawer } from '@/components/overlays/FilterDrawer';
 import { SEARCH_LABELS } from '@/constants/labels';
@@ -9,6 +9,7 @@ import { useSearchReveal } from '@/hooks/useSearchReveal';
 import { useTimeGreeting } from '@/hooks/useTimeGreeting';
 import { useSearchStore } from '@/stores/searchStore';
 import { useUiStore } from '@/stores/uiStore';
+import type { SearchSuggestion } from '@/types/search';
 import { GreetingHeader } from './GreetingHeader';
 import { SearchHeroForm } from './SearchHeroForm';
 
@@ -24,11 +25,40 @@ export function SearchPage() {
     setSearchFilterPrefs,
   } = useUiStore();
 
+  const originRef = useRef<ComboboxInputRef<SearchSuggestion>>(null);
+  const destinationRef = useRef<ComboboxInputRef<SearchSuggestion>>(null);
+  const dateInputRef = useRef<HTMLInputElement>(null);
+
+  const [originError, setOriginError] = useState<string>('');
+  const [destinationError, setDestinationError] = useState<string>('');
+
   useEffect(() => {
     revealPage();
   }, [revealPage]);
 
-  const handleSearch = () => {
+  const handleSearch = async () => {
+    // Clear previous errors
+    setOriginError('');
+    setDestinationError('');
+
+    // Validate inputs
+    let hasError = false;
+
+    if (!params.origin.trim()) {
+      setOriginError('请输入出发地');
+      hasError = true;
+    }
+
+    if (!params.destination.trim()) {
+      setDestinationError('请输入目的地');
+      hasError = true;
+    }
+
+    if (hasError) {
+      return;
+    }
+
+    // Proceed to journey page
     navigateTo('/journey');
   };
 
@@ -55,7 +85,6 @@ export function SearchPage() {
       <section
         id="hero-section"
         className="vf-page-gutter relative flex h-screen w-full flex-col items-center justify-center overflow-hidden"
-        style={{ zIndex: 10 }}
       >
         <ContentSection spacing="hero" width="wide" className="text-center">
           <GreetingHeader greeting={greeting} greetingRef={greetingRef} headlineRef={headlineRef} />
@@ -65,9 +94,14 @@ export function SearchPage() {
             destination={params.destination}
             date={params.date}
             formRef={formRef as RefObject<HTMLDivElement | null>}
+            originRef={originRef}
+            destinationRef={destinationRef}
+            dateInputRef={dateInputRef}
             onOriginChange={setOrigin}
             onDestinationChange={setDestination}
             onDateChange={setDate}
+            originError={originError}
+            destinationError={destinationError}
           />
 
           <div className="mt-24 flex flex-col items-center gap-10">

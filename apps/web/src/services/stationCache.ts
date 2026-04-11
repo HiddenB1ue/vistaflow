@@ -30,7 +30,11 @@ class StationCache {
       const { data } = await apiClient.get<{ data: { items: StationData[] } }>(
         '/stations/all',
       );
-      this.stations = data.data.items;
+      // 在保存时给每个车站名称添加"站"字
+      this.stations = data.data.items.map(station => ({
+        ...station,
+        name: station.name.endsWith('站') ? station.name : `${station.name}站`,
+      }));
       this.loaded = true;
       console.log(`✅ 已缓存 ${this.stations.length} 个车站数据`);
     } catch (error) {

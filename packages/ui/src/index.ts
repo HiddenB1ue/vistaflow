@@ -76,7 +76,7 @@ export type { PanelCardProps, PanelSectionProps } from './components/PanelCard';
 export type { ControlToolbarProps, ControlToolbarSectionProps } from './components/ControlToolbar';
 export type { SegmentedControlProps, SegmentedControlOption, SegmentedControlSize } from './components/SegmentedControl';
 export type { TopbarProps, TopbarBrandProps, TopbarActionsProps, TopbarBlendMode } from './components/Topbar';
-export type { ComboboxInputProps, ComboboxInputAppearance } from './components/ComboboxInput';
+export type { ComboboxInputProps, ComboboxInputAppearance, ComboboxInputRef } from './components/ComboboxInput';
 export type { DatePickerProps, DatePickerAppearance, DatePickerLabels } from './components/DatePicker';
 export type { LogRowProps } from './components/LogRow';
 export type { PaginationFooterProps } from './components/PaginationFooter';

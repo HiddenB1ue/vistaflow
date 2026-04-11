@@ -109,10 +109,7 @@
   width: 100%;
 }
 .vf-combobox__menu {
-  position: absolute;
-  left: 0;
-  top: calc(100% + 0.65rem);
-  min-width: 100%;
+  position: fixed;
   max-height: var(--vf-combobox-menu-max-height);
   overflow-y: auto;
   border-radius: 1rem;
@@ -120,7 +117,7 @@
   background: rgba(10, 10, 16, 0.94);
   backdrop-filter: blur(16px);
   box-shadow: 0 18px 48px rgba(0,0,0,0.45);
-  z-index: 60;
+  z-index: 9999;
 }
 .vf-combobox__option,
 .vf-combobox__empty {
