@@ -186,6 +186,26 @@ class StationRepository(BaseRepository):
             for row in rows
         ]
 
+    async def find_all_for_cache(self) -> list[dict[str, str]]:
+        """获取所有车站的简化信息，用于前端缓存"""
+        sql = """
+            SELECT name, telecode, pinyin, abbr
+            FROM stations
+            ORDER BY name
+        """
+        async with self._pool.acquire() as conn:
+            rows = await conn.fetch(sql)
+
+        return [
+            {
+                "name": str(row["name"]),
+                "telecode": str(row["telecode"] or ""),
+                "pinyin": str(row["pinyin"] or ""),
+                "abbr": str(row["abbr"] or ""),
+            }
+            for row in rows
+        ]
+
     async def get_telecodes_by_names(self, names: set[str]) -> dict[str, str]:
         cleaned = sorted({name.strip() for name in names if name.strip()})
         if not cleaned:

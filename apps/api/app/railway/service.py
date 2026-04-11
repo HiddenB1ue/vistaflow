@@ -81,6 +81,20 @@ class StationService:
         ]
         return StationSuggestResponse(items=items)
 
+    async def get_all_for_cache(self) -> StationSuggestResponse:
+        """获取所有车站的简化信息，用于前端缓存"""
+        rows = await self._repo.find_all_for_cache()
+        items = [
+            StationSuggestItem(
+                name=row["name"],
+                telecode=row["telecode"],
+                pinyin=row["pinyin"],
+                abbr=row["abbr"],
+            )
+            for row in rows
+        ]
+        return StationSuggestResponse(items=items)
+
 
 class TrainService:
     def __init__(self, repo: TrainRepository) -> None:

@@ -9,7 +9,10 @@ class Settings(BaseSettings):
     database_url: str = Field(alias="DATABASE_URL")
 
     # CORS
-    cors_origins: list[str] = Field(default=["http://localhost:5173"])
+    cors_origins: list[str] = Field(default=[
+        "http://localhost:5173",  # Web app
+        "http://localhost:5174",  # Admin app
+    ])
 
     # 应用
     app_env: str = "development"

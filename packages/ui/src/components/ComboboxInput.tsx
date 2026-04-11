@@ -52,7 +52,7 @@ export function ComboboxInput<TOption>({
   const [activeIndex, setActiveIndex] = useState(-1);
 
   const trimmedValue = value.trim();
-  const shouldRenderMenu = open && trimmedValue.length > 0;
+  const shouldRenderMenu = open && trimmedValue.length > 0 && (loading || options.length > 0);
 
   useEffect(() => {
     if (trimmedValue.length === 0) {
@@ -170,8 +170,6 @@ export function ComboboxInput<TOption>({
       {shouldRenderMenu ? (
         <div id={menuId} role="listbox" className={`vf-combobox__menu ${menuClassName}`.trim()}>
           {loading ? <div className="vf-combobox__empty">{loadingText}</div> : null}
-
-          {!loading && options.length === 0 ? <div className="vf-combobox__empty">{emptyText}</div> : null}
 
           {!loading && options.map((option, index) => {
             const active = index === activeIndex;

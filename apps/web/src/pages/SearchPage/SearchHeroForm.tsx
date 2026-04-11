@@ -36,8 +36,7 @@ export function SearchHeroForm({
         onValueChange={onOriginChange}
         loadOptions={fetchStationSuggestions}
         getOptionId={(item) => item.id}
-        getOptionLabel={(item) => item.name}
-        getOptionDescription={(item) => item.code}
+        getOptionLabel={(item) => `${item.name}站`}
         placeholder={SEARCH_LABELS.originPlaceholder}
         aria-label={SEARCH_LABELS.originPlaceholder}
         className="mx-4"
@@ -49,8 +48,7 @@ export function SearchHeroForm({
         onValueChange={onDestinationChange}
         loadOptions={fetchStationSuggestions}
         getOptionId={(item) => item.id}
-        getOptionLabel={(item) => item.name}
-        getOptionDescription={(item) => item.code}
+        getOptionLabel={(item) => `${item.name}站`}
         placeholder={SEARCH_LABELS.destinationPlaceholder}
         aria-label={SEARCH_LABELS.destinationPlaceholder}
         className="mx-4"

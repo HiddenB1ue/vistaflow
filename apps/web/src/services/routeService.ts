@@ -11,6 +11,13 @@ import { mockRoutes } from './mock/routes.mock';
 
 const USE_MOCK = import.meta.env.VITE_USE_MOCK === 'true';
 
+/**
+ * 移除车站名称末尾的"站"字
+ */
+function normalizeStationName(name: string): string {
+  return name.endsWith('站') ? name.slice(0, -1) : name;
+}
+
 async function fetchStationGeo(names: string[]): Promise<BackendStationGeoResponse> {
   if (names.length === 0) return { items: [] };
   const params = new URLSearchParams();
@@ -30,8 +37,8 @@ export async function fetchRoutes(params: SearchParams): Promise<RouteList> {
   const { data: searchResp } = await apiClient.post<{ data: BackendJourneySearchResponse }>(
     '/journeys/search',
     {
-      from_station: params.origin,
-      to_station:   params.destination,
+      from_station: normalizeStationName(params.origin),
+      to_station:   normalizeStationName(params.destination),
       date:         params.date,
       transfer_count: 1,
       include_fewer_transfers: true,

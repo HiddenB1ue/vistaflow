@@ -47,6 +47,15 @@ async def get_stations(
     return APIResponse.ok(result)
 
 
+@router.get("/stations/all", response_model=APIResponse[StationSuggestResponse])
+async def get_all_stations(
+    service: StationServiceDep,
+) -> APIResponse[StationSuggestResponse]:
+    """返回所有车站的简化信息，用于前端缓存"""
+    result = await service.get_all_for_cache()
+    return APIResponse.ok(result)
+
+
 @router.get("/stations/suggest", response_model=APIResponse[StationSuggestResponse])
 async def suggest_stations(
     q: SuggestKeywordQuery,
