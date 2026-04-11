@@ -1,5 +1,6 @@
 
 import { NavLink, useNavigate } from 'react-router-dom';
+import { TopbarBrand } from '@vistaflow/ui';
 import { useAuth } from '@/contexts/AuthContext';
 import { SIDEBAR_LABELS } from '@/constants/labels';
 import './Sidebar.css';
@@ -56,9 +57,8 @@ export function Sidebar({ pendingTaskCount }: SidebarProps) {
 
   return (
     <aside className="admin-sidebar z-20 flex w-64 shrink-0 flex-col border-r border-white/8">
-      <div className="border-b border-white/5 p-6">
-        <div className="font-display text-lg font-medium uppercase tracking-[0.22em] text-white">{SIDEBAR_LABELS.brand}</div>
-        <div className="mt-1 text-[10px] uppercase tracking-widest text-muted">{SIDEBAR_LABELS.subtitle}</div>
+      <div className="border-b border-white/5 vf-page-gutter" style={{ paddingBlock: 'var(--vf-page-gutter-y)' }}>
+        <TopbarBrand type="button">{SIDEBAR_LABELS.brand}</TopbarBrand>
       </div>
 
       <nav className="flex-1 overflow-y-auto py-3" style={{ scrollbarWidth: 'none' }}>

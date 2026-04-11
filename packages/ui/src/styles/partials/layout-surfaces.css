@@ -31,19 +31,30 @@
 .vf-topbar--blend-difference {
   mix-blend-mode: difference;
 }
+/* === Brand Logo === */
+.vf-brand-logo {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.125rem;
+  font-weight: 500;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: #fff;
+}
+
 .vf-topbar__brand {
   position: relative;
   z-index: 1;
   border: 0;
   padding: 0;
   background: transparent;
-  color: #fff;
   cursor: pointer;
+  /* Inherit brand logo styles */
   font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
   font-size: 1.125rem;
   font-weight: 500;
   letter-spacing: 0.22em;
   text-transform: uppercase;
+  color: #fff;
 }
 .vf-topbar__actions {
   position: relative;

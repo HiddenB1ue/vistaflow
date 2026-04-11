@@ -1,7 +1,7 @@
-import { useState, FormEvent } from 'react';
+import { useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
-import { AuraBackground, NoiseTexture } from '@vistaflow/ui';
+import { AuraBackground, NoiseTexture, TopbarBrand } from '@vistaflow/ui';
 import './LoginView.css';
 
 export default function LoginView() {
@@ -36,7 +36,9 @@ export default function LoginView() {
         <div className="login-card">
           <div className="login-header">
             <div className="text-eyebrow-sm" style={{ marginBottom: '8px' }}>ADMIN PORTAL</div>
-            <h1 className="text-display-lg" style={{ color: 'var(--color-starlight)' }}>VistaFlow</h1>
+            <TopbarBrand type="button" style={{ color: 'var(--color-starlight)' }}>
+              VistaFlow
+            </TopbarBrand>
           </div>
 
           <form className="login-form" onSubmit={handleSubmit}>
