@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Button,
   CustomSelect,
+  DatePicker,
   DrawerBody,
   DrawerFooter,
   DrawerHeader,
@@ -231,13 +232,23 @@ export function TaskDrawer({ isOpen, onClose, onSubmit }: TaskDrawerProps) {
                   {param.label}
                   {param.required ? ' *' : ''}
                 </label>
-                <InputBox
-                  className="w-full"
-                  type={param.valueType === 'date' ? 'date' : 'text'}
-                  placeholder={param.placeholder}
-                  value={paramValues[param.key] ?? ''}
-                  onChange={(event) => updateParamValue(param, event.target.value)}
-                />
+                {param.valueType === 'date' ? (
+                  <DatePicker
+                    value={paramValues[param.key] ?? ''}
+                    onChange={(value) => updateParamValue(param, value)}
+                    appearance="boxed"
+                    className="w-full"
+                    minDate={new Date()}
+                  />
+                ) : (
+                  <InputBox
+                    className="w-full"
+                    type="text"
+                    placeholder={param.placeholder}
+                    value={paramValues[param.key] ?? ''}
+                    onChange={(event) => updateParamValue(param, event.target.value)}
+                  />
+                )}
                 <div className="vf-drawer-meta mt-3">{param.description}</div>
               </div>
             ))}
