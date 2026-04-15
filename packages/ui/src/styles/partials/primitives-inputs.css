@@ -260,9 +260,9 @@
 }
 .vf-calendar__day--active {
   background: var(--color-pulse);
-  color: #030303;
+  color: var(--color-pulse-contrast, #030303);
   font-weight: 500;
-  box-shadow: 0 6px 18px rgba(139,92,246,0.25);
+  box-shadow: 0 6px 18px var(--color-pulse-shadow);
 }
 .vf-calendar__day--disabled {
   opacity: 0.28;
@@ -292,8 +292,17 @@
   border: 1px solid transparent;
   font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
 }
-.btn-primary { background: var(--color-pulse); color: #fff; padding: 10px 24px; box-shadow: 0 4px 15px rgba(139,92,246,0.3); }
-.btn-primary:hover { background: #7C3AED; box-shadow: 0 6px 20px rgba(139,92,246,0.5); transform: translateY(-1px); }
+.btn-primary {
+  background: var(--color-pulse);
+  color: var(--color-pulse-contrast, #030303);
+  padding: 10px 24px;
+  box-shadow: 0 4px 15px var(--color-pulse-shadow);
+}
+.btn-primary:hover {
+  background: var(--color-pulse-hover, var(--color-pulse));
+  box-shadow: 0 6px 20px var(--color-pulse-shadow-strong);
+  transform: translateY(-1px);
+}
 .btn-outline { background: rgba(255,255,255,0.05); color: #F5F5F7; padding: 8px 16px; border-color: rgba(255,255,255,0.1); }
 .btn-outline:hover { background: rgba(255,255,255,0.1); border-color: rgba(255,255,255,0.2); }
 .btn-danger { background: rgba(248,113,113,0.1); color: #F87171; padding: 8px 16px; border-color: rgba(248,113,113,0.2); }
@@ -350,8 +359,14 @@
   display: flex; align-items: center; gap: 10px;
 }
 .custom-select-option:not(:last-child) { border-bottom: 1px solid rgba(255,255,255,0.04); }
-.custom-select-option:hover { background: rgba(139,92,246,0.12); color: #F5F5F7; }
-.custom-select-option.selected { color: #C4B5FD; background: rgba(139,92,246,0.08); }
+.custom-select-option:hover {
+  background: color-mix(in srgb, var(--color-pulse) 14%, transparent);
+  color: #F5F5F7;
+}
+.custom-select-option.selected {
+  color: var(--color-pulse);
+  background: color-mix(in srgb, var(--color-pulse) 10%, transparent);
+}
 
 @media (max-width: 900px) {
   .vf-date-picker-preset {

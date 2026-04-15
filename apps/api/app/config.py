@@ -5,20 +5,21 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    # 数据库
     database_url: str = Field(alias="DATABASE_URL")
+    redis_url: str = Field(default="redis://localhost:6379/1", alias="REDIS_URL")
+    journey_search_ttl_seconds: int = Field(
+        default=900,
+        alias="JOURNEY_SEARCH_TTL_SECONDS",
+    )
 
-    # CORS
     cors_origins: list[str] = Field(default=[
-        "http://localhost:5173",  # Web app
-        "http://localhost:5174",  # Admin app
+        "http://localhost:5173",
+        "http://localhost:5174",
     ])
 
-    # 应用
     app_env: str = "development"
     app_version: str = "1.0.0"
 
-    # Task worker
     task_worker_poll_interval_seconds: float = 1.0
     task_worker_heartbeat_interval_seconds: float = 5.0
     task_worker_stale_timeout_seconds: float = 60.0

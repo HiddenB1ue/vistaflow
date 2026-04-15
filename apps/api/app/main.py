@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 
 import asyncpg
 import httpx
+import redis.asyncio as redis
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -18,11 +19,15 @@ from app.integrations.geo.client import DynamicGeoClient
 from app.integrations.ticket_12306.client import (
     DynamicTicketClient,
 )
+from app.journey_search_sessions.router import (
+    router as journey_search_sessions_router,
+)
 from app.journeys.router import router as journeys_router
 from app.railway.router import router as railway_router
 from app.schemas import APIResponse
 from app.system.dependencies import build_system_settings_provider
-from app.system.router import health_router, router as system_router
+from app.system.router import health_router
+from app.system.router import router as system_router
 from app.tasks.registry import create_task_registry
 from app.tasks.router import router as tasks_router
 
@@ -45,6 +50,12 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     http_client = httpx.AsyncClient()
     app.state.http_client = http_client
+    redis_client = redis.from_url(
+        settings.redis_url,
+        decode_responses=True,
+    )
+    await redis_client.ping()
+    app.state.redis_client = redis_client
 
     app.state.ticket_client = DynamicTicketClient(
         settings_provider=app.state.system_settings_provider,
@@ -60,6 +71,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     await app.state.db_pool.close()
     await http_client.aclose()
+    await redis_client.aclose()
 
 
 def create_app() -> FastAPI:
@@ -103,6 +115,7 @@ def create_app() -> FastAPI:
 
     app.include_router(railway_router, prefix=API_V1_PREFIX)
     app.include_router(journeys_router, prefix=API_V1_PREFIX)
+    app.include_router(journey_search_sessions_router, prefix=API_V1_PREFIX)
     app.include_router(auth_router, prefix=API_V1_PREFIX)
     app.include_router(tasks_router, prefix=ADMIN_API_V1_PREFIX)
     app.include_router(health_router)
