@@ -14,23 +14,25 @@ export interface TrainStop {
 }
 
 export interface SeatClass {
-  type: 'business' | 'first' | 'second';
+  type: string;
   label: string;
-  price: number;
+  price: number | null;
   available: boolean;
   /** 可选余票文本，如「仅剩 1 席」「余 2 席」，未提供时用默认值 */
   availabilityText?: string;
 }
 
 export interface TrainSegment {
+  trainNo: string;
   no: string;
   origin: Station;
   destination: Station;
   departureTime: string;
   arrivalTime: string;
   stops: TrainStop[];
-  stopsCount?: number; // 经停数量（可选，用于显示按钮文本）
+  stopsCount?: number;
   seats: SeatClass[];
+  ticketStatus?: 'ready' | 'unavailable' | 'disabled';
 }
 
 interface TransferSegment {
@@ -46,17 +48,15 @@ export function isTransfer(seg: RouteSegment): seg is TransferSegment {
 export interface Route {
   id: string;
   trainNo: string;
-  /** 方案类型标签，如「最优直达」「省时中转 (1次)」 */
   type: string;
   origin: Station;
   destination: Station;
   departureTime: string;
   arrivalTime: string;
   durationMinutes: number;
-  /** 行程段列表：TrainSegment | TransferSegment 交替出现 */
   segs: RouteSegment[];
-  /** GCJ-02 坐标路径点，用于地图绘制 */
   pathPoints: Array<{ lng: number; lat: number }>;
+  ticketStatus?: 'ready' | 'partial' | 'unavailable' | 'disabled';
 }
 
 export type RouteList = Route[];

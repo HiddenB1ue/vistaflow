@@ -13,10 +13,26 @@ interface RouteCardProps {
   onClick: (route: Route) => void;
 }
 
+function getRoutePriceLabel(route: Route): string {
+  const allSeats = route.segs.flatMap((segment) => (isTransfer(segment) ? [] : segment.seats));
+  const lowestPrice = getLowestAvailablePrice(allSeats);
+
+  if (lowestPrice !== null) {
+    return formatPrice(lowestPrice);
+  }
+  if (route.ticketStatus === 'unavailable' || route.ticketStatus === 'partial') {
+    return JOURNEY_LABELS.ticketsUnavailable;
+  }
+  if (route.ticketStatus === 'disabled') {
+    return JOURNEY_LABELS.ticketsNotQueried;
+  }
+  return JOURNEY_LABELS.soldOut;
+}
+
 export function RouteCard({ route, isActive, onClick }: RouteCardProps) {
   const allSeats = route.segs.flatMap((segment) => (isTransfer(segment) ? [] : segment.seats));
   const lowestPrice = getLowestAvailablePrice(allSeats);
-  const displayPrice = lowestPrice !== null ? formatPrice(lowestPrice) : JOURNEY_LABELS.soldOut;
+  const displayPrice = getRoutePriceLabel(route);
 
   return (
     <div data-card className={`ticket-card cursor-pointer${isActive ? ' active' : ''}`} onClick={() => onClick(route)}>

@@ -8,7 +8,6 @@ import {
   DrawerHeader,
   DrawerShell,
   InputBox,
-  ToggleSwitch,
 } from '@vistaflow/ui';
 import { TimeWheelField } from '@/components/inputs/TimeWheelField';
 import { fetchStationSuggestions } from '@/services/stationService';
@@ -358,22 +357,6 @@ export function SearchFilterDrawer({
               onChange={(values) => onChange({ excludedTransferStations: values })}
             />
           </div>
-        </section>
-
-        <section className="vf-drawer-group">
-          <div className="vf-drawer-label">附加选项</div>
-          <div className="space-y-5 text-sm text-starlight">
-            <div className="vf-drawer-toggle-row">
-              <span>启用票务补充信息</span>
-              <ToggleSwitch
-                checked={params.enableTicketEnrich}
-                onChange={(value) => onChange({ enableTicketEnrich: value })}
-              />
-            </div>
-          </div>
-          <p className="vf-drawer-meta">
-            开启后会尽量补充票价和席别等信息，但搜索可能会更慢。
-          </p>
         </section>
       </DrawerBody>
 

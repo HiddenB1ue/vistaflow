@@ -17,7 +17,6 @@ export const defaultSearchParams: SearchParams = {
   maxTransferMinutes: '',
   allowedTransferStations: [],
   excludedTransferStations: [],
-  enableTicketEnrich: false,
 };
 
 interface SearchState {

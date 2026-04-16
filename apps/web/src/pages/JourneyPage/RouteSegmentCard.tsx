@@ -1,4 +1,3 @@
-
 import { useState } from 'react';
 import type { TrainSegment, TrainStop } from '@/types/route';
 import { JOURNEY_LABELS } from '@/constants/labels';
@@ -9,17 +8,32 @@ interface RouteSegmentCardProps {
   segment: TrainSegment;
 }
 
+function getSeatAvailabilityLabel(segment: TrainSegment, seat: TrainSegment['seats'][number]): string {
+  if (segment.ticketStatus === 'unavailable') {
+    return JOURNEY_LABELS.ticketsUnavailable;
+  }
+  if (segment.ticketStatus === 'disabled') {
+    return JOURNEY_LABELS.ticketsNotQueried;
+  }
+  if (seat.available) {
+    return seat.availabilityText ?? JOURNEY_LABELS.ticketsAvailable;
+  }
+  return JOURNEY_LABELS.soldOut;
+}
+
+function getSeatPriceLabel(seat: TrainSegment['seats'][number]): string {
+  return seat.price === null ? '--' : formatPrice(seat.price);
+}
+
 export function RouteSegmentCard({ segment }: RouteSegmentCardProps) {
   const [stopsExpanded, setStopsExpanded] = useState(false);
   const [stops, setStops] = useState<TrainStop[]>(segment.stops);
   const [isLoadingStops, setIsLoadingStops] = useState(false);
-  
-  // 使用 stopsCount 或已加载的 stops 长度
+
   const displayStopsCount = segment.stopsCount ?? stops.length;
 
   const handleToggleStops = async () => {
     if (!stopsExpanded && stops.length === 0) {
-      // 首次展开且没有数据，需要从后端获取全程经停
       setIsLoadingStops(true);
       try {
         const { data } = await apiClient.get<{
@@ -46,7 +60,7 @@ export function RouteSegmentCard({ segment }: RouteSegmentCardProps) {
           },
           arrivalTime: stop.arrival_time,
           departureTime: stop.departure_time,
-          stopDuration: null, // 后端暂不提供停留时长
+          stopDuration: null,
         }));
 
         setStops(trainStops);
@@ -79,7 +93,7 @@ export function RouteSegmentCard({ segment }: RouteSegmentCardProps) {
         </div>
         <button
           type="button"
-          className="stop-trigger cursor-pointer border-b border-muted/30 pb-0.5 text-xs font-display uppercase tracking-widest text-muted transition-colors hover:text-white disabled:opacity-50 disabled:cursor-not-allowed"
+          className="stop-trigger cursor-pointer border-b border-muted/30 pb-0.5 text-xs font-display uppercase tracking-widest text-muted transition-colors hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
           onClick={handleToggleStops}
           disabled={isLoadingStops}
         >
@@ -90,28 +104,26 @@ export function RouteSegmentCard({ segment }: RouteSegmentCardProps) {
       {stops.length > 0 && (
         <div className={`stops-panel mb-4${stopsExpanded ? ' expanded' : ''}`}>
           {stops.map((stop, index) => {
-            // 首站显示发车时间，其他站显示到达时间
             const isFirstStop = index === 0;
             const displayTime = isFirstStop ? stop.departureTime : stop.arrivalTime;
-            
-            // 判断是否在当前区间内（起点站到终点站之间，包含起终点）
-            const isInCurrentSegment = 
-              stop.station.name === segment.origin.name || 
+            const originIndex = stops.findIndex((item) => item.station.name === segment.origin.name);
+            const destinationIndex = stops.findIndex((item) => item.station.name === segment.destination.name);
+            const isInCurrentSegment =
+              stop.station.name === segment.origin.name ||
               stop.station.name === segment.destination.name ||
-              (stops.findIndex(s => s.station.name === segment.origin.name) <= index &&
-               index <= stops.findIndex(s => s.station.name === segment.destination.name));
-            
+              (originIndex !== -1 && destinationIndex !== -1 && originIndex <= index && index <= destinationIndex);
+
             return (
-              <div 
-                key={`${stop.station.name}-${index}`} 
+              <div
+                key={`${stop.station.name}-${index}`}
                 className={`relative ml-[1px] border-l border-white/5 py-1.5 pl-4 text-xs ${
                   isInCurrentSegment ? 'text-starlight' : 'text-muted opacity-40'
                 }`}
               >
-                <div 
+                <div
                   className={`absolute -left-[2.5px] top-[10px] h-1 w-1 rounded-full ${
                     isInCurrentSegment ? 'bg-starlight' : 'bg-muted'
-                  }`} 
+                  }`}
                 />
                 {stop.station.name}
                 {displayTime && (
@@ -127,21 +139,33 @@ export function RouteSegmentCard({ segment }: RouteSegmentCardProps) {
       )}
 
       <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2">
-        {segment.seats.map((seat) => (
+        {segment.ticketStatus === 'ready' && segment.seats.length === 0 ? (
           <div
-            key={seat.type}
             className="flex justify-between rounded-lg p-3 text-sm font-light"
             style={{ border: '1px solid rgba(255,255,255,0.05)', background: 'rgba(0,0,0,0.2)' }}
           >
-            <span>
-              <span className="mr-3 text-muted">{seat.label}</span>
-              {formatPrice(seat.price)}
-            </span>
-            <span className={seat.available ? 'time-theme-text' : ''} style={{ color: seat.available ? undefined : 'rgba(239,68,68,0.8)' }}>
-              {seat.available ? seat.availabilityText ?? JOURNEY_LABELS.ticketsAvailable : JOURNEY_LABELS.soldOut}
-            </span>
+            <span className="text-muted">{JOURNEY_LABELS.noSeatInfo}</span>
           </div>
-        ))}
+        ) : (
+          segment.seats.map((seat) => (
+            <div
+              key={`${seat.type}-${seat.label}`}
+              className="flex justify-between rounded-lg p-3 text-sm font-light"
+              style={{ border: '1px solid rgba(255,255,255,0.05)', background: 'rgba(0,0,0,0.2)' }}
+            >
+              <span>
+                <span className="mr-3 text-muted">{seat.label}</span>
+                {getSeatPriceLabel(seat)}
+              </span>
+              <span
+                className={seat.available ? 'time-theme-text' : ''}
+                style={{ color: seat.available ? undefined : 'rgba(239,68,68,0.8)' }}
+              >
+                {getSeatAvailabilityLabel(segment, seat)}
+              </span>
+            </div>
+          ))
+        )}
       </div>
     </div>
   );

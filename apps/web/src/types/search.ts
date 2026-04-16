@@ -14,7 +14,6 @@ export interface SearchParams {
   maxTransferMinutes: string;
   allowedTransferStations: string[];
   excludedTransferStations: string[];
-  enableTicketEnrich: boolean;
 }
 
 export interface SearchSuggestion {

@@ -6,7 +6,8 @@ import { mockRoutes } from './mock/routes.mock';
 
 const USE_MOCK = import.meta.env.VITE_USE_MOCK === 'true';
 
-export type JourneySortMode = 'duration' | 'price' | 'departure';
+export type JourneySortMode = 'duration' | 'departure';
+export type JourneyDisplaySortMode = JourneySortMode | 'price';
 
 export interface JourneyAvailableFacets {
   transferCounts: number[];
@@ -20,6 +21,7 @@ export interface JourneyViewRequest {
   transfer_counts: number[];
   page: number;
   page_size: number;
+  include_tickets: boolean;
 }
 
 export interface JourneyViewResult {
@@ -35,6 +37,7 @@ export interface JourneyViewResult {
     transferCounts: number[];
     page: number;
     pageSize: number;
+    includeTickets: boolean;
   };
   availableFacets: JourneyAvailableFacets;
 }
@@ -55,14 +58,6 @@ const mockSessions = new Map<string, RouteList>();
 
 function normalizeStationName(name: string): string {
   return name.endsWith('站') ? name.slice(0, -1) : name;
-}
-
-function getRoutePrice(route: RouteList[number]): number {
-  const prices = route.segs
-    .flatMap((segment) => ('transfer' in segment ? [] : segment.seats))
-    .filter((seat) => seat.available)
-    .map((seat) => seat.price);
-  return prices.length > 0 ? Math.min(...prices) : Number.POSITIVE_INFINITY;
 }
 
 function getTrainTypes(route: RouteList[number]): string[] {
@@ -127,9 +122,7 @@ function applyMockView(routes: RouteList, request: JourneyViewRequest): JourneyV
     );
   }
 
-  if (request.sort_by === 'price') {
-    nextRoutes.sort((a, b) => getRoutePrice(a) - getRoutePrice(b));
-  } else if (request.sort_by === 'departure') {
+  if (request.sort_by === 'departure') {
     nextRoutes.sort((a, b) => a.departureTime.localeCompare(b.departureTime));
   } else {
     nextRoutes.sort((a, b) => a.durationMinutes - b.durationMinutes);
@@ -152,6 +145,7 @@ function applyMockView(routes: RouteList, request: JourneyViewRequest): JourneyV
       transferCounts: [...request.transfer_counts].sort((a, b) => a - b),
       page: request.page,
       pageSize: request.page_size,
+      includeTickets: request.include_tickets,
     },
     availableFacets,
   };
@@ -171,6 +165,7 @@ export function buildJourneyViewRequest(
     transfer_counts: filterPrefs.transferCounts,
     page,
     page_size: pageSize,
+    include_tickets: true,
   };
 }
 
@@ -227,7 +222,6 @@ export async function createJourneySearchSession(
       allowed_transfer_stations: params.allowedTransferStations,
       excluded_transfer_stations: params.excludedTransferStations,
       filter_running_only: true,
-      enable_ticket_enrich: params.enableTicketEnrich,
       view: initialView,
     },
   );

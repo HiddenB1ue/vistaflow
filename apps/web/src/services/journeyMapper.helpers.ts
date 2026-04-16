@@ -9,38 +9,14 @@ import type {
   BackendStationGeoResponse,
 } from './journeyMapper.types';
 
-const SEAT_TYPE_MAP: Record<string, SeatClass['type']> = {
-  swz: 'business',
-  tz: 'business',
-  gr: 'business',
-  zy: 'first',
-  ze: 'second',
-  rz: 'second',
-  yz: 'second',
-};
-
-function mapSeatType(raw: string): SeatClass['type'] | null {
-  return SEAT_TYPE_MAP[raw.toLowerCase().trim()] ?? null;
-}
-
 function mapSeats(rawSeats: BackendSeatSchema[]): SeatClass[] {
-  const seen = new Set<SeatClass['type']>();
-  const result: SeatClass[] = [];
-
-  for (const raw of rawSeats) {
-    const type = mapSeatType(raw.seat_type);
-    if (!type || seen.has(type)) continue;
-    seen.add(type);
-    result.push({
-      type,
-      label: getSeatLabel(type),
-      price: raw.price ?? 0,
-      available: raw.available,
-    });
-  }
-
-  const order: SeatClass['type'][] = ['business', 'first', 'second'];
-  return result.sort((a, b) => order.indexOf(a.type) - order.indexOf(b.type));
+  return rawSeats.map((raw) => ({
+    type: raw.seat_type,
+    label: getSeatLabel(raw.seat_type),
+    price: raw.price,
+    available: raw.available,
+    availabilityText: raw.status || undefined,
+  }));
 }
 
 function buildStation(name: string, geoMap: Map<string, { lng: number; lat: number }>): Station {
@@ -65,6 +41,7 @@ function buildTrainSegment(
   geoMap: Map<string, { lng: number; lat: number }>,
 ): TrainSegment {
   return {
+    trainNo: segment.train_code,
     no: segment.train_code,
     origin: buildStation(segment.from_station, geoMap),
     destination: buildStation(segment.to_station, geoMap),

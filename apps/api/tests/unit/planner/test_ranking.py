@@ -1,12 +1,7 @@
 from __future__ import annotations
 
-from app.models import SeatInfo, SeatLookupKey, Segment
-from app.planner.ranking import (
-    apply_display_limit,
-    group_and_rank,
-    route_duration,
-    route_min_price,
-)
+from app.models import Segment
+from app.planner.ranking import apply_display_limit, group_and_rank, route_duration
 
 
 def seg(train_no: str, depart: int, arrive: int, from_s: str = "A", to_s: str = "B") -> Segment:
@@ -25,20 +20,14 @@ def test_route_duration() -> None:
     assert route_duration(route) == 270
 
 
-def test_route_min_price_with_data() -> None:
-    route = [seg("G1", 480, 750, "北京南", "上海虹桥")]
-    seat_data: dict[SeatLookupKey, list[SeatInfo]] = {
-        ("G1", "北京南", "上海虹桥"): [
-            SeatInfo(seat_type="ze", status="有", price=553.0, available=True),
-            SeatInfo(seat_type="zy", status="有", price=933.0, available=True),
-        ]
-    }
-    assert route_min_price(route, seat_data) == 553.0
-
-
-def test_route_min_price_no_data() -> None:
-    route = [seg("G1", 480, 750, "北京南", "上海虹桥")]
-    assert route_min_price(route, {}) is None
+def test_group_and_rank_prefers_fewer_transfers_before_departure() -> None:
+    routes = [
+        [seg("G1", 480, 750)],
+        [seg("G2", 450, 520), seg("D3", 540, 600, "B", "C")],
+    ]
+    ranked = group_and_rank(routes, sort_by="departure")
+    assert len(ranked[0]) == 1
+    assert ranked[0][0].train_no == "G1"
 
 
 def test_group_and_rank_by_duration() -> None:

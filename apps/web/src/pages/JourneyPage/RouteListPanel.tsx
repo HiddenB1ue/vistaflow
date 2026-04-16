@@ -4,7 +4,7 @@ import type { Route, RouteList } from '@/types/route';
 import { JOURNEY_LABELS } from '@/constants/labels';
 import type {
   JourneyAvailableFacets,
-  JourneySortMode,
+  JourneyDisplaySortMode,
   JourneyViewResult,
 } from '@/services/routeService';
 import { PanelCard, SectionHeader } from '@vistaflow/ui';
@@ -20,12 +20,12 @@ interface RouteListPanelProps {
   date: string;
   total: number;
   pageSize: number;
-  sortMode: JourneySortMode;
+  sortMode: JourneyDisplaySortMode;
   appliedView: JourneyViewResult['appliedView'] | null;
   availableFacets: JourneyAvailableFacets;
   onClearFilters: () => void;
   onSelect: (route: Route) => void;
-  onSortModeChange: (value: JourneySortMode) => void;
+  onSortModeChange: (value: JourneyDisplaySortMode) => void;
   onPageSizeChange: (pageSize: number) => void;
   onTransferCountsChange: (transferCounts: number[]) => void;
   onDisplayTrainTypesChange: (trainTypes: string[]) => void;

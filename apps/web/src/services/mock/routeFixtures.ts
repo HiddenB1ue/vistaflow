@@ -11,7 +11,7 @@ const createStation = (name: string, code: string, city: string, lng: number, la
 
 const createSeat = (
   type: SeatClass['type'],
-  price: number,
+  price: number | null,
   available: boolean,
   availabilityText?: string,
 ): SeatClass => ({
@@ -52,6 +52,7 @@ export const routeFixtures: RouteList = [
     durationMinutes: 278,
     segs: [
       {
+        trainNo: 'G1',
         no: 'G1',
         origin: stations.beijingSouth,
         destination: stations.shanghaiHongqiao,
@@ -59,9 +60,10 @@ export const routeFixtures: RouteList = [
         arrivalTime: '11:38',
         stops: [],
         seats: [
-          createSeat('business', 1748, true, '仅剩 1 席'),
-          createSeat('first', 933, true),
-          createSeat('second', 553, true),
+          createSeat('swz', 1748, true, '仅剩 1 席'),
+          createSeat('zy', 933, true),
+          createSeat('ze', 553, true),
+          createSeat('wz', 553, true),
         ],
       },
     ],
@@ -78,6 +80,7 @@ export const routeFixtures: RouteList = [
     durationMinutes: 268,
     segs: [
       {
+        trainNo: 'G101',
         no: 'G101',
         origin: stations.beijingSouth,
         destination: stations.shanghaiHongqiao,
@@ -88,9 +91,9 @@ export const routeFixtures: RouteList = [
           createStop(stations.nanjingSouth, '11:10', '11:12', 2),
         ],
         seats: [
-          createSeat('business', 1748, false),
-          createSeat('first', 933, true),
-          createSeat('second', 553, true),
+          createSeat('swz', 1748, false),
+          createSeat('zy', 933, true),
+          createSeat('ze', 553, true),
         ],
       },
     ],
@@ -107,6 +110,7 @@ export const routeFixtures: RouteList = [
     durationMinutes: 298,
     segs: [
       {
+        trainNo: 'G103',
         no: 'G103',
         origin: stations.beijingSouth,
         destination: stations.shanghaiHongqiao,
@@ -118,9 +122,10 @@ export const routeFixtures: RouteList = [
           createStop(stations.nanjingSouth, '13:10', '13:12', 2),
         ],
         seats: [
-          createSeat('business', 1748, true),
-          createSeat('first', 933, true),
-          createSeat('second', 553, false),
+          createSeat('swz', 1748, true),
+          createSeat('zy', 933, true),
+          createSeat('ze', 553, false),
+          createSeat('wz', 553, false),
         ],
       },
     ],
@@ -137,23 +142,25 @@ export const routeFixtures: RouteList = [
     durationMinutes: 385,
     segs: [
       {
+        trainNo: 'G105',
         no: 'G105',
         origin: stations.beijingSouth,
         destination: stations.jinanWest,
         departureTime: '09:15',
         arrivalTime: '11:05',
         stops: [],
-        seats: [createSeat('second', 215, true)],
+        seats: [createSeat('ze', 215, true)],
       },
       { transfer: '济南西同站换乘 · 预留 45 分钟' },
       {
+        trainNo: 'G213',
         no: 'G213',
         origin: stations.jinanWest,
         destination: stations.shanghaiHongqiao,
         departureTime: '11:50',
         arrivalTime: '15:40',
         stops: [createStop(stations.nanjingSouth, '13:45', '13:47', 2)],
-        seats: [createSeat('first', 920, true), createSeat('second', 580, true)],
+        seats: [createSeat('zy', 920, true), createSeat('ze', 580, true)],
       },
     ],
     pathPoints: [stations.beijingSouth, stations.jinanWest, stations.nanjingSouth, stations.shanghaiHongqiao].map(({ lng, lat }) => ({ lng, lat })),
@@ -169,6 +176,7 @@ export const routeFixtures: RouteList = [
     durationMinutes: 280,
     segs: [
       {
+        trainNo: 'G21',
         no: 'G21',
         origin: stations.beijingSouth,
         destination: stations.shanghaiHongqiao,
@@ -176,9 +184,9 @@ export const routeFixtures: RouteList = [
         arrivalTime: '21:40',
         stops: [createStop(stations.nanjingSouth, '19:22', '19:24', 2)],
         seats: [
-          createSeat('business', 2980, true),
-          createSeat('first', 933, true),
-          createSeat('second', 553, false),
+          createSeat('tz', 2980, true),
+          createSeat('zy', 933, true),
+          createSeat('ze', 553, false),
         ],
       },
     ],
@@ -195,16 +203,18 @@ export const routeFixtures: RouteList = [
     durationMinutes: 298,
     segs: [
       {
+        trainNo: 'G201',
         no: 'G201',
         origin: stations.beijingSouth,
         destination: stations.xuzhouEast,
         departureTime: '11:00',
         arrivalTime: '13:10',
         stops: [],
-        seats: [createSeat('second', 280, true)],
+        seats: [createSeat('ze', 280, true)],
       },
       { transfer: '徐州东同站换乘 · 预留 30 分钟' },
       {
+        trainNo: 'G411',
         no: 'G411',
         origin: stations.xuzhouEast,
         destination: stations.shanghaiHongqiao,
@@ -212,9 +222,9 @@ export const routeFixtures: RouteList = [
         arrivalTime: '15:58',
         stops: [createStop(stations.nanjingSouth, '14:48', '14:50', 2)],
         seats: [
-          createSeat('business', 1748, true),
-          createSeat('first', 933, false),
-          createSeat('second', 400, true),
+          createSeat('swz', 1748, true),
+          createSeat('zy', 933, false),
+          createSeat('wz', 400, true),
         ],
       },
     ],

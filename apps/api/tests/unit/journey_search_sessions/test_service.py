@@ -11,7 +11,7 @@ from app.journey_search_sessions.schemas import (
     SearchSessionViewRequest,
 )
 from app.journey_search_sessions.service import JourneySearchSessionService
-from app.journeys.schemas import JourneyResult, JourneySearchResponse, JourneySegment, SeatSchema
+from app.journeys.schemas import JourneyResult, JourneySearchResponse, JourneySegment
 
 
 def _build_search_response() -> JourneySearchResponse:
@@ -23,9 +23,9 @@ def _build_search_response() -> JourneySearchResponse:
                 total_duration_minutes=120,
                 departure_time="08:00",
                 arrival_time="10:00",
-                min_price=320.0,
                 segments=[
                     JourneySegment(
+                        train_no="240000G1010A",
                         train_code="G1",
                         from_station="Beijing South",
                         to_station="Shanghai Hongqiao",
@@ -33,14 +33,6 @@ def _build_search_response() -> JourneySearchResponse:
                         arrival_time="10:00",
                         duration_minutes=120,
                         stops_count=2,
-                        seats=[
-                            SeatSchema(
-                                seat_type="ze",
-                                status="available",
-                                price=320.0,
-                                available=True,
-                            )
-                        ],
                     )
                 ],
             ),
@@ -50,9 +42,9 @@ def _build_search_response() -> JourneySearchResponse:
                 total_duration_minutes=180,
                 departure_time="07:30",
                 arrival_time="10:30",
-                min_price=280.0,
                 segments=[
                     JourneySegment(
+                        train_no="240000G1010A",
                         train_code="G1",
                         from_station="Beijing South",
                         to_station="Jinan West",
@@ -60,16 +52,9 @@ def _build_search_response() -> JourneySearchResponse:
                         arrival_time="08:30",
                         duration_minutes=60,
                         stops_count=1,
-                        seats=[
-                            SeatSchema(
-                                seat_type="zy",
-                                status="available",
-                                price=180.0,
-                                available=True,
-                            )
-                        ],
                     ),
                     JourneySegment(
+                        train_no="240000D1100B",
                         train_code="D11",
                         from_station="Jinan West",
                         to_station="Shanghai Hongqiao",
@@ -77,14 +62,6 @@ def _build_search_response() -> JourneySearchResponse:
                         arrival_time="10:30",
                         duration_minutes=90,
                         stops_count=2,
-                        seats=[
-                            SeatSchema(
-                                seat_type="ze",
-                                status="available",
-                                price=100.0,
-                                available=True,
-                            )
-                        ],
                     ),
                 ],
             ),
@@ -108,11 +85,17 @@ def service(fake_redis) -> JourneySearchSessionService:
         }
     )
 
+    ticket_service = MagicMock()
+    ticket_service.enrich_routes_for_view = AsyncMock(
+        side_effect=lambda *, run_date, routes: routes
+    )
+
     return JourneySearchSessionService(
         redis_client=fake_redis,
         ttl_seconds=900,
         journey_service=journey_service,
         station_repo=station_repo,
+        ticket_service=ticket_service,
     )
 
 
@@ -147,12 +130,12 @@ async def test_view_switch_does_not_trigger_research(
         )
     )
 
-    price_view = await service.get_view(
+    departure_view = await service.get_view(
         create_response.searchId,
-        SearchSessionViewRequest(sort_by="price"),
+        SearchSessionViewRequest(sort_by="departure", include_tickets=False),
     )
 
-    assert price_view.items[0].id == "transfer-1"
+    assert departure_view.items[0].id == "direct-1"
     service._journey_service.search.assert_awaited_once()
 
 

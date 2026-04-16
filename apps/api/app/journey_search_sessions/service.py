@@ -2,17 +2,18 @@ from __future__ import annotations
 
 import json
 from datetime import UTC, datetime, timedelta
-from typing import Literal, cast
+from typing import cast
 from uuid import uuid4
 
 from redis.asyncio import Redis
 
 from app.exceptions import NotFoundError
+from app.integrations.ticket_12306.service import Ticket12306Service
 from app.journey_search_sessions.schemas import (
     CachedRouteCandidate,
+    CachedTrainSegment,
     RoutePointResponse,
     RouteResponse,
-    RouteSeatResponse,
     RouteStationResponse,
     RouteTrainSegmentResponse,
     RouteTransferSegmentResponse,
@@ -26,21 +27,10 @@ from app.journey_search_sessions.schemas import (
     SearchSessionViewResponse,
     SearchSessionViewResultResponse,
     SearchSummaryResponse,
-    SeatSummary,
 )
-from app.journeys.schemas import JourneyResult, JourneySearchResponse, SeatSchema
+from app.journeys.schemas import JourneyResult, JourneySearchResponse
 from app.journeys.service import JourneyService
 from app.railway.repository import StationRepository
-
-SEAT_TYPE_MAP: dict[str, tuple[Literal["business", "first", "second"], str]] = {
-    "swz": ("business", "商务/特等"),
-    "tz": ("business", "商务/特等"),
-    "gr": ("business", "商务/特等"),
-    "zy": ("first", "一等座"),
-    "ze": ("second", "二等座"),
-    "rz": ("second", "二等座"),
-    "yz": ("second", "二等座"),
-}
 
 
 def _get_train_type(train_code: str) -> str:
@@ -55,11 +45,13 @@ class JourneySearchSessionService:
         ttl_seconds: int,
         journey_service: JourneyService,
         station_repo: StationRepository,
+        ticket_service: Ticket12306Service,
     ) -> None:
         self._redis = redis_client
         self._ttl_seconds = ttl_seconds
         self._journey_service = journey_service
         self._station_repo = station_repo
+        self._ticket_service = ticket_service
 
     async def create_session(
         self,
@@ -101,7 +93,7 @@ class JourneySearchSessionService:
         )
 
         view_request = payload.view or SearchSessionViewRequest()
-        view_result = self._build_view_result(candidates, view_request)
+        view_result = await self._build_view_result(candidates, payload.date.isoformat(), view_request)
         return SearchSessionCreateResponse(
             searchId=search_id,
             expiresAt=expires_at,
@@ -123,7 +115,11 @@ class JourneySearchSessionService:
         payload: SearchSessionViewRequest,
     ) -> SearchSessionViewResultResponse:
         record = await self._load_record(search_id)
-        return self._build_view_result(record.candidates, payload)
+        return await self._build_view_result(
+            record.candidates,
+            record.searchSummary.date,
+            payload,
+        )
 
     async def delete_session(self, search_id: str) -> SearchSessionDeleteResponse:
         deleted = await self._redis.delete(self._redis_key(search_id))
@@ -153,29 +149,25 @@ class JourneySearchSessionService:
         journey: JourneyResult,
         geo_map: dict[str, tuple[float, float]],
     ) -> CachedRouteCandidate:
-        train_segments: list[RouteTrainSegmentResponse | RouteTransferSegmentResponse] = []
+        train_segments: list[CachedTrainSegment | RouteTransferSegmentResponse] = []
         train_types: list[str] = []
         train_codes: list[str] = []
-        seat_summary = SeatSummary(business=False, first=False, second=False)
         path_points: list[RoutePointResponse] = []
         seen_path_points: set[str] = set()
 
         for index, segment in enumerate(journey.segments):
             train_types.append(_get_train_type(segment.train_code))
             train_codes.append(segment.train_code.strip().upper())
-            segment_seats = self._build_seats(segment.seats)
-            seat_summary = self._merge_seat_summary(seat_summary, segment_seats)
 
             train_segments.append(
-                RouteTrainSegmentResponse(
+                CachedTrainSegment(
+                    trainNo=segment.train_no,
                     no=segment.train_code,
                     origin=self._build_station(segment.from_station, geo_map),
                     destination=self._build_station(segment.to_station, geo_map),
                     departureTime=segment.departure_time,
                     arrivalTime=segment.arrival_time,
-                    stops=[],
                     stopsCount=segment.stops_count,
-                    seats=segment_seats,
                 )
             )
 
@@ -194,9 +186,6 @@ class JourneySearchSessionService:
                     )
                 )
 
-        if not any((seat_summary.business, seat_summary.first, seat_summary.second)):
-            seat_summary = SeatSummary(business=True, first=True, second=True)
-
         first_segment = journey.segments[0]
         last_segment = journey.segments[-1]
         return CachedRouteCandidate(
@@ -212,10 +201,8 @@ class JourneySearchSessionService:
             pathPoints=path_points,
             isDirect=journey.is_direct,
             transferCount=max(len(journey.segments) - 1, 0),
-            minPrice=journey.min_price,
             trainTypes=sorted({item for item in train_types if item}),
             trainCodes=train_codes,
-            seatSummary=seat_summary,
         )
 
     def _build_station(
@@ -226,39 +213,10 @@ class JourneySearchSessionService:
         lng, lat = geo_map.get(name, (0.0, 0.0))
         return RouteStationResponse(name=name, lng=lng, lat=lat)
 
-    def _build_seats(self, seats: list[SeatSchema]) -> list[RouteSeatResponse]:
-        mapped: dict[str, RouteSeatResponse] = {}
-        for seat in seats:
-            mapped_type = SEAT_TYPE_MAP.get(seat.seat_type.strip().lower())
-            if mapped_type is None:
-                continue
-            seat_type, label = mapped_type
-            if seat_type in mapped:
-                continue
-            mapped[seat_type] = RouteSeatResponse(
-                type=cast(Literal["business", "first", "second"], seat_type),
-                label=label,
-                price=seat.price or 0,
-                available=seat.available,
-                availabilityText=seat.status or None,
-            )
-        order = {"business": 0, "first": 1, "second": 2}
-        return sorted(mapped.values(), key=lambda item: order[item.type])
-
-    def _merge_seat_summary(
-        self,
-        current: SeatSummary,
-        seats: list[RouteSeatResponse],
-    ) -> SeatSummary:
-        return SeatSummary(
-            business=current.business or any(seat.type == "business" for seat in seats),
-            first=current.first or any(seat.type == "first" for seat in seats),
-            second=current.second or any(seat.type == "second" for seat in seats),
-        )
-
-    def _build_view_result(
+    async def _build_view_result(
         self,
         candidates: list[CachedRouteCandidate],
+        run_date: str,
         payload: SearchSessionViewRequest,
     ) -> SearchSessionViewResultResponse:
         filtered = list(candidates)
@@ -299,15 +257,37 @@ class JourneySearchSessionService:
         total = len(filtered)
         start = (payload.page - 1) * payload.page_size
         end = start + payload.page_size
-        items = [
-            RouteResponse.model_validate(candidate.model_dump())
-            for candidate in filtered[start:end]
-        ]
+        items = [self._to_route_response(candidate) for candidate in filtered[start:end]]
+        if payload.include_tickets:
+            items = await self._ticket_service.enrich_routes_for_view(
+                run_date=run_date,
+                routes=items,
+            )
+
         return SearchSessionViewResultResponse.build(
             items=items,
             total=total,
             view=applied_view,
             facets=facets,
+        )
+
+    def _to_route_response(self, candidate: CachedRouteCandidate) -> RouteResponse:
+        return RouteResponse(
+            id=candidate.id,
+            trainNo=candidate.trainNo,
+            type=candidate.type,
+            origin=candidate.origin,
+            destination=candidate.destination,
+            departureTime=candidate.departureTime,
+            arrivalTime=candidate.arrivalTime,
+            durationMinutes=candidate.durationMinutes,
+            segs=[
+                RouteTrainSegmentResponse.model_validate(segment.model_dump())
+                if isinstance(segment, CachedTrainSegment)
+                else segment
+                for segment in candidate.segs
+            ],
+            pathPoints=candidate.pathPoints,
         )
 
     def _build_available_facets(
@@ -340,22 +320,21 @@ class JourneySearchSessionService:
             transferCounts=sorted({count for count in payload.transfer_counts if count >= 0}),
             page=payload.page,
             pageSize=payload.page_size,
+            includeTickets=payload.include_tickets,
         )
 
     def _sort_key(
         self,
         candidate: CachedRouteCandidate,
         sort_by: str,
-    ) -> tuple[float, int, int, str, str]:
-        if sort_by == "price":
-            primary = candidate.minPrice if candidate.minPrice is not None else float("inf")
-        elif sort_by == "departure":
+    ) -> tuple[int, float, int, str, str]:
+        if sort_by == "departure":
             primary = float(self._time_to_minutes(candidate.departureTime))
         else:
             primary = float(candidate.durationMinutes)
         return (
-            primary,
             candidate.transferCount,
+            primary,
             candidate.durationMinutes,
             candidate.departureTime,
             candidate.arrivalTime,

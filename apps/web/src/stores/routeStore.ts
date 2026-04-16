@@ -1,10 +1,11 @@
 import { create } from 'zustand';
 import type {
   JourneyAvailableFacets,
-  JourneySortMode,
+  JourneyDisplaySortMode,
   JourneyViewResult,
 } from '@/services/routeService';
 import type { Route, RouteList } from '@/types/route';
+import { sortRoutesForDisplay } from '@/pages/JourneyPage/routeList.helpers';
 
 interface RouteState {
   routes: RouteList;
@@ -13,7 +14,7 @@ interface RouteState {
   page: number;
   pageSize: number;
   totalPages: number;
-  sortMode: JourneySortMode;
+  sortMode: JourneyDisplaySortMode;
   appliedView: JourneyViewResult['appliedView'] | null;
   availableFacets: JourneyAvailableFacets;
   sessionSearchId: string | null;
@@ -21,7 +22,7 @@ interface RouteState {
   selectRoute: (route: Route | null) => void;
   setPage: (page: number) => void;
   setPageSize: (pageSize: number) => void;
-  setSortMode: (sortMode: JourneySortMode) => void;
+  setSortMode: (sortMode: JourneyDisplaySortMode) => void;
 }
 
 const defaultAvailableFacets: JourneyAvailableFacets = {
@@ -42,17 +43,19 @@ export const useRouteStore = create<RouteState>()((set) => ({
   sessionSearchId: null,
   setViewResult: (sessionSearchId, result) =>
     set((state) => {
+      const displaySortMode = state.sortMode;
+      const sortedRoutes = sortRoutesForDisplay(result.items, displaySortMode);
       const matchedSelectedRoute =
-        result.items.find((route) => route.id === state.selectedRoute?.id) ?? null;
+        sortedRoutes.find((route) => route.id === state.selectedRoute?.id) ?? null;
       return {
         sessionSearchId,
-        routes: result.items,
-        selectedRoute: matchedSelectedRoute ?? result.items[0] ?? null,
+        routes: sortedRoutes,
+        selectedRoute: matchedSelectedRoute ?? sortedRoutes[0] ?? null,
         total: result.total,
         page: result.page,
         pageSize: result.pageSize,
         totalPages: result.totalPages,
-        sortMode: result.appliedView.sortBy,
+        sortMode: displaySortMode,
         availableFacets: {
           transferCounts: [...result.availableFacets.transferCounts],
           trainTypes: [...result.availableFacets.trainTypes],
@@ -67,5 +70,16 @@ export const useRouteStore = create<RouteState>()((set) => ({
   selectRoute: (selectedRoute) => set({ selectedRoute }),
   setPage: (page) => set({ page }),
   setPageSize: (pageSize) => set({ pageSize, page: 1 }),
-  setSortMode: (sortMode) => set({ sortMode, page: 1 }),
+  setSortMode: (sortMode) =>
+    set((state) => {
+      const sortedRoutes = sortRoutesForDisplay(state.routes, sortMode);
+      const matchedSelectedRoute =
+        sortedRoutes.find((route) => route.id === state.selectedRoute?.id) ?? null;
+      return {
+        sortMode,
+        routes: sortedRoutes,
+        selectedRoute: matchedSelectedRoute ?? sortedRoutes[0] ?? null,
+      };
+    }),
 }));
+

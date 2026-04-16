@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
@@ -16,9 +16,6 @@ from app.config import get_settings
 from app.exceptions import BusinessError
 from app.integrations.crawler.client import Live12306CrawlerClient
 from app.integrations.geo.client import DynamicGeoClient
-from app.integrations.ticket_12306.client import (
-    DynamicTicketClient,
-)
 from app.journey_search_sessions.router import (
     router as journey_search_sessions_router,
 )
@@ -57,10 +54,6 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     await redis_client.ping()
     app.state.redis_client = redis_client
 
-    app.state.ticket_client = DynamicTicketClient(
-        settings_provider=app.state.system_settings_provider,
-        http_client=http_client,
-    )
     app.state.crawler_client = Live12306CrawlerClient(http_client=http_client)
     app.state.geo_client = DynamicGeoClient(
         settings_provider=app.state.system_settings_provider,

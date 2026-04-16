@@ -2,26 +2,16 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import Depends, Request
+from fastapi import Depends
 
-from app.integrations.ticket_12306.client import AbstractTicketClient
 from app.journeys.service import JourneyService
 from app.railway.dependencies import DbPool
-from app.railway.repository import StationRepository, TimetableRepository
+from app.railway.repository import TimetableRepository
 
 
-def get_ticket_client(request: Request) -> AbstractTicketClient:
-    return request.app.state.ticket_client  # type: ignore[no-any-return]
-
-
-def get_journey_service(
-    pool: DbPool,
-    ticket_client: Annotated[AbstractTicketClient, Depends(get_ticket_client)],
-) -> JourneyService:
+def get_journey_service(pool: DbPool) -> JourneyService:
     return JourneyService(
         timetable_repo=TimetableRepository(pool),
-        station_repo=StationRepository(pool),
-        ticket_client=ticket_client,
     )
 
 

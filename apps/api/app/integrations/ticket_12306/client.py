@@ -25,7 +25,7 @@ class TicketClientConfig:
 
 
 class AbstractTicketClient(ABC):
-    """票价查询客户端抽象基类。Service 层只依赖此接口。"""
+    """票价查询客户端抽象基类。"""
 
     @abstractmethod
     async def fetch_tickets(
@@ -35,30 +35,7 @@ class AbstractTicketClient(ABC):
         telecodes: dict[str, str],
         train_codes: dict[SeatLookupKey, str],
     ) -> dict[SeatLookupKey, TicketSegmentData]:
-        """查询指定区间的票价和余票信息。
-
-        Args:
-            run_date: 出行日期，格式 YYYY-MM-DD。
-            segments: 需要查询的区间集合 (train_no, from_station, to_station)。
-            telecodes: 站名 → 电报码映射。
-            train_codes: 区间 → station_train_code 映射（用于兜底匹配）。
-
-        Returns:
-            已成功查询到数据的区间 → TicketSegmentData。
-        """
-
-
-class NullTicketClient(AbstractTicketClient):
-    """空实现：enable_ticket_enrich=False 时使用，直接返回空结果。"""
-
-    async def fetch_tickets(
-        self,
-        run_date: str,
-        segments: set[SeatLookupKey],
-        telecodes: dict[str, str],
-        train_codes: dict[SeatLookupKey, str],
-    ) -> dict[SeatLookupKey, TicketSegmentData]:
-        return {}
+        """查询指定区间的票价和余票信息。"""
 
 
 class Live12306TicketClient(AbstractTicketClient):
@@ -75,7 +52,6 @@ class Live12306TicketClient(AbstractTicketClient):
         telecodes: dict[str, str],
         train_codes: dict[SeatLookupKey, str],
     ) -> dict[SeatLookupKey, TicketSegmentData]:
-        # 按区间分组，每个唯一 (from, to) 只查一次 12306
         leg_cache: dict[tuple[str, str], dict[str, Any]] = {}
         for _train_no, from_station, to_station in sorted(segments):
             leg = (from_station, to_station)
@@ -84,7 +60,7 @@ class Live12306TicketClient(AbstractTicketClient):
             from_code = telecodes.get(from_station)
             to_code = telecodes.get(to_station)
             if not from_code or not to_code:
-                leg_cache[leg] = {}  # 无电报码，跳过
+                leg_cache[leg] = {}
                 continue
             leg_cache[leg] = await self._query_leg(run_date, from_code, to_code)
 
@@ -95,7 +71,6 @@ class Live12306TicketClient(AbstractTicketClient):
             if not rows:
                 continue
 
-            # 优先按 train_no 匹配，其次按 station_train_code
             row = rows.get(train_no)
             matched_by = "train_no"
             if row is None:
@@ -122,7 +97,6 @@ class Live12306TicketClient(AbstractTicketClient):
         from_telecode: str,
         to_telecode: str,
     ) -> dict[str, Any]:
-        """查询单条区间，返回 {train_no_or_code: (seat_status, seat_prices)}。"""
         params = {
             "leftTicketDTO.train_date": run_date,
             "leftTicketDTO.from_station": from_telecode,
@@ -142,7 +116,7 @@ class Live12306TicketClient(AbstractTicketClient):
                 follow_redirects=False,
             )
             if resp.status_code == 302:
-                return {}  # Cookie 过期，静默跳过
+                return {}
             resp.raise_for_status()
             payload: dict[str, Any] = resp.json()
         except Exception:
@@ -167,48 +141,19 @@ class Live12306TicketClient(AbstractTicketClient):
         return rows
 
 
-class DynamicTicketClient(AbstractTicketClient):
-    def __init__(
-        self,
-        settings_provider: SystemSettingsProvider,
-        http_client: httpx.AsyncClient,
-    ) -> None:
-        self._settings_provider = settings_provider
-        self._http = http_client
-        self._signature: str | None = None
-        self._client: AbstractTicketClient = NullTicketClient()
+async def build_ticket_client(
+    settings_provider: SystemSettingsProvider,
+    http_client: httpx.AsyncClient,
+) -> AbstractTicketClient | None:
+    try:
+        cookie = await settings_provider.get_optional_string("ticket_12306_cookie")
+    except SystemSettingsDataError:
+        return None
 
-    async def fetch_tickets(
-        self,
-        run_date: str,
-        segments: set[SeatLookupKey],
-        telecodes: dict[str, str],
-        train_codes: dict[SeatLookupKey, str],
-    ) -> dict[SeatLookupKey, TicketSegmentData]:
-        client = await self._resolve_client()
-        return await client.fetch_tickets(
-            run_date=run_date,
-            segments=segments,
-            telecodes=telecodes,
-            train_codes=train_codes,
-        )
+    if not cookie.strip():
+        return None
 
-    async def _resolve_client(self) -> AbstractTicketClient:
-        try:
-            cookie = await self._settings_provider.get_optional_string("ticket_12306_cookie")
-        except SystemSettingsDataError:
-            return NullTicketClient()
-
-        signature = cookie
-        if signature == self._signature:
-            return self._client
-
-        self._signature = signature
-        if not cookie.strip():
-            self._client = NullTicketClient()
-        else:
-            self._client = Live12306TicketClient(
-                config=TicketClientConfig(cookie=cookie),
-                http_client=self._http,
-            )
-        return self._client
+    return Live12306TicketClient(
+        config=TicketClientConfig(cookie=cookie),
+        http_client=http_client,
+    )

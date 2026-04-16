@@ -8,14 +8,19 @@ from pydantic import BaseModel, Field
 
 from app.journeys.schemas import JourneySearchRequest
 
+TicketStatus = Literal["ready", "partial", "unavailable", "disabled"]
+SegmentTicketStatus = Literal["ready", "unavailable", "disabled"]
+JourneySortMode = Literal["duration", "departure"]
+
 
 class SearchSessionViewRequest(BaseModel):
-    sort_by: Literal["duration", "price", "departure"] = Field(default="duration")
+    sort_by: JourneySortMode = Field(default="duration")
     exclude_direct_train_codes_in_transfer_routes: bool = Field(default=False)
     display_train_types: list[str] = Field(default_factory=list)
     transfer_counts: list[int] = Field(default_factory=list)
     page: int = Field(default=1, ge=1)
     page_size: int = Field(default=20, ge=1, le=100)
+    include_tickets: bool = Field(default=True)
 
 
 class SearchSessionCreateRequest(BaseModel):
@@ -36,7 +41,6 @@ class SearchSessionCreateRequest(BaseModel):
     allowed_transfer_stations: list[str] = Field(default_factory=list)
     excluded_transfer_stations: list[str] = Field(default_factory=list)
     filter_running_only: bool = Field(default=True)
-    enable_ticket_enrich: bool = Field(default=False)
     view: SearchSessionViewRequest | None = None
 
     def to_journey_request(self) -> JourneySearchRequest:
@@ -58,7 +62,6 @@ class SearchSessionCreateRequest(BaseModel):
             allowed_transfer_stations=self.allowed_transfer_stations,
             excluded_transfer_stations=self.excluded_transfer_stations,
             filter_running_only=self.filter_running_only,
-            enable_ticket_enrich=self.enable_ticket_enrich,
         )
 
 
@@ -76,9 +79,9 @@ class RouteStationResponse(BaseModel):
 
 
 class RouteSeatResponse(BaseModel):
-    type: Literal["business", "first", "second"]
+    type: str
     label: str
-    price: float
+    price: float | None
     available: bool
     availabilityText: str | None = None
 
@@ -90,15 +93,20 @@ class RouteStopResponse(BaseModel):
     stopDuration: int | None = None
 
 
-class RouteTrainSegmentResponse(BaseModel):
+class CachedTrainSegment(BaseModel):
+    trainNo: str
     no: str
     origin: RouteStationResponse
     destination: RouteStationResponse
     departureTime: str
     arrivalTime: str
-    stops: list[RouteStopResponse] = Field(default_factory=list)
     stopsCount: int | None = None
+
+
+class RouteTrainSegmentResponse(CachedTrainSegment):
+    stops: list[RouteStopResponse] = Field(default_factory=list)
     seats: list[RouteSeatResponse] = Field(default_factory=list)
+    ticketStatus: SegmentTicketStatus = "disabled"
 
 
 class RouteTransferSegmentResponse(BaseModel):
@@ -116,6 +124,7 @@ class RouteResponse(BaseModel):
     durationMinutes: int
     segs: list[RouteTrainSegmentResponse | RouteTransferSegmentResponse]
     pathPoints: list[RoutePointResponse]
+    ticketStatus: TicketStatus = "disabled"
 
 
 class SearchSummaryResponse(BaseModel):
@@ -131,12 +140,13 @@ class SearchSessionAvailableFacetsResponse(BaseModel):
 
 
 class SearchSessionViewResponse(BaseModel):
-    sortBy: Literal["duration", "price", "departure"]
+    sortBy: JourneySortMode
     excludeDirectTrainCodesInTransferRoutes: bool
     displayTrainTypes: list[str]
     transferCounts: list[int]
     page: int
     pageSize: int
+    includeTickets: bool
 
 
 class SearchSessionViewResultResponse(BaseModel):
@@ -186,19 +196,21 @@ class SearchSessionDeleteResponse(BaseModel):
     deleted: bool
 
 
-class SeatSummary(BaseModel):
-    business: bool
-    first: bool
-    second: bool
-
-
-class CachedRouteCandidate(RouteResponse):
+class CachedRouteCandidate(BaseModel):
+    id: str
+    trainNo: str
+    type: str
+    origin: RouteStationResponse
+    destination: RouteStationResponse
+    departureTime: str
+    arrivalTime: str
+    durationMinutes: int
+    segs: list[CachedTrainSegment | RouteTransferSegmentResponse]
+    pathPoints: list[RoutePointResponse]
     isDirect: bool
     transferCount: int
-    minPrice: float | None = None
     trainTypes: list[str] = Field(default_factory=list)
     trainCodes: list[str] = Field(default_factory=list)
-    seatSummary: SeatSummary
 
 
 class SearchSessionCacheRecord(BaseModel):
