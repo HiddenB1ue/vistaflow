@@ -1,6 +1,6 @@
 import type { JourneyDisplaySortMode } from '@/services/routeService';
-import { isTransfer, type Route, type RouteList } from '@/types/route';
-import { getLowestAvailablePrice } from '@/utils/seat';
+import type { Route, RouteList } from '@/types/route';
+import { getRouteReferencePrice } from '@/utils/seat';
 
 export const SORT_OPTIONS: Array<{ value: JourneyDisplaySortMode; label: string }> = [
   { value: 'duration', label: '总耗时' },
@@ -9,9 +9,7 @@ export const SORT_OPTIONS: Array<{ value: JourneyDisplaySortMode; label: string 
 ];
 
 function getRouteLowestPrice(route: Route): number | null {
-  return getLowestAvailablePrice(
-    route.segs.flatMap((segment) => (isTransfer(segment) ? [] : segment.seats)),
-  );
+  return getRouteReferencePrice(route);
 }
 
 export function sortRoutesForDisplay(routes: RouteList, sortMode: JourneyDisplaySortMode): RouteList {

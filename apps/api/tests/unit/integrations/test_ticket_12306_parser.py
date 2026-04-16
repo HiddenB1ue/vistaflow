@@ -32,7 +32,7 @@ def _build_result_row(**fields: str) -> str:
     return "|".join(parts)
 
 
-def test_parse_result_row_does_not_fabricate_wz_price() -> None:
+def test_parse_result_row_backfills_wz_price_with_lowest_fare() -> None:
     row = _build_result_row(
         train_no="240000G1010A",
         station_train_code="G101",
@@ -47,8 +47,23 @@ def test_parse_result_row_does_not_fabricate_wz_price() -> None:
     assert train_no == "240000G1010A"
     assert station_train_code == "G101"
     assert seat_status["wz"] == "有"
+    assert seat_prices == {"zy": 320.0, "ze": 190.0, "wz": 190.0}
+
+
+def test_parse_result_row_does_not_backfill_wz_price_when_wz_not_displayed() -> None:
+    row = _build_result_row(
+        train_no="240000G1010A",
+        station_train_code="G101",
+        wz_num="-",
+        ze_num="5",
+        zy_num="无",
+        yp_info_new="M032000000O019000000",
+    )
+
+    _, _, seat_status, seat_prices = parse_result_row(row)
+
+    assert seat_status["wz"] == "-"
     assert seat_prices == {"zy": 320.0, "ze": 190.0}
-    assert "wz" not in seat_prices
 
 
 def test_build_seat_infos_keeps_available_wz_without_price() -> None:

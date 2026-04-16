@@ -3,20 +3,20 @@ import { routeFixtures } from '@/services/mock/routeFixtures';
 import { sortRoutesForDisplay } from './routeList.helpers';
 
 describe('sortRoutesForDisplay', () => {
-  it('sorts routes by lowest available price on the current result set', () => {
+  it('sorts routes by summed per-segment reference price on the current result set', () => {
     const sorted = sortRoutesForDisplay(routeFixtures, 'price');
 
     expect(sorted.map((route) => route.id)).toEqual([
-      'G105-R',
-      'G107',
       'G101',
       'G1',
+      'G107',
+      'G105-R',
       'G21',
       'G103',
     ]);
   });
 
-  it('pushes routes without available prices to the end', () => {
+  it('pushes routes without a full reference price to the end', () => {
     const unavailableRoute = {
       ...routeFixtures[0],
       id: 'no-price',
@@ -35,6 +35,6 @@ describe('sortRoutesForDisplay', () => {
 
     const sorted = sortRoutesForDisplay([unavailableRoute, routeFixtures[3], routeFixtures[0]], 'price');
 
-    expect(sorted.map((route) => route.id)).toEqual(['G105-R', 'G1', 'no-price']);
+    expect(sorted.map((route) => route.id)).toEqual(['G1', 'G105-R', 'no-price']);
   });
 });

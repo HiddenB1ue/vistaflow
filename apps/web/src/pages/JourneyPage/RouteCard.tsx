@@ -4,7 +4,7 @@ import type { Route } from '@/types/route';
 import { isTransfer } from '@/types/route';
 import { JOURNEY_LABELS } from '@/constants/labels';
 import { formatDuration, formatPrice } from '@vistaflow/utils';
-import { getLowestAvailablePrice } from '@/utils/seat';
+import { getRouteReferencePrice } from '@/utils/seat';
 import { RouteSegmentCard } from './RouteSegmentCard';
 
 interface RouteCardProps {
@@ -14,11 +14,10 @@ interface RouteCardProps {
 }
 
 function getRoutePriceLabel(route: Route): string {
-  const allSeats = route.segs.flatMap((segment) => (isTransfer(segment) ? [] : segment.seats));
-  const lowestPrice = getLowestAvailablePrice(allSeats);
+  const referencePrice = getRouteReferencePrice(route);
 
-  if (lowestPrice !== null) {
-    return formatPrice(lowestPrice);
+  if (referencePrice !== null) {
+    return formatPrice(referencePrice);
   }
   if (route.ticketStatus === 'unavailable' || route.ticketStatus === 'partial') {
     return JOURNEY_LABELS.ticketsUnavailable;
@@ -30,8 +29,7 @@ function getRoutePriceLabel(route: Route): string {
 }
 
 export function RouteCard({ route, isActive, onClick }: RouteCardProps) {
-  const allSeats = route.segs.flatMap((segment) => (isTransfer(segment) ? [] : segment.seats));
-  const lowestPrice = getLowestAvailablePrice(allSeats);
+  const referencePrice = getRouteReferencePrice(route);
   const displayPrice = getRoutePriceLabel(route);
 
   return (
@@ -49,7 +47,7 @@ export function RouteCard({ route, isActive, onClick }: RouteCardProps) {
         </div>
         <div className="text-right">
           <div className="font-display text-2xl font-light tracking-wider text-starlight md:text-3xl">{displayPrice}</div>
-          {lowestPrice !== null && (
+          {referencePrice !== null && (
             <div className="mt-1 text-xs font-medium uppercase tracking-widest text-muted/80">
               {JOURNEY_LABELS.referencePrice}
             </div>

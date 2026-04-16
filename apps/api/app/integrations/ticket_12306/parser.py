@@ -116,6 +116,9 @@ def parse_result_row(raw: str) -> tuple[str, str, dict[str, str], dict[str, floa
         for seat, key in _SEAT_STATUS_KEYS.items()
     }
     seat_prices = _parse_yp_info_new(_get_field(parts, _IDX["yp_info_new"]))
+    wz_status = seat_status.get("wz", "").strip()
+    if wz_status not in {"", "-", "--"} and "wz" not in seat_prices and seat_prices:
+        seat_prices["wz"] = min(seat_prices.values())
     return train_no, station_train_code, seat_status, seat_prices
 
 

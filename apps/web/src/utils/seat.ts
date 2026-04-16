@@ -1,4 +1,4 @@
-import type { SeatClass } from '@/types/route';
+import type { Route, SeatClass, TrainSegment } from '@/types/route';
 
 const SEAT_LABELS: Record<string, string> = {
   swz: '商务座',
@@ -30,4 +30,27 @@ export function getLowestAvailablePrice(seats: SeatClass[]): number | null {
   }
 
   return lowestPrice;
+}
+
+export function getSegmentLowestAvailablePrice(segment: TrainSegment): number | null {
+  return getLowestAvailablePrice(segment.seats);
+}
+
+export function getRouteReferencePrice(route: Route): number | null {
+  let totalPrice = 0;
+  let hasTrainSegment = false;
+
+  for (const segment of route.segs) {
+    if ('transfer' in segment) {
+      continue;
+    }
+    hasTrainSegment = true;
+    const segmentPrice = getSegmentLowestAvailablePrice(segment);
+    if (segmentPrice === null) {
+      return null;
+    }
+    totalPrice += segmentPrice;
+  }
+
+  return hasTrainSegment ? totalPrice : null;
 }
