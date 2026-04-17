@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { routeFixtures } from '@/services/mock/routeFixtures';
-import { routeHasAvailableTickets, sortRoutesForDisplay } from './routeList.helpers';
+import {
+  getCollapsedRouteSummary,
+  routeHasAvailableTickets,
+  sortRoutesForDisplay,
+} from './routeList.helpers';
 
 describe('sortRoutesForDisplay', () => {
   it('sorts routes by summed per-segment reference price on the current result set', () => {
@@ -64,3 +68,31 @@ describe('routeHasAvailableTickets', () => {
     expect(routeHasAvailableTickets(unavailableRoute)).toBe(false);
   });
 });
+
+describe('getCollapsedRouteSummary', () => {
+  it('returns train badges and endpoints for direct routes', () => {
+    expect(getCollapsedRouteSummary(routeFixtures[0])).toEqual({
+      kind: 'direct',
+      trainCodes: ['G1'],
+      transferStations: [],
+      endpoints: '北京南 → 上海虹桥',
+    });
+  });
+
+  it('returns train badges and transfer badges for transfer routes', () => {
+    expect(getCollapsedRouteSummary(routeFixtures[3])).toEqual({
+      kind: 'transfer',
+      trainCodes: ['G105', 'G213'],
+      transferStations: ['济南西换乘'],
+      endpoints: null,
+    });
+
+    expect(getCollapsedRouteSummary(routeFixtures[5])).toEqual({
+      kind: 'transfer',
+      trainCodes: ['G201', 'G411'],
+      transferStations: ['徐州东换乘'],
+      endpoints: null,
+    });
+  });
+});
+

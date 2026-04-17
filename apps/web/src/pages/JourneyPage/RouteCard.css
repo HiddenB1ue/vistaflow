@@ -34,6 +34,58 @@
   opacity: 1;
 }
 
+.route-card-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  min-width: 0;
+}
+
+.route-card-summary__row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.route-card-summary__row--train-codes {
+  gap: 0.45rem;
+}
+
+.route-card-summary__badge {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  border-radius: 9999px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 0.32rem 0.72rem;
+  font-family: var(--font-display, inherit);
+  font-size: 0.7rem;
+  line-height: 1;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  backdrop-filter: blur(8px);
+}
+
+.route-card-summary__badge--train {
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.92);
+}
+
+.route-card-summary__badge--transfer {
+  border-color: rgba(var(--color-pulse-rgb), 0.3);
+  background: rgba(var(--color-pulse-rgb), 0.12);
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.route-card-summary__meta {
+  font-size: 0.76rem;
+  line-height: 1.45;
+  letter-spacing: 0.08em;
+  color: rgba(255, 255, 255, 0.6);
+  overflow-wrap: anywhere;
+}
+
 /* ====== details-panel: 卡片展开详情 ====== */
 .details-panel {
   max-height: 0;

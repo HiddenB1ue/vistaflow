@@ -6,6 +6,7 @@ import { JOURNEY_LABELS } from '@/constants/labels';
 import { formatDuration, formatPrice } from '@vistaflow/utils';
 import { getRouteReferencePrice } from '@/utils/seat';
 import { RouteSegmentCard } from './RouteSegmentCard';
+import { getCollapsedRouteSummary } from './routeList.helpers';
 
 interface RouteCardProps {
   route: Route;
@@ -31,11 +32,12 @@ function getRoutePriceLabel(route: Route): string {
 export function RouteCard({ route, isActive, onClick }: RouteCardProps) {
   const referencePrice = getRouteReferencePrice(route);
   const displayPrice = getRoutePriceLabel(route);
+  const collapsedSummary = getCollapsedRouteSummary(route);
 
   return (
     <div data-card className={`ticket-card cursor-pointer${isActive ? ' active' : ''}`} onClick={() => onClick(route)}>
-      <div className="flex items-start justify-between pr-4">
-        <div>
+      <div className="flex items-start justify-between gap-6 pr-4">
+        <div className="min-w-0 flex-1">
           <div className="mb-3 font-display text-xs uppercase tracking-[0.2em] time-theme-text">
             {route.type} · {formatDuration(route.durationMinutes)}
           </div>
@@ -44,8 +46,31 @@ export function RouteCard({ route, isActive, onClick }: RouteCardProps) {
             <span className="px-3 font-sans text-xl font-light text-muted">→</span>
             {route.arrivalTime}
           </div>
+          <div className="route-card-summary mt-4">
+            <div className="route-card-summary__row route-card-summary__row--train-codes">
+              {collapsedSummary.trainCodes.map((trainCode) => (
+                <span key={trainCode} className="route-card-summary__badge route-card-summary__badge--train">
+                  {trainCode}
+                </span>
+              ))}
+            </div>
+            {collapsedSummary.kind === 'direct' && collapsedSummary.endpoints ? (
+              <div className="route-card-summary__row">
+                <span className="route-card-summary__meta">{collapsedSummary.endpoints}</span>
+              </div>
+            ) : null}
+            {collapsedSummary.kind === 'transfer' && collapsedSummary.transferStations.length > 0 ? (
+              <div className="route-card-summary__row route-card-summary__row--transfer-stations">
+                {collapsedSummary.transferStations.map((transferStation) => (
+                  <span key={transferStation} className="route-card-summary__badge route-card-summary__badge--transfer">
+                    {transferStation}
+                  </span>
+                ))}
+              </div>
+            ) : null}
+          </div>
         </div>
-        <div className="text-right">
+        <div className="shrink-0 text-right">
           <div className="font-display text-2xl font-light tracking-wider text-starlight md:text-3xl">{displayPrice}</div>
           {referencePrice !== null && (
             <div className="mt-1 text-xs font-medium uppercase tracking-widest text-muted/80">
