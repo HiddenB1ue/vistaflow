@@ -23,6 +23,7 @@ import { useSearchStore } from '@/stores/searchStore';
 import { useUiStore } from '@/stores/uiStore';
 import type { Route } from '@/types/route';
 import { RouteListPanel } from './RouteListPanel';
+import { routeHasAvailableTickets } from './routeList.helpers';
 
 export function JourneyPage() {
   const navigate = useNavigate();
@@ -51,7 +52,6 @@ export function JourneyPage() {
     journeyFilterPrefs,
     setJourneyFilterOpen,
     setJourneyFilterPrefs,
-    resetJourneyFilterPrefs,
   } = useUiStore();
 
   const backendSortMode = sortMode === 'price' ? 'duration' : sortMode;
@@ -123,7 +123,16 @@ export function JourneyPage() {
     }
   }, [navigate, searchId]);
 
-  const listRef = useCardReveal([routes]);
+  const displayRoutes = useMemo(
+    () =>
+      journeyFilterPrefs.showOnlyAvailableTickets
+        ? routes.filter(routeHasAvailableTickets)
+        : routes,
+    [journeyFilterPrefs.showOnlyAvailableTickets, routes],
+  );
+  const displaySelectedRoute =
+    displayRoutes.find((route) => route.id === selectedRoute?.id) ?? displayRoutes[0] ?? null;
+  const listRef = useCardReveal([displayRoutes]);
   const handleSelect = (route: Route) => selectRoute(route);
   const sessionExpired = error instanceof Error;
 
@@ -167,20 +176,20 @@ export function JourneyPage() {
             eyebrow={JOURNEY_LABELS.mapEyebrow}
             title={<>{params.origin || '出发地'} → {params.destination || '目的地'}</>}
             subtitle={
-              selectedRoute
-                ? JOURNEY_LABELS.selectedRouteHint(selectedRoute.id)
+              displaySelectedRoute
+                ? JOURNEY_LABELS.selectedRouteHint(displaySelectedRoute.id)
                 : JOURNEY_LABELS.noSelectionHint
             }
           />
 
           <div className="relative flex flex-1 items-center justify-center py-6">
-            <AmapContainer selectedRoute={selectedRoute} />
+            <AmapContainer selectedRoute={displaySelectedRoute} />
           </div>
 
           <div className="flex items-center gap-3 text-xs font-display uppercase tracking-widest text-muted">
             <div className="time-theme-bg h-1.5 w-1.5 animate-pulse rounded-full" />
             <span>
-              {selectedRoute ? JOURNEY_LABELS.mapStatus : JOURNEY_LABELS.mapStatusIdle}
+              {displaySelectedRoute ? JOURNEY_LABELS.mapStatus : JOURNEY_LABELS.mapStatusIdle}
             </span>
           </div>
         </div>
@@ -203,18 +212,15 @@ export function JourneyPage() {
             </ContentSection>
           ) : (
             <RouteListPanel
-              routes={routes}
-              selectedRoute={selectedRoute}
+              routes={displayRoutes}
+              selectedRoute={displaySelectedRoute}
               date={params.date}
               total={total}
               pageSize={pageSize}
               sortMode={sortMode}
               appliedView={appliedView}
               availableFacets={availableFacets}
-              onClearFilters={() => {
-                resetJourneyFilterPrefs();
-                setPage(1);
-              }}
+              showOnlyAvailableTickets={journeyFilterPrefs.showOnlyAvailableTickets}
               onSelect={handleSelect}
               onSortModeChange={setSortMode}
               onPageSizeChange={setPageSize}
@@ -225,6 +231,9 @@ export function JourneyPage() {
               onDisplayTrainTypesChange={(displayTrainTypes) => {
                 setJourneyFilterPrefs({ displayTrainTypes });
                 setPage(1);
+              }}
+              onShowOnlyAvailableTicketsChange={(showOnlyAvailableTickets) => {
+                setJourneyFilterPrefs({ showOnlyAvailableTickets });
               }}
               listRef={listRef}
             />

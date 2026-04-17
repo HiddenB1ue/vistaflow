@@ -177,6 +177,7 @@ export async function createJourneySearchSession(
       excludeDirectTrainCodesInTransferRoutes: false,
       displayTrainTypes: [],
       transferCounts: [],
+      showOnlyAvailableTickets: false,
     },
     'duration',
     1,

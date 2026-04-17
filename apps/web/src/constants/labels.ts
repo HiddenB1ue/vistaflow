@@ -44,6 +44,7 @@ const WEB_LOCALES = {
       ticketsAvailable: '余票充足',
       ticketsUnavailable: '余票暂不可用',
       ticketsNotQueried: '未查询余票',
+      availableTicketsOnly: '只显示有余票',
       noSeatInfo: '暂无席别信息',
       disclaimerLine1: 'VistaFlow 仅提供行程规划参考，',
       disclaimerLine2: '实际购票请以前往官方渠道为准。',

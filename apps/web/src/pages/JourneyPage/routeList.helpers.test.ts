@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { routeFixtures } from '@/services/mock/routeFixtures';
-import { sortRoutesForDisplay } from './routeList.helpers';
+import { routeHasAvailableTickets, sortRoutesForDisplay } from './routeList.helpers';
 
 describe('sortRoutesForDisplay', () => {
   it('sorts routes by summed per-segment reference price on the current result set', () => {
@@ -36,5 +36,31 @@ describe('sortRoutesForDisplay', () => {
     const sorted = sortRoutesForDisplay([unavailableRoute, routeFixtures[3], routeFixtures[0]], 'price');
 
     expect(sorted.map((route) => route.id)).toEqual(['G1', 'G105-R', 'no-price']);
+  });
+});
+
+describe('routeHasAvailableTickets', () => {
+  it('returns true when every train segment has at least one available seat', () => {
+    expect(routeHasAvailableTickets(routeFixtures[0])).toBe(true);
+    expect(routeHasAvailableTickets(routeFixtures[3])).toBe(true);
+  });
+
+  it('returns false when any train segment has no available seats', () => {
+    const unavailableRoute = {
+      ...routeFixtures[3],
+      segs: routeFixtures[3].segs.map((segment, index) =>
+        index !== 2 || 'transfer' in segment
+          ? segment
+          : {
+              ...segment,
+              seats: segment.seats.map((seat) => ({
+                ...seat,
+                available: false,
+              })),
+            },
+      ),
+    };
+
+    expect(routeHasAvailableTickets(unavailableRoute)).toBe(false);
   });
 });

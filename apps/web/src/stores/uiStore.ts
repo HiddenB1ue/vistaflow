@@ -5,12 +5,14 @@ export interface JourneyViewPrefs {
   excludeDirectTrainCodesInTransferRoutes: boolean;
   displayTrainTypes: string[];
   transferCounts: number[];
+  showOnlyAvailableTickets: boolean;
 }
 
 export const defaultJourneyViewPrefs: JourneyViewPrefs = {
   excludeDirectTrainCodesInTransferRoutes: false,
   displayTrainTypes: [],
   transferCounts: [],
+  showOnlyAvailableTickets: false,
 };
 
 interface UiState {

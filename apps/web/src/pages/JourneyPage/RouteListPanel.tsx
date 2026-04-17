@@ -23,16 +23,17 @@ interface RouteListPanelProps {
   sortMode: JourneyDisplaySortMode;
   appliedView: JourneyViewResult['appliedView'] | null;
   availableFacets: JourneyAvailableFacets;
-  onClearFilters: () => void;
+  showOnlyAvailableTickets: boolean;
   onSelect: (route: Route) => void;
   onSortModeChange: (value: JourneyDisplaySortMode) => void;
   onPageSizeChange: (pageSize: number) => void;
   onTransferCountsChange: (transferCounts: number[]) => void;
   onDisplayTrainTypesChange: (trainTypes: string[]) => void;
+  onShowOnlyAvailableTicketsChange: (value: boolean) => void;
   listRef: RefObject<HTMLDivElement | null>;
 }
 
-type ToolbarMenu = 'extra-train-types' | 'display-size' | null;
+type ToolbarMenu = 'display-size' | null;
 
 interface ToolbarButtonProps {
   active?: boolean;
@@ -67,12 +68,13 @@ export function RouteListPanel({
   sortMode,
   appliedView,
   availableFacets,
-  onClearFilters,
+  showOnlyAvailableTickets,
   onSelect,
   onSortModeChange,
   onPageSizeChange,
   onTransferCountsChange,
   onDisplayTrainTypesChange,
+  onShowOnlyAvailableTicketsChange,
   listRef,
 }: RouteListPanelProps) {
   const toolbarRef = useRef<HTMLDivElement | null>(null);
@@ -81,9 +83,6 @@ export function RouteListPanel({
 
   const activeTransferCounts = appliedView?.transferCounts ?? [];
   const activeTrainTypes = appliedView?.displayTrainTypes ?? [];
-  const hasExtraFilters = Boolean(appliedView?.excludeDirectTrainCodesInTransferRoutes);
-  const hasActiveFilters =
-    activeTransferCounts.length > 0 || activeTrainTypes.length > 0 || hasExtraFilters;
   const prioritizedTrainTypes = [
     ...COMMON_TRAIN_TYPE_ORDER.filter((trainType) =>
       availableFacets.trainTypes.includes(trainType),
@@ -95,11 +94,6 @@ export function RouteListPanel({
         ),
     ),
   ];
-  const visibleTrainTypes = prioritizedTrainTypes.slice(0, 6);
-  const hiddenTrainTypes = prioritizedTrainTypes.slice(6);
-  const hiddenSelectedCount = hiddenTrainTypes.filter((trainType) =>
-    activeTrainTypes.includes(trainType),
-  ).length;
 
   useEffect(() => {
     if (openMenu === null) return;
@@ -214,7 +208,7 @@ export function RouteListPanel({
                   label="全部"
                   onClick={() => onDisplayTrainTypesChange([])}
                 />
-                {visibleTrainTypes.map((trainType) => (
+                {prioritizedTrainTypes.map((trainType) => (
                   <ToolbarButton
                     key={`train-type-${trainType}`}
                     active={activeTrainTypes.includes(trainType)}
@@ -228,56 +222,11 @@ export function RouteListPanel({
                 ))}
               </div>
 
-              {hiddenTrainTypes.length > 0 ? (
-                <div className="route-toolbar-menu">
-                  <ToolbarButton
-                    active={hiddenSelectedCount > 0 || openMenu === 'extra-train-types'}
-                    label={
-                      hiddenSelectedCount > 0
-                        ? `更多类型 · ${hiddenSelectedCount}`
-                        : '更多类型'
-                    }
-                    onClick={() =>
-                      setOpenMenu((current) =>
-                        current === 'extra-train-types' ? null : 'extra-train-types',
-                      )
-                    }
-                  />
-                  {openMenu === 'extra-train-types' ? (
-                    <div className="route-toolbar-popover route-toolbar-popover--wide">
-                      <div className="route-toolbar-popover__header">
-                        <span>更多车次类型</span>
-                      </div>
-                      <div className="route-toolbar-popover__options route-toolbar-popover__options--grid">
-                        {hiddenTrainTypes.map((trainType) => (
-                          <button
-                            key={`train-type-option-${trainType}`}
-                            type="button"
-                            className={`route-toolbar-option${activeTrainTypes.includes(trainType) ? ' route-toolbar-option--active' : ''}`}
-                            onClick={() =>
-                              onDisplayTrainTypesChange(
-                                toggleSelection(activeTrainTypes, trainType).sort(),
-                              )
-                            }
-                          >
-                            <span>{trainType}</span>
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  ) : null}
-                </div>
-              ) : null}
-
-              {hasActiveFilters ? (
-                <ToolbarButton
-                  label="清空"
-                  onClick={() => {
-                    setOpenMenu(null);
-                    onClearFilters();
-                  }}
-                />
-              ) : null}
+              <ToolbarButton
+                active={showOnlyAvailableTickets}
+                label={JOURNEY_LABELS.availableTicketsOnly}
+                onClick={() => onShowOnlyAvailableTicketsChange(!showOnlyAvailableTickets)}
+              />
             </div>
           </div>
         </div>

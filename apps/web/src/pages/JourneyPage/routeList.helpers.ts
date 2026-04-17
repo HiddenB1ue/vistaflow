@@ -1,5 +1,5 @@
 import type { JourneyDisplaySortMode } from '@/services/routeService';
-import type { Route, RouteList } from '@/types/route';
+import { isTransfer, type Route, type RouteList } from '@/types/route';
 import { getRouteReferencePrice } from '@/utils/seat';
 
 export const SORT_OPTIONS: Array<{ value: JourneyDisplaySortMode; label: string }> = [
@@ -10,6 +10,23 @@ export const SORT_OPTIONS: Array<{ value: JourneyDisplaySortMode; label: string 
 
 function getRouteLowestPrice(route: Route): number | null {
   return getRouteReferencePrice(route);
+}
+
+export function routeHasAvailableTickets(route: Route): boolean {
+  let hasTrainSegment = false;
+
+  for (const segment of route.segs) {
+    if (isTransfer(segment)) {
+      continue;
+    }
+
+    hasTrainSegment = true;
+    if (!segment.seats.some((seat) => seat.available)) {
+      return false;
+    }
+  }
+
+  return hasTrainSegment;
 }
 
 export function sortRoutesForDisplay(routes: RouteList, sortMode: JourneyDisplaySortMode): RouteList {
