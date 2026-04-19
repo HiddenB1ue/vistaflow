@@ -1,70 +1,119 @@
-﻿# VistaFlow Backend
+# VistaFlow API
 
-Repo-wide governance for backend delivery lives in
-`.specify/memory/constitution.md`. `ARCHITECTURE.md` may be stricter, but it does
-not replace the backend constitution.
+`apps/api` 是 VistaFlow 的后端服务，基于 FastAPI、asyncpg、httpx 和 Redis。
 
-All backend feature work MUST preserve domain boundaries, document API/data/ops
-impact during specification, and pass `uv run ruff check .`,
-`uv run mypy app tests`, and `uv run pytest --cov=app --cov-report=term-missing`
-before merge.
+当前负责：
 
-## Tech Stack
+- 用户端出行查询与会话化结果分页
+- 管理端认证、系统配置、日志与概览数据
+- 任务定义、执行记录、日志追踪与 Worker 调度
+- 铁路基础数据抓取与站点经纬度补全
 
-Python 3.12 + FastAPI + asyncpg backend service.
+## Directory Structure
 
-## Quick Start
+```text
+apps/api/
+├── app/                          # 应用源码
+│   ├── admin_data/               # 管理端数据查询与编辑接口
+│   ├── auth/                     # 管理端认证
+│   ├── integrations/             # 外部服务接入，例如 12306、地理编码
+│   ├── journeys/                 # 出行搜索接口
+│   ├── journey_search_sessions/  # 会话化搜索与分页筛选
+│   ├── planner/                  # 路线规划与排序逻辑
+│   ├── railway/                  # 铁路基础数据接口
+│   ├── system/                   # 系统配置、概览、日志等后台能力
+│   ├── tasks/                    # 任务定义、执行、注册与 worker 逻辑
+│   ├── config.py                 # 全局配置
+│   ├── database.py               # 数据库连接与依赖
+│   └── main.py                   # FastAPI 入口
+├── tests/                        # 测试目录
+│   ├── unit/                     # 单元测试
+│   ├── integration/              # 集成测试
+│   ├── contract/                 # API 合同测试
+│   ├── manual/                   # 手动联调测试
+│   └── crawl/                    # 抓取脚本与实验性测试
+├── .env.example                  # 环境变量示例
+├── pyproject.toml                # Python 项目配置
+└── Dockerfile                    # 镜像构建文件
+```
+
+## Requirements
+
+- Python 3.12
+- `uv`
+- PostgreSQL 16
+- Redis
+
+## Environment Variables
+
+复制 `apps/api/.env.example` 为 `apps/api/.env.development`：
 
 ```bash
 cd apps/api
-
-# Install dependencies
-uv sync
-
-# Copy environment variables
 cp .env.example .env.development
-# Edit .env.development and fill in database / external service configuration
+```
 
-# Start the dev server
+常用配置项：
+
+- `DATABASE_URL`：PostgreSQL 连接串
+- `REDIS_URL`：Redis 连接串
+- `CORS_ORIGINS`：允许的前端来源
+- `APP_ENV`：运行环境，开发环境通常为 `development`
+- `APP_VERSION`：应用版本号
+- `ADMIN_USERNAME`：管理员用户名
+- `ADMIN_PASSWORD`：管理员密码
+- `ADMIN_TOKEN`：可选，预置管理端令牌
+- `JOURNEY_SEARCH_TTL_SECONDS`：出行搜索会话缓存时间
+
+## Local Development
+
+安装依赖：
+
+```bash
+cd apps/api
+uv sync
+```
+
+启动 API：
+
+```bash
 uv run uvicorn app.main:app --reload --port 8000
 ```
 
-API docs: http://localhost:8000/docs
+开发环境常用地址：
 
-## Development
+- Swagger：`http://localhost:8000/docs`
+- Health：`http://localhost:8000/healthz`
 
-```bash
-# Lint
-uv run ruff check .
+## Worker
 
-# Type check
-uv run mypy app tests
-
-# Test
-uv run pytest --cov=app --cov-report=term-missing
-```
-
-## Task Module
-
-The backend task API currently supports the following management endpoints:
-
-- `GET /api/v1/admin/tasks/types`: list supported task types and execution metadata
-- `GET /api/v1/admin/tasks` / `POST /api/v1/admin/tasks`: query and create task definitions
-- `GET /api/v1/admin/tasks/{id}` / `PATCH /api/v1/admin/tasks/{id}` / `DELETE /api/v1/admin/tasks/{id}`: view, update, or delete a task
-- `POST /api/v1/admin/tasks/{id}/runs`: create a pending task run
-- `GET /api/v1/admin/tasks/{id}/runs`: query task run history
-- `GET /api/v1/admin/task-runs/{id}`: inspect one run
-- `GET /api/v1/admin/task-runs/{id}/logs`: inspect run logs
-- `POST /api/v1/admin/task-runs/{id}/terminate`: terminate a pending run or request cancellation for a running run
-
-Task execution now happens in a separate worker process:
+任务执行使用独立 Worker 进程，开发时通常需要与 API 一起启动：
 
 ```bash
 cd apps/api
 uv run python -m app.tasks.worker
 ```
 
-Implemented executable task types:
+## Quality Checks
+
+```bash
+cd apps/api
+uv run ruff check .
+uv run mypy app tests
+uv run pytest --cov=app --cov-report=term-missing
+```
+
+## API Groups
+
+- `/api/v1/journeys`：出行搜索接口
+- `/api/v1/journey-search-sessions`：会话化搜索与分页筛选
+- `/api/v1/auth`：管理端登录认证
+- `/api/v1/admin/tasks`：任务管理与执行
+- `/api/v1/admin/data`：铁路基础数据管理
+- `/api/v1/admin/system`：系统配置、概览、日志等后台接口
+- `/healthz`：健康检查
+
+## Implemented Task Types
 
 - `fetch-station`
 - `fetch-station-geo`
@@ -72,114 +121,11 @@ Implemented executable task types:
 - `fetch-train-stops`
 - `fetch-train-runs`
 
-Reserved but not yet implemented task type:
+预留但尚未实现：
 
 - `price`
 
-### Railway Crawl Tasks
+## Notes
 
-The railway task feature extends the existing task domain and keeps the 12306
-request parameters, request method, and response parsing contract unchanged.
-Administrators can define and manually execute these task types through the same
-`/api/v1/admin/tasks` API surface.
-
-#### 1. `fetch-trains`
-
-Payload:
-
-```json
-{
-  "date": "2026-04-05",
-  "keyword": "G"
-}
-```
-
-`keyword` is optional. When omitted or empty, the task will iterate the built-in
-root keyword set (`c d g k s t y z 0-9`) inside the same run.
-
-Behavior:
-
-- treat `keyword` as a train-prefix crawl seed rather than a generic free-text query
-- recursively expand child keywords using the current 12306 search boundary
-  rules (`result_limit=200`, `expand_span=3`, `max_keyword_length=6`)
-- normalize the payload date to `YYYY-MM-DD`
-- aggregate one flattened result set per seed keyword
-- dedupe repeated `station_train_code` values inside crawler aggregation
-- idempotently upsert matching rows into `trains`
-- update `task_run.progress_snapshot` and logs at seed-keyword granularity
-
-#### 2. `fetch-train-stops`
-
-Payload:
-
-```json
-{
-  "date": "2026-04-05",
-  "keyword": "G1"
-}
-```
-
-Behavior:
-
-- resolve target `train_no` values from the local `trains` table
-- accept either exact `train_no` or exact `station_train_code` as `keyword`
-- when `keyword` is omitted or empty, iterate all `train_no` values currently stored in `trains`
-- fetch stop details with the unchanged 12306 query contract
-- call the upstream stop API strictly by `train_no`
-- idempotently upsert into `train_stops`
-- depend on `fetch-trains` as the source of truth for `trains`
-
-#### 3. `fetch-train-runs`
-
-Payload:
-
-```json
-{
-  "date": "2026-04-05",
-  "keyword": "G1"
-}
-```
-
-Behavior:
-
-- use `keyword` as a train-prefix seed rather than an exact single-train identifier
-- when `keyword` is omitted or empty, iterate the built-in root keyword set (`c d g k s t y z 0-9`) inside the same run
-- recursively collect the full matching prefix branch for the requested date
-- keep only rows whose normalized run date matches the payload date
-- keep only rows whose `station_train_code` starts with the requested keyword
-- preserve the upstream 12306 request and response contract
-- derive one-day run facts and normalize run status
-- idempotently upsert into `trains` and `train_runs`
-- fail the run when no matching run fact is returned for the requested keyword set
-
-#### 4. `fetch-station-geo`
-
-Payload:
-
-```json
-{
-  "address": "北京南站"
-}
-```
-
-Behavior:
-
-- when `address` is provided, query Amap geocoding once with `address` only and do not persist results
-- when `address` is omitted or empty, select stations whose coordinates are missing
-- build query text from `stations.name`, appending `站` only when absent
-- do not send `city`
-- persist successful batch results back to `stations` with `geo_source='amap'`
-- fail fast when `AMAP_API_KEY` is missing
-
-Suggested Amap throttling settings for local batch runs:
-
-```env
-AMAP_MAX_RETRIES=3
-AMAP_RETRY_DELAY_SECONDS=1.0
-AMAP_MIN_INTERVAL_SECONDS=0.35
-AMAP_RATE_LIMIT_COOLDOWN_SECONDS=3.0
-```
-
-## Architecture
-
-See [ARCHITECTURE.md](./ARCHITECTURE.md)
+- 后端主要配置集中在 `app/config.py` 和 `app/auth/config.py`
+- 文档以本 README 为主，目录说明和启动方式统一在这里维护

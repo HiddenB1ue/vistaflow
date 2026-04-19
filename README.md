@@ -1,75 +1,122 @@
 # VistaFlow
 
-VistaFlow 是一个以铁路路线查询为核心的全栈项目，当前仓库已按多应用结构整理为：
+VistaFlow 是一个围绕铁路出行查询、任务调度与后台管理构建的 monorepo。仓库当前包含三个应用：
+
+- `apps/api`：FastAPI 后端服务，提供出行查询、任务管理、系统配置和后台数据接口
+- `apps/web`：用户端前端，负责搜索出行方案与展示结果列表
+- `apps/admin`：管理端前端，负责任务、数据、配置、日志等后台操作
+
+## Repository Structure
 
 ```text
-apps/
-  api/      FastAPI 后端
-  web/      用户端前端（Vite + React）
-  admin/    管理端前端占位应用（第一阶段骨架）
-packages/
-  ui/
-  design-tokens/
-  utils/
-  api-client/
-infra/
+.
+├── apps/
+│   ├── api/             # FastAPI 后端服务
+│   ├── web/             # 用户端 Web 应用
+│   └── admin/           # 管理端 Web 应用
+├── packages/
+│   ├── api-client/      # 共享 API 客户端
+│   ├── design-tokens/   # 共享设计令牌
+│   ├── types/           # 共享类型定义
+│   ├── ui/              # 共享 UI 组件
+│   └── utils/           # 共享工具函数
+└── infra/               # SQL 与基础设施相关文件
 ```
 
-## 快速开始
+## Requirements
 
-### 1. 初始化数据库
+- Node.js 20+
+- pnpm 10+
+- Python 3.12
+- `uv`
+- PostgreSQL 16
+- Redis
 
-参考 [`infra/README.md`](./infra/README.md)。
+## Quick Start
 
-### 2. 启动 API
+### 1. Install workspace dependencies
+
+```bash
+pnpm install
+```
+
+### 2. Prepare API environment
 
 ```bash
 cd apps/api
 uv sync
 cp .env.example .env.development
-uv run uvicorn app.main:app --reload --port 8000
 ```
 
-### 3. 启动用户端 Web
+根据本地环境修改 `.env.development`，至少需要可用的 PostgreSQL 和 Redis 连接。
 
-```bash
-pnpm install
-pnpm --filter @vistaflow/web dev
-```
-
-默认访问：<http://localhost:5173>
-
-### 4. 启动管理端占位应用
-
-```bash
-pnpm --filter @vistaflow/admin dev
-```
-
-默认访问：<http://localhost:5174>
-
-## 常用命令
-
-```bash
-pnpm --filter @vistaflow/web build
-pnpm --filter @vistaflow/admin build
-```
-
-API 检查命令：
+### 3. Start the API
 
 ```bash
 cd apps/api
-uv run pytest
-uv run ruff check .
-uv run mypy app tests
+uv run uvicorn app.main:app --reload --port 8000
 ```
 
-## Engineering Constitution
+可访问：
 
-The constitution in `.specify/memory/constitution.md` currently governs backend
-planning and delivery only, primarily `apps/api` and supporting `infra/` assets.
-Backend feature specs, plans, and task lists are expected to satisfy that
-constitution before implementation begins.
+- Swagger 文档：`http://localhost:8000/docs`
+- 健康检查：`http://localhost:8000/healthz`
 
-Backend-specific architecture guidance:
+### 4. Start the task worker
 
-- `apps/api/ARCHITECTURE.md`
+```bash
+cd apps/api
+uv run python -m app.tasks.worker
+```
+
+### 5. Start the frontend apps
+
+在仓库根目录执行：
+
+```bash
+pnpm dev:web
+pnpm dev:admin
+```
+
+默认地址：
+
+- Web：`http://localhost:5173`
+- Admin：`http://localhost:5174`
+
+## Common Commands
+
+仓库根目录：
+
+```bash
+pnpm dev:web
+pnpm build:web
+pnpm test:web
+
+pnpm dev:admin
+pnpm build:admin
+pnpm test:admin
+
+pnpm build:packages
+pnpm test
+```
+
+API 目录：
+
+```bash
+cd apps/api
+uv run ruff check .
+uv run mypy app tests
+uv run pytest --cov=app --cov-report=term-missing
+```
+
+## Documentation
+
+- [API README](./apps/api/README.md)
+- [Web README](./apps/web/README.md)
+- [Admin README](./apps/admin/README.md)
+- `infra/` 下的数据库与基础设施文件
+
+## Notes
+
+- 当前项目文档以各目录下的 `README.md` 为主
+- `apps/web` 的用户端地图区域已经移除，结果页当前为路线列表视图
