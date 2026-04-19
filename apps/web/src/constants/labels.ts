@@ -95,4 +95,3 @@ export const SORT_LABELS = WEB_LABELS.sort;
 export const NAVBAR_LABELS = WEB_LABELS.navbar;
 export const FILTER_LABELS = WEB_LABELS.filter;
 export const TRANSITION_LABELS = WEB_LABELS.transition;
-export const MAP_LABELS = WEB_LABELS.map;

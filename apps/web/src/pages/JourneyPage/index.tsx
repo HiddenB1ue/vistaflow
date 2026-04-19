@@ -5,11 +5,9 @@ import {
   ContentSection,
   DrawerBackdrop,
   NoiseTexture,
-  PageHeader,
 } from '@vistaflow/ui';
 import { useNavigate } from 'react-router-dom';
 import { Navbar } from '@/components/layout/Navbar';
-import { AmapContainer } from '@/components/map/AmapContainer';
 import { JourneyViewDrawer } from '@/components/overlays/JourneyViewDrawer';
 import { JOURNEY_LABELS } from '@/constants/labels';
 import { useCardReveal } from '@/hooks/useCardReveal';
@@ -27,8 +25,8 @@ import { routeHasAvailableTickets } from './routeList.helpers';
 
 export function JourneyPage() {
   const navigate = useNavigate();
-  const params = useSearchStore((state) => state.params);
   const searchId = useSearchStore((state) => state.searchId);
+  const params = useSearchStore((state) => state.params);
   const {
     routes,
     selectedRoute,
@@ -137,10 +135,7 @@ export function JourneyPage() {
   const sessionExpired = error instanceof Error;
 
   return (
-    <div
-      className="relative min-h-screen"
-      style={{ backgroundColor: 'var(--color-bg)' }}
-    >
+    <div className="relative min-h-screen" style={{ backgroundColor: 'var(--color-bg)' }}>
       <AuraBackground enableMouseTracking />
       <NoiseTexture />
       <DrawerBackdrop
@@ -161,40 +156,13 @@ export function JourneyPage() {
 
       <section
         id="results-dashboard"
-        className="vf-page-gutter fixed inset-0 z-40 flex flex-col gap-6 lg:flex-row"
+        className="vf-page-gutter fixed inset-0 z-40 flex flex-col"
         style={{
           paddingTop: 'calc(var(--vf-topbar-clearance) - 1rem)',
           paddingBottom: 'var(--vf-page-bottom-space)',
         }}
       >
-        <div
-          className="flex h-full w-full shrink-0 flex-col border-r lg:w-4/12"
-          style={{ borderColor: 'rgba(255,255,255,0.1)' }}
-        >
-          <PageHeader
-            className="border-b border-white/8 px-0 pb-5 pt-0 pr-8"
-            eyebrow={JOURNEY_LABELS.mapEyebrow}
-            title={<>{params.origin || '出发地'} → {params.destination || '目的地'}</>}
-            subtitle={
-              displaySelectedRoute
-                ? JOURNEY_LABELS.selectedRouteHint(displaySelectedRoute.id)
-                : JOURNEY_LABELS.noSelectionHint
-            }
-          />
-
-          <div className="relative flex flex-1 items-center justify-center py-6">
-            <AmapContainer selectedRoute={displaySelectedRoute} />
-          </div>
-
-          <div className="flex items-center gap-3 text-xs font-display uppercase tracking-widest text-muted">
-            <div className="time-theme-bg h-1.5 w-1.5 animate-pulse rounded-full" />
-            <span>
-              {displaySelectedRoute ? JOURNEY_LABELS.mapStatus : JOURNEY_LABELS.mapStatusIdle}
-            </span>
-          </div>
-        </div>
-
-        <div className="relative flex h-full w-full flex-col overflow-hidden pl-2 lg:w-8/12">
+        <div className="relative flex h-full w-full flex-col overflow-hidden">
           {sessionExpired ? (
             <ContentSection className="flex flex-1 flex-col items-center justify-center gap-6 text-sm tracking-widest text-muted">
               <div>搜索会话已过期，请重新搜索。</div>
