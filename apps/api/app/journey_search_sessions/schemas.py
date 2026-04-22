@@ -10,7 +10,25 @@ from app.journeys.schemas import JourneySearchRequest
 
 TicketStatus = Literal["ready", "partial", "unavailable", "disabled"]
 SegmentTicketStatus = Literal["ready", "unavailable", "disabled"]
-JourneySortMode = Literal["duration", "departure"]
+JourneySortMode = Literal["duration", "departure", "price"]
+
+
+class SeatInfoEntry(BaseModel):
+    seat_type: str
+    status: str
+    price: float | None = None
+    available: bool = False
+
+
+class PriceCacheEntry(BaseModel):
+    min_price: float | None = None
+    seats: list[SeatInfoEntry] = Field(default_factory=list)
+    matched_by: str = ""
+    failed: bool = False
+
+
+def price_map_key(train_no: str, from_station: str, to_station: str) -> str:
+    return f"{train_no}:{from_station}:{to_station}"
 
 
 class SearchSessionViewRequest(BaseModel):
@@ -220,3 +238,4 @@ class SearchSessionCacheRecord(BaseModel):
     searchQuery: SearchSessionCreateRequest
     searchSummary: SearchSummaryResponse
     candidates: list[CachedRouteCandidate]
+    price_map: dict[str, PriceCacheEntry] = Field(default_factory=dict)

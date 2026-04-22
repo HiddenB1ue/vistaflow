@@ -37,6 +37,12 @@ class AbstractTicketClient(ABC):
     ) -> dict[SeatLookupKey, TicketSegmentData]:
         """查询指定区间的票价和余票信息。"""
 
+    @abstractmethod
+    async def fetch_leg(
+        self, run_date: str, from_telecode: str, to_telecode: str
+    ) -> dict[str, Any]:
+        """Query a single leg and return raw row data keyed by train_no and station_train_code."""
+
 
 class Live12306TicketClient(AbstractTicketClient):
     """真实 12306 HTTP 客户端实现（异步）。"""
@@ -44,6 +50,12 @@ class Live12306TicketClient(AbstractTicketClient):
     def __init__(self, config: TicketClientConfig, http_client: httpx.AsyncClient) -> None:
         self._config = config
         self._http = http_client
+
+    async def fetch_leg(
+        self, run_date: str, from_telecode: str, to_telecode: str
+    ) -> dict[str, Any]:
+        """Query a single leg and return raw row data keyed by train_no and station_train_code."""
+        return await self._query_leg(run_date, from_telecode, to_telecode)
 
     async def fetch_tickets(
         self,
@@ -62,7 +74,7 @@ class Live12306TicketClient(AbstractTicketClient):
             if not from_code or not to_code:
                 leg_cache[leg] = {}
                 continue
-            leg_cache[leg] = await self._query_leg(run_date, from_code, to_code)
+            leg_cache[leg] = await self.fetch_leg(run_date, from_code, to_code)
 
         result: dict[SeatLookupKey, TicketSegmentData] = {}
         for train_no, from_station, to_station in sorted(segments):

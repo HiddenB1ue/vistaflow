@@ -89,6 +89,7 @@ def service(fake_redis) -> JourneySearchSessionService:
     ticket_service.enrich_routes_for_view = AsyncMock(
         side_effect=lambda *, run_date, routes: routes
     )
+    ticket_service.prefetch_all_prices = AsyncMock(return_value={})
 
     return JourneySearchSessionService(
         redis_client=fake_redis,

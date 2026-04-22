@@ -52,7 +52,7 @@ export function JourneyPage() {
     setJourneyFilterPrefs,
   } = useUiStore();
 
-  const backendSortMode = sortMode === 'price' ? 'duration' : sortMode;
+  const backendSortMode = sortMode;
   const currentViewRequest = useMemo(
     () => buildJourneyViewRequest(journeyFilterPrefs, backendSortMode, page, pageSize),
     [journeyFilterPrefs, backendSortMode, page, pageSize],

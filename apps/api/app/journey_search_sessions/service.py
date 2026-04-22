@@ -8,12 +8,14 @@ from uuid import uuid4
 from redis.asyncio import Redis
 
 from app.exceptions import NotFoundError
-from app.integrations.ticket_12306.service import Ticket12306Service
+from app.integrations.ticket_12306.service import SEAT_LABELS, Ticket12306Service
 from app.journey_search_sessions.schemas import (
     CachedRouteCandidate,
     CachedTrainSegment,
+    PriceCacheEntry,
     RoutePointResponse,
     RouteResponse,
+    RouteSeatResponse,
     RouteStationResponse,
     RouteTrainSegmentResponse,
     RouteTransferSegmentResponse,
@@ -27,6 +29,7 @@ from app.journey_search_sessions.schemas import (
     SearchSessionViewResponse,
     SearchSessionViewResultResponse,
     SearchSummaryResponse,
+    price_map_key,
 )
 from app.journeys.schemas import JourneyResult, JourneySearchResponse
 from app.journeys.service import JourneyService
@@ -46,12 +49,14 @@ class JourneySearchSessionService:
         journey_service: JourneyService,
         station_repo: StationRepository,
         ticket_service: Ticket12306Service,
+        max_prefetch_concurrency: int = 5,
     ) -> None:
         self._redis = redis_client
         self._ttl_seconds = ttl_seconds
         self._journey_service = journey_service
         self._station_repo = station_repo
         self._ticket_service = ticket_service
+        self._max_prefetch_concurrency = max_prefetch_concurrency
 
     async def create_session(
         self,
@@ -69,6 +74,12 @@ class JourneySearchSessionService:
         search_response = await self._journey_service.search(search_request)
         candidates = await self._build_candidates(search_response)
 
+        price_map = await self._ticket_service.prefetch_all_prices(
+            run_date=payload.date.isoformat(),
+            candidates=candidates,
+            max_concurrency=self._max_prefetch_concurrency,
+        )
+
         now = datetime.now(UTC)
         expires_at = now + timedelta(seconds=self._ttl_seconds)
         search_id = uuid4().hex
@@ -85,6 +96,7 @@ class JourneySearchSessionService:
             searchQuery=payload,
             searchSummary=summary,
             candidates=candidates,
+            price_map=price_map,
         )
         await self._redis.setex(
             self._redis_key(search_id),
@@ -93,7 +105,7 @@ class JourneySearchSessionService:
         )
 
         view_request = payload.view or SearchSessionViewRequest()
-        view_result = await self._build_view_result(candidates, payload.date.isoformat(), view_request)
+        view_result = await self._build_view_result(candidates, payload.date.isoformat(), view_request, price_map)
         return SearchSessionCreateResponse(
             searchId=search_id,
             expiresAt=expires_at,
@@ -119,6 +131,7 @@ class JourneySearchSessionService:
             record.candidates,
             record.searchSummary.date,
             payload,
+            record.price_map,
         )
 
     async def delete_session(self, search_id: str) -> SearchSessionDeleteResponse:
@@ -218,7 +231,11 @@ class JourneySearchSessionService:
         candidates: list[CachedRouteCandidate],
         run_date: str,
         payload: SearchSessionViewRequest,
+        price_map: dict[str, PriceCacheEntry] | None = None,
     ) -> SearchSessionViewResultResponse:
+        if price_map is None:
+            price_map = {}
+
         filtered = list(candidates)
         facets = self._build_available_facets(candidates)
         applied_view = self._build_applied_view(payload)
@@ -253,12 +270,17 @@ class JourneySearchSessionService:
                 if all(train_type in allowed_train_types for train_type in candidate.trainTypes)
             ]
 
-        filtered.sort(key=lambda candidate: self._sort_key(candidate, payload.sort_by))
+        filtered.sort(key=lambda candidate: self._sort_key(candidate, payload.sort_by, price_map))
         total = len(filtered)
         start = (payload.page - 1) * payload.page_size
         end = start + payload.page_size
         items = [self._to_route_response(candidate) for candidate in filtered[start:end]]
-        if payload.include_tickets:
+
+        if not payload.include_tickets:
+            items = [self._mark_route_disabled(route) for route in items]
+        elif price_map:
+            items = [self._apply_prices_from_map(route, price_map) for route in items]
+        else:
             items = await self._ticket_service.enrich_routes_for_view(
                 run_date=run_date,
                 routes=items,
@@ -323,17 +345,125 @@ class JourneySearchSessionService:
             includeTickets=payload.include_tickets,
         )
 
+    def _apply_prices_from_map(
+        self,
+        route: RouteResponse,
+        price_map: dict[str, PriceCacheEntry],
+    ) -> RouteResponse:
+        """Apply cached prices from the price map to a route's train segments."""
+        next_segs = []
+        statuses: list[str] = []
+        for segment in route.segs:
+            if not isinstance(segment, RouteTrainSegmentResponse):
+                next_segs.append(segment)
+                continue
+
+            key = price_map_key(segment.trainNo, segment.origin.name, segment.destination.name)
+            entry = price_map.get(key)
+            if entry is None or entry.failed:
+                next_segs.append(
+                    segment.model_copy(update={"ticketStatus": "unavailable", "seats": []})
+                )
+                statuses.append("unavailable")
+                continue
+
+            seats = self._build_seats_from_entry(entry)
+            next_segs.append(
+                segment.model_copy(
+                    update={
+                        "ticketStatus": "ready",
+                        "seats": seats,
+                    }
+                )
+            )
+            statuses.append("ready")
+
+        route_status = self._derive_route_status(statuses)
+        return route.model_copy(update={"segs": next_segs, "ticketStatus": route_status})
+
+    def _build_seats_from_entry(self, entry: PriceCacheEntry) -> list[RouteSeatResponse]:
+        """Build sorted seat responses from a PriceCacheEntry."""
+        seats = [
+            RouteSeatResponse(
+                type=seat.seat_type,
+                label=SEAT_LABELS.get(seat.seat_type.strip().lower(), seat.seat_type.upper()),
+                price=seat.price,
+                available=seat.available,
+                availabilityText=seat.status or None,
+            )
+            for seat in entry.seats
+        ]
+        return sorted(seats, key=lambda item: self._seat_order(item.type))
+
+    def _mark_route_disabled(self, route: RouteResponse) -> RouteResponse:
+        """Mark all train segments in a route as disabled with empty seats."""
+        next_segs = [
+            segment.model_copy(update={"ticketStatus": "disabled", "seats": []})
+            if isinstance(segment, RouteTrainSegmentResponse)
+            else segment
+            for segment in route.segs
+        ]
+        return route.model_copy(update={"segs": next_segs, "ticketStatus": "disabled"})
+
+    def _derive_route_status(self, statuses: list[str]) -> str:
+        if not statuses:
+            return "disabled"
+        unique_statuses = set(statuses)
+        if unique_statuses == {"ready"}:
+            return "ready"
+        if "ready" in unique_statuses:
+            return "partial"
+        if unique_statuses == {"disabled"}:
+            return "disabled"
+        return "unavailable"
+
+    def _seat_order(self, seat_type: str) -> int:
+        order = {
+            "swz": 0, "tz": 1, "zy": 2, "ze": 3,
+            "gr": 4, "rw": 5, "yw": 6, "yz": 7,
+            "wz": 8, "gg": 9,
+        }
+        return order.get(seat_type.strip().lower(), len(order))
+
     def _sort_key(
         self,
         candidate: CachedRouteCandidate,
         sort_by: str,
-    ) -> tuple[int, float, int, str, str]:
+        price_map: dict[str, PriceCacheEntry] | None = None,
+    ) -> tuple[float, float, int, str, str]:
+        if price_map is None:
+            price_map = {}
+
+        if sort_by == "price":
+            total_price = 0.0
+            all_priced = True
+            for seg in candidate.segs:
+                if not isinstance(seg, CachedTrainSegment) or isinstance(
+                    seg, RouteTransferSegmentResponse
+                ):
+                    continue
+                key = price_map_key(seg.trainNo, seg.origin.name, seg.destination.name)
+                entry = price_map.get(key)
+                if entry is None or entry.min_price is None or entry.failed:
+                    all_priced = False
+                    break
+                total_price += entry.min_price
+            if not all_priced:
+                total_price = float("inf")
+            return (
+                total_price,
+                float(candidate.transferCount),
+                candidate.durationMinutes,
+                candidate.departureTime,
+                candidate.arrivalTime,
+            )
+
         if sort_by == "departure":
             primary = float(self._time_to_minutes(candidate.departureTime))
         else:
             primary = float(candidate.durationMinutes)
         return (
-            candidate.transferCount,
+            float(candidate.transferCount),
             primary,
             candidate.durationMinutes,
             candidate.departureTime,

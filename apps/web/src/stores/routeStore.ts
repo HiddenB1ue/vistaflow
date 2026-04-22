@@ -44,7 +44,11 @@ export const useRouteStore = create<RouteState>()((set) => ({
   setViewResult: (sessionSearchId, result) =>
     set((state) => {
       const displaySortMode = state.sortMode;
-      const sortedRoutes = sortRoutesForDisplay(result.items, displaySortMode);
+      // For "price" sort, trust backend ordering; for others, sort locally
+      const sortedRoutes =
+        displaySortMode === 'price'
+          ? result.items
+          : sortRoutesForDisplay(result.items, displaySortMode);
       const matchedSelectedRoute =
         sortedRoutes.find((route) => route.id === state.selectedRoute?.id) ?? null;
       return {
@@ -72,6 +76,11 @@ export const useRouteStore = create<RouteState>()((set) => ({
   setPageSize: (pageSize) => set({ pageSize, page: 1 }),
   setSortMode: (sortMode) =>
     set((state) => {
+      // For "price" sort, don't re-sort locally — the backend handles it.
+      // The component will trigger a new get_view call with sort_by="price".
+      if (sortMode === 'price') {
+        return { sortMode };
+      }
       const sortedRoutes = sortRoutesForDisplay(state.routes, sortMode);
       const matchedSelectedRoute =
         sortedRoutes.find((route) => route.id === state.selectedRoute?.id) ?? null;

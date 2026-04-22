@@ -6,8 +6,8 @@ import { mockRoutes } from './mock/routes.mock';
 
 const USE_MOCK = import.meta.env.VITE_USE_MOCK === 'true';
 
-export type JourneySortMode = 'duration' | 'departure';
-export type JourneyDisplaySortMode = JourneySortMode | 'price';
+export type JourneySortMode = 'duration' | 'departure' | 'price';
+export type JourneyDisplaySortMode = JourneySortMode;
 
 export interface JourneyAvailableFacets {
   transferCounts: number[];
