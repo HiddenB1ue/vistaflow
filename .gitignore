@@ -21,6 +21,7 @@ htmlcov/
 coverage.xml
 
 # Environment files
+.env
 .env.local
 .env.production
 .env.development

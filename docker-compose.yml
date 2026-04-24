@@ -1,0 +1,77 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: vistaflow
+      POSTGRES_PASSWORD: vistaflow
+      POSTGRES_DB: vistaflow
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./infra/sql/schema.sql:/docker-entrypoint-initdb.d/schema.sql
+      - ./infra/sql/migrations:/docker-entrypoint-initdb.d/migrations
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U vistaflow"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    image: ghcr.io/hiddenb1ue/vistaflow-api:latest
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://vistaflow:vistaflow@postgres:5432/vistaflow
+      REDIS_URL: redis://redis:6379/0
+      APP_ENV: production
+      CORS_ORIGINS: '["http://localhost","http://localhost:8080"]'
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/healthz')\""]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  worker:
+    image: ghcr.io/hiddenb1ue/vistaflow-api:latest
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://vistaflow:vistaflow@postgres:5432/vistaflow
+      REDIS_URL: redis://redis:6379/0
+      APP_ENV: production
+    command: ["uv", "run", "python", "-m", "app.tasks.worker"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  web:
+    image: ghcr.io/hiddenb1ue/vistaflow-web:latest
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "8080:8080"
+    depends_on:
+      api:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
+  redis_data:

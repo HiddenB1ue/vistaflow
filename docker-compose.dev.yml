@@ -1,0 +1,73 @@
+# 开发用：从本地源码构建
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: vistaflow
+      POSTGRES_PASSWORD: vistaflow
+      POSTGRES_DB: vistaflow
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./infra/sql/schema.sql:/docker-entrypoint-initdb.d/schema.sql
+      - ./infra/sql/migrations:/docker-entrypoint-initdb.d/migrations
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U vistaflow"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    build:
+      context: apps/api
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://vistaflow:vistaflow@postgres:5432/vistaflow
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  worker:
+    build:
+      context: apps/api
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://vistaflow:vistaflow@postgres:5432/vistaflow
+      REDIS_URL: redis://redis:6379/0
+    command: ["uv", "run", "python", "-m", "app.tasks.worker"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  web:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.web
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "8080:8080"
+    depends_on:
+      - api
+
+volumes:
+  postgres_data:
+  redis_data:
