@@ -20,8 +20,8 @@ COPY apps/web/ ./apps/web/
 COPY apps/admin/ ./apps/admin/
 
 RUN pnpm build:packages
-RUN VITE_API_BASE_URL=/api/v1 VITE_USE_MOCK=false pnpm build:web
-RUN VITE_API_BASE_URL=/api/v1 VITE_USE_MOCK=false pnpm build:admin
+RUN cd apps/web && VITE_API_BASE_URL=/api/v1 VITE_USE_MOCK=false npx vite build
+RUN cd apps/admin && VITE_API_BASE_URL=/api/v1 VITE_USE_MOCK=false npx vite build
 
 FROM nginx:alpine
 COPY docker/nginx/nginx.conf /etc/nginx/nginx.conf
