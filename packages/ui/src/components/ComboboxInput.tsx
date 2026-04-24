@@ -67,7 +67,7 @@ function ComboboxInputInner<TOption>(
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [activeIndex, setActiveIndex] = useState(-1);
-  const [hasUserSelected, setHasUserSelected] = useState(false);
+  const [_hasUserSelected, setHasUserSelected] = useState(false);
   const [menuPosition, setMenuPosition] = useState<{ top: number; left: number; width: number } | null>(null);
 
   const trimmedValue = value.trim();
@@ -302,6 +302,8 @@ function ComboboxInputInner<TOption>(
           }}
         >
           {loading ? <div className="vf-combobox__empty">{loadingText}</div> : null}
+
+          {!loading && options.length === 0 && <div className="vf-combobox__empty">{emptyText}</div>}
 
           {!loading && options.map((option, index) => {
             const active = index === activeIndex;

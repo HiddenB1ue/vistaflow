@@ -28,5 +28,6 @@
       "@/*": ["src/*"]
     }
   },
-  "include": ["src", "../../packages/ui/src", "../../packages/utils/src", "../../packages/api-client/src", "../../packages/design-tokens/src"]
+  "include": ["src", "../../packages/ui/src", "../../packages/utils/src", "../../packages/api-client/src", "../../packages/design-tokens/src"],
+  "exclude": ["**/*.test.ts", "**/*.test.tsx", "**/*.spec.ts", "**/*.spec.tsx"]
 }
