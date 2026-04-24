@@ -10,6 +10,7 @@ services:
       - postgres_data:/var/lib/postgresql/data
       - ./infra/sql/schema.sql:/docker-entrypoint-initdb.d/schema.sql
       - ./infra/sql/migrations:/docker-entrypoint-initdb.d/migrations
+      - ./infra/sql/seeds:/docker-entrypoint-initdb.d/seeds
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U vistaflow"]
       interval: 5s
