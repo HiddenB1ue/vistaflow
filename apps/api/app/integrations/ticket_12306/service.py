@@ -48,7 +48,7 @@ class Ticket12306Service:
         redis_client: Redis,
         station_repo: StationRepository,
         ticket_client: AbstractTicketClient | None,
-        cache_ttl_seconds: int = 60,
+        cache_ttl_seconds: int = 600,
         failure_ttl_seconds: int = 10,
     ) -> None:
         self._redis = redis_client
