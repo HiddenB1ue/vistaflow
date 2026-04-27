@@ -14,4 +14,5 @@
 \ir migrations/0008_task_run.sql
 \ir migrations/0009_task_run_log.sql
 \ir migrations/0010_system_setting.sql
+\ir migrations/0011_task_cron_scheduler.sql
 \ir seeds/seed_base_tables.sql

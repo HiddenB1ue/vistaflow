@@ -72,10 +72,11 @@ class SystemSettingBatchUpdateResponse(BaseModel):
 class KpiStatsResponse(BaseModel):
     totalRecords: int
     stationCoverage: int
+    stationsWithCoordinates: int
     coordCompletionRate: float
     pendingAlerts: int
-    todayApiCalls: int
-    remainingQuota: int
+    todayRecordChanges: int
+    todayTaskRuns: int
 
 
 class ActiveTaskResponse(BaseModel):

@@ -14,14 +14,20 @@ from app.tasks.type_params import TRAIN_DATE_PARAM, TRAIN_KEYWORD_PARAM
 async def execute_fetch_train_runs(ctx: TaskExecutionContext):
     helper = TaskExecutorHelper(ctx)
     payload = helper.parse_payload(FetchTrainRunsPayload)
+    resolved_date = payload.resolved_date()
     keyword_display = payload.keyword or "<roots>"
     seeds = [payload.keyword] if payload.keyword else seed_keywords()
     repo = RailwayTaskRepository(ctx.pool)
     await helper.begin(
-        f"任务 {ctx.task.name} 开始抓取运行车次：date={payload.date}, keyword={keyword_display}",
+        f"任务 {ctx.task.name} 开始抓取运行车次：date={resolved_date}, keyword={keyword_display}",
         total_units=len(seeds),
         current={"unitId": keyword_display, "label": keyword_display},
-        details={"requestedDate": payload.date},
+        details={
+            "requestedDate": payload.date,
+            "dateMode": payload.date_mode,
+            "dateOffsetDays": payload.date_offset_days,
+            "resolvedDate": resolved_date,
+        },
     )
 
     total_train_count = 0
@@ -34,11 +40,11 @@ async def execute_fetch_train_runs(ctx: TaskExecutionContext):
     for index, seed in enumerate(seeds, start=1):
         await helper.checkpoint()
         try:
-            raw_rows = await ctx.crawler_client.fetch_train_runs(payload.date, seed)
+            raw_rows = await ctx.crawler_client.fetch_train_runs(resolved_date, seed)
             total_raw_rows += len(raw_rows)
             run_rows = build_train_run_rows(
                 raw_rows,
-                run_date=payload.date,
+                run_date=resolved_date,
                 keyword=seed,
             )
             train_rows = derive_train_rows_from_runs(run_rows)
@@ -97,7 +103,7 @@ async def execute_fetch_train_runs(ctx: TaskExecutionContext):
             )
 
     if total_run_count == 0:
-        raise TaskExecutionError(f"未找到关键字 {keyword_display} 在 {payload.date} 的运行事实")
+        raise TaskExecutionError(f"未找到关键字 {keyword_display} 在 {resolved_date} 的运行事实")
 
     if failed_count > 0:
         await ctx.log(

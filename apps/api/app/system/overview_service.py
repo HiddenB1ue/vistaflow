@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 
 from app.system.overview_repository import OverviewRepository
 from app.system.schemas import (
@@ -23,23 +23,20 @@ class OverviewService:
         coord_completion_rate = (
             (stations_with_coords / total_stations * 100) if total_stations > 0 else 0.0
         )
-        
-        # Get pending alerts count (WARN and ERROR severity)
+
         alerts = await self._repo.get_recent_alerts(limit=100)
         pending_alerts = sum(1 for alert in alerts if alert.severity in ("WARN", "ERROR"))
-        
-        today_api_calls = await self._repo.count_todays_api_calls()
-        
-        # Placeholder for remaining quota - in real implementation, this would query actual API usage
-        remaining_quota = 100_000 - today_api_calls
+        today_record_changes = await self._repo.count_today_record_changes()
+        today_task_runs = await self._repo.count_todays_task_runs()
 
         return KpiStatsResponse(
             totalRecords=total_records,
             stationCoverage=total_stations,
+            stationsWithCoordinates=stations_with_coords,
             coordCompletionRate=round(coord_completion_rate, 1),
             pendingAlerts=pending_alerts,
-            todayApiCalls=today_api_calls,
-            remainingQuota=max(0, remaining_quota),
+            todayRecordChanges=today_record_changes,
+            todayTaskRuns=today_task_runs,
         )
 
     async def get_sparkline(self, days: int = 7) -> SparklineResponse:
@@ -50,13 +47,16 @@ class OverviewService:
         return SparklineResponse(values=values, labels=labels)
 
     async def get_quota(self) -> QuotaResponse:
-        """Get API quota information."""
-        # Placeholder logic - in real implementation, this would query actual API usage tracking
-        today_api_calls = await self._repo.count_todays_api_calls()
-        total_quota = 100_000
-        used = min(today_api_calls, total_quota)
-        percentage = int((used / total_quota * 100)) if total_quota > 0 else 0
-        
+        """Get legacy quota information.
+
+        The admin dashboard no longer displays quota data because no real external quota source
+        exists yet. Keep this endpoint compatible for older clients.
+        """
+        today_task_runs = await self._repo.count_todays_task_runs()
+        total_quota = 0
+        used = today_task_runs
+        percentage = int(used / total_quota * 100) if total_quota > 0 else 0
+
         return QuotaResponse(
             percentage=percentage,
             used=used,

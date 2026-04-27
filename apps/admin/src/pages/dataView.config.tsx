@@ -221,6 +221,31 @@ export function buildTrainStopColumns() {
       header: '到达描述',
       render: (stop: AdminTrainStopRecord) => stop.arriveDayStr ?? DATA_LABELS.unknown,
     },
+    {
+      key: 'isStart',
+      header: '始发标记',
+      render: (stop: AdminTrainStopRecord) => stop.isStart ?? DATA_LABELS.unknown,
+    },
+    {
+      key: 'trainClassName',
+      header: '列车等级',
+      render: (stop: AdminTrainStopRecord) => stop.trainClassName ?? DATA_LABELS.unknown,
+    },
+    {
+      key: 'serviceType',
+      header: '服务类型',
+      render: (stop: AdminTrainStopRecord) => stop.serviceType ?? DATA_LABELS.unknown,
+    },
+    {
+      key: 'wzNum',
+      header: '无座标记',
+      render: (stop: AdminTrainStopRecord) => stop.wzNum ?? DATA_LABELS.unknown,
+    },
+    {
+      key: 'updatedAt',
+      header: '更新时间',
+      render: (stop: AdminTrainStopRecord) => <span className="text-xs text-muted">{stop.updatedAt}</span>,
+    },
   ];
 }
 

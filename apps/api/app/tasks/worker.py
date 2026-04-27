@@ -18,6 +18,7 @@ from app.system.settings_provider import SystemSettingsProvider
 from app.tasks.registry import create_task_registry
 from app.tasks.repository import TaskRepository, TaskRunLogRepository, TaskRunRepository
 from app.tasks.runner import TaskRunner
+from app.tasks.scheduler import TaskScheduler
 
 
 def build_worker_id() -> str:
@@ -73,6 +74,7 @@ async def run_worker() -> None:
             heartbeat_interval_seconds=settings.task_worker_heartbeat_interval_seconds,
             task_registry=task_registry,
         )
+        scheduler = TaskScheduler(task_repo)
 
         await recover_stale_runs(run_repo, task_repo)
         last_recovery = time.monotonic()
@@ -82,6 +84,7 @@ async def run_worker() -> None:
                 await recover_stale_runs(run_repo, task_repo)
                 last_recovery = time.monotonic()
 
+            await scheduler.enqueue_due_tasks()
             run = await run_repo.claim_next_pending_run(worker_id)
             if run is None:
                 await asyncio.sleep(settings.task_worker_poll_interval_seconds)

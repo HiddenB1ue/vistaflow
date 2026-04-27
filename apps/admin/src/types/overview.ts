@@ -1,10 +1,11 @@
 export interface KpiStats {
   totalRecords: number;
   stationCoverage: number;
+  stationsWithCoordinates: number;
   coordCompletionRate: number;
   pendingAlerts: number;
-  todayApiCalls: number;
-  remainingQuota: number;
+  todayRecordChanges: number;
+  todayTaskRuns: number;
 }
 
 export interface ActiveTask {
@@ -28,8 +29,3 @@ export interface SparklineData {
   labels: string[];
 }
 
-export interface ApiQuota {
-  percentage: number;
-  used: number;
-  total: number;
-}

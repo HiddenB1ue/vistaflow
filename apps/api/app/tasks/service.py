@@ -1,9 +1,15 @@
 from __future__ import annotations
 
+from datetime import datetime
+from typing import cast
+
 from app.models import TaskDefinition, TaskRun, TaskRunLog
 from app.pagination import PaginatedResponse, create_paginated_response
+from app.tasks.definition import TaskTypeDefinition
 from app.tasks.exceptions import (
     TaskAlreadyRunning,
+    TaskCronUnsupported,
+    TaskCronValidationError,
     TaskDeleteConflict,
     TaskDisabled,
     TaskNameConflict,
@@ -18,6 +24,7 @@ from app.tasks.exceptions import (
 from app.tasks.progress import build_progress_snapshot, with_progress_state
 from app.tasks.registry import TaskDefinitionRegistry, get_builtin_task_registry
 from app.tasks.repository import TaskRepository, TaskRunLogRepository, TaskRunRepository
+from app.tasks.scheduler import next_scheduled_run_at, normalize_run_at, validate_cron_expression
 from app.tasks.schemas import (
     TaskCreateRequest,
     TaskLatestRunResponse,
@@ -25,6 +32,7 @@ from app.tasks.schemas import (
     TaskResponse,
     TaskRunLogResponse,
     TaskRunResponse,
+    TaskScheduleMode,
     TaskTiming,
     TaskTypeResponse,
     TaskUpdateRequest,
@@ -84,13 +92,22 @@ class TaskService:
         definition = self._require_task_type_definition(payload.type)
         await self._ensure_name_available(payload.name)
         normalized_payload = self._task_registry.normalize_payload(payload.type, payload.payload)
+        schedule_mode = self._resolve_create_schedule_mode(payload)
+        cron, next_run_at = self._normalize_schedule_for_definition(
+            definition,
+            schedule_mode=schedule_mode,
+            cron=payload.cron,
+            run_at=payload.runAt,
+        )
         task = await self._task_repo.create_task(
             name=payload.name,
             task_type=payload.type,
             type_label=definition.label,
             description=payload.description,
             enabled=payload.enabled,
-            cron=payload.cron,
+            schedule_mode=schedule_mode,
+            cron=cron,
+            next_run_at=next_run_at,
             payload=normalized_payload,
         )
         return self._to_task_response(task)
@@ -107,6 +124,23 @@ class TaskService:
         await self._ensure_name_available(name, exclude_task_id=task_id)
         candidate_payload = payload.payload if payload.payload is not None else existing.payload
         normalized_payload = self._task_registry.normalize_payload(task_type, candidate_payload)
+        schedule_mode = self._resolve_update_schedule_mode(existing, payload)
+        cron_value = (
+            (payload.cron if "cron" in payload.model_fields_set else existing.cron)
+            if schedule_mode == "cron"
+            else None
+        )
+        run_at_value = (
+            (payload.runAt if "runAt" in payload.model_fields_set else existing.next_run_at)
+            if schedule_mode == "once"
+            else None
+        )
+        cron, next_run_at = self._normalize_schedule_for_definition(
+            definition,
+            schedule_mode=schedule_mode,
+            cron=cron_value,
+            run_at=run_at_value,
+        )
 
         updated = await self._task_repo.update_task(
             task_id,
@@ -117,7 +151,9 @@ class TaskService:
                 payload.description if payload.description is not None else existing.description
             ),
             enabled=payload.enabled if payload.enabled is not None else existing.enabled,
-            cron=payload.cron if payload.cron is not None else existing.cron,
+            schedule_mode=schedule_mode,
+            cron=cron,
+            next_run_at=next_run_at,
             payload=normalized_payload,
         )
         return self._to_task_response(updated)
@@ -256,13 +292,58 @@ class TaskService:
             return
         raise TaskNameConflict(name)
 
-    def _require_task_type_definition(self, task_type: str):
+    def _require_task_type_definition(self, task_type: str) -> TaskTypeDefinition:
         definition = self._task_registry.get_optional(task_type)
         if definition is None:
             raise TaskTypeUnsupported(task_type)
         if definition.executor is None and definition.implemented:
             raise TaskTypeUnavailable(task_type)
         return definition
+
+    @staticmethod
+    def _resolve_create_schedule_mode(payload: TaskCreateRequest) -> TaskScheduleMode:
+        if payload.scheduleMode is not None:
+            return payload.scheduleMode
+        if payload.cron is not None:
+            return "cron"
+        return "manual"
+
+    @staticmethod
+    def _resolve_update_schedule_mode(
+        existing: TaskDefinition,
+        payload: TaskUpdateRequest,
+    ) -> TaskScheduleMode:
+        if payload.scheduleMode is not None:
+            return payload.scheduleMode
+        if "cron" in payload.model_fields_set:
+            return "cron" if payload.cron is not None else "manual"
+        existing_mode = existing.schedule_mode
+        if existing_mode in {"manual", "once", "cron"}:
+            return existing_mode  # type: ignore[return-value]
+        return "cron" if existing.cron is not None else "manual"
+
+    @staticmethod
+    def _normalize_schedule_for_definition(
+        definition: TaskTypeDefinition,
+        *,
+        schedule_mode: TaskScheduleMode,
+        cron: str | None,
+        run_at: datetime | None,
+    ) -> tuple[str | None, datetime | None]:
+        if schedule_mode == "cron" and cron is None and run_at is not None:
+            raise TaskCronValidationError("重复执行不能使用一次性执行时间")
+        if schedule_mode == "once" and cron is not None:
+            raise TaskCronValidationError("执行一次不能填写 Cron 表达式")
+        if schedule_mode in {"once", "cron"} and not definition.supports_cron:
+            raise TaskCronUnsupported(definition.type)
+        if schedule_mode == "manual":
+            return None, None
+        if schedule_mode == "once":
+            return None, normalize_run_at(run_at)
+        if cron is None:
+            raise TaskCronValidationError("重复执行需要填写 Cron 表达式")
+        normalized = validate_cron_expression(cron)
+        return normalized, next_scheduled_run_at(normalized)
 
     @staticmethod
     def _to_task_response(task: TaskDefinition) -> TaskResponse:
@@ -276,6 +357,11 @@ class TaskService:
                 finishedAt=task.latest_run_finished_at,
                 errorMessage=task.latest_error_message,
             )
+        schedule_mode: TaskScheduleMode = (
+            cast(TaskScheduleMode, task.schedule_mode)
+            if task.schedule_mode in {"manual", "once", "cron"}
+            else ("cron" if task.cron is not None else "manual")
+        )
         return TaskResponse(
             id=task.id,
             name=task.name,
@@ -284,7 +370,10 @@ class TaskService:
             status=task.status,
             description=task.description,
             enabled=task.enabled,
+            scheduleMode=schedule_mode,
             cron=task.cron,
+            runAt=task.next_run_at if schedule_mode == "once" else None,
+            nextRunAt=task.next_run_at,
             payload=task.payload,
             metrics=TaskMetrics(label=task.metrics_label, value=task.metrics_value),
             timing=TaskTiming(label=task.timing_label, value=task.timing_value),

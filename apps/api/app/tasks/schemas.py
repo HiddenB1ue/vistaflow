@@ -1,12 +1,14 @@
 ﻿from __future__ import annotations
 
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field, field_validator
 
 from app.tasks.definition import TaskParamDefinition
 from app.tasks.registry import get_builtin_task_registry
+
+TaskScheduleMode = Literal["manual", "once", "cron"]
 
 
 class TaskMetrics(BaseModel):
@@ -51,7 +53,9 @@ class TaskCreateRequest(BaseModel):
     type: str
     description: str | None = None
     enabled: bool = True
+    scheduleMode: TaskScheduleMode | None = None
     cron: str | None = None
+    runAt: datetime | None = None
     payload: dict[str, Any] = Field(default_factory=dict)
 
     @field_validator("name", "type")
@@ -76,7 +80,9 @@ class TaskUpdateRequest(BaseModel):
     type: str | None = None
     description: str | None = None
     enabled: bool | None = None
+    scheduleMode: TaskScheduleMode | None = None
     cron: str | None = None
+    runAt: datetime | None = None
     payload: dict[str, Any] | None = None
 
     @field_validator("name", "type")
@@ -106,7 +112,10 @@ class TaskResponse(BaseModel):
     status: str
     description: str | None = None
     enabled: bool
+    scheduleMode: TaskScheduleMode
     cron: str | None = None
+    runAt: datetime | None = None
+    nextRunAt: datetime | None = None
     payload: dict[str, Any]
     metrics: TaskMetrics
     timing: TaskTiming

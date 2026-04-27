@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { fetchSparklineData, fetchApiQuota } from './overviewService';
+import { fetchKpiStats, fetchSparklineData } from './overviewService';
 
 describe('overviewService', () => {
   it('fetchSparklineData returns mock data in mock mode', async () => {
@@ -9,10 +9,12 @@ describe('overviewService', () => {
     expect(Array.isArray(data.values)).toBe(true);
   });
 
-  it('fetchApiQuota returns mock data in mock mode', async () => {
-    const quota = await fetchApiQuota();
-    expect(quota).toHaveProperty('percentage');
-    expect(quota).toHaveProperty('used');
-    expect(quota).toHaveProperty('total');
+  it('fetchKpiStats returns real KPI fields', async () => {
+    const stats = await fetchKpiStats();
+    expect(stats).toHaveProperty('totalRecords');
+    expect(stats).toHaveProperty('stationsWithCoordinates');
+    expect(stats).toHaveProperty('todayRecordChanges');
+    expect(stats).toHaveProperty('todayTaskRuns');
+    expect(stats).not.toHaveProperty('remainingQuota');
   });
 });

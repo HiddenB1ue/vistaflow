@@ -22,6 +22,7 @@ def make_task(payload: dict[str, object]) -> TaskDefinition:
         type_label="站点坐标补全",
         description="test",
         enabled=True,
+        schedule_mode="manual",
         cron=None,
         payload=payload,
         status="idle",

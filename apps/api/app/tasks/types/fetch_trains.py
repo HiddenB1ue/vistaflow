@@ -15,13 +15,19 @@ from app.tasks.type_params import TRAIN_DATE_PARAM, TRAIN_KEYWORD_PARAM
 async def execute_fetch_trains(ctx: TaskExecutionContext):
     helper = TaskExecutorHelper(ctx)
     payload = helper.parse_payload(FetchTrainsPayload)
+    resolved_date = payload.resolved_date()
     keyword_display = payload.keyword or "<roots>"
     seeds = [payload.keyword] if payload.keyword else seed_keywords()
     await helper.begin(
-        f"任务 {ctx.task.name} 开始抓取车次：date={payload.date}, keyword={keyword_display}",
+        f"任务 {ctx.task.name} 开始抓取车次：date={resolved_date}, keyword={keyword_display}",
         total_units=len(seeds),
         current={"unitId": keyword_display, "label": keyword_display},
-        details={"requestedDate": payload.date},
+        details={
+            "requestedDate": payload.date,
+            "dateMode": payload.date_mode,
+            "dateOffsetDays": payload.date_offset_days,
+            "resolvedDate": resolved_date,
+        },
     )
 
     repo = RailwayTaskRepository(ctx.pool)
@@ -32,7 +38,7 @@ async def execute_fetch_trains(ctx: TaskExecutionContext):
         await helper.checkpoint()
         stats.current_seed_keyword = seed
         try:
-            rows = await ctx.crawler_client.fetch_trains(payload.date, seed)
+            rows = await ctx.crawler_client.fetch_trains(resolved_date, seed)
         except Exception as exc:
             stats.failed_seed_keywords += 1
             stats.last_failed_seed_keyword = seed

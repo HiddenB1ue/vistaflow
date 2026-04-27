@@ -19,7 +19,7 @@ TaskType = Literal[
 ]
 TaskStatus = Literal["idle", "pending", "running", "completed", "error", "terminated"]
 TaskRunStatus = Literal["pending", "running", "completed", "error", "terminated"]
-TaskTriggerMode = Literal["manual"]
+TaskTriggerMode = Literal["manual", "scheduled"]
 TaskValueType = Literal["date", "text"]
 TaskExecutor = Callable[["TaskExecutionContext"], Awaitable["TaskExecutionResult"]]
 

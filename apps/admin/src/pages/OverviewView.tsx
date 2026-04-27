@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { ContentSection } from '@vistaflow/ui';
-import { fetchActiveTasks, fetchApiQuota, fetchKpiStats, fetchSparklineData, fetchSystemAlerts } from '@/services/overviewService';
+import { fetchActiveTasks, fetchKpiStats, fetchSparklineData, fetchSystemAlerts } from '@/services/overviewService';
 import { useToastStore } from '@/stores/toastStore';
 import { OverviewInsightsSection, OverviewKpiGrid, OverviewTrendSection } from './overviewSections';
 
@@ -12,11 +12,6 @@ export default function OverviewView() {
   const { data: sparklineData, isLoading: sparklineLoading, error: sparklineError } = useQuery({
     queryKey: ['admin', 'overview', 'sparkline', range],
     queryFn: () => fetchSparklineData(range === '7d' ? 7 : 30),
-  });
-  
-  const { data: apiQuota, isLoading: quotaLoading, error: quotaError } = useQuery({
-    queryKey: ['admin', 'overview', 'quota'],
-    queryFn: fetchApiQuota,
   });
   
   const { data: kpiStats, isLoading: kpiLoading, error: kpiError } = useQuery({
@@ -38,10 +33,6 @@ export default function OverviewView() {
   useEffect(() => {
     if (sparklineError) addToast('加载趋势数据失败', 'error');
   }, [sparklineError, addToast]);
-
-  useEffect(() => {
-    if (quotaError) addToast('加载配额数据失败', 'error');
-  }, [quotaError, addToast]);
 
   useEffect(() => {
     if (kpiError) addToast('加载KPI数据失败', 'error');
@@ -66,8 +57,7 @@ export default function OverviewView() {
           range={range}
           onRangeChange={setRange}
           sparklineData={sparklineData}
-          apiQuota={apiQuota}
-          isLoading={sparklineLoading || quotaLoading}
+          isLoading={sparklineLoading}
         />
       </ContentSection>
 

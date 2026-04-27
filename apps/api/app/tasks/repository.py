@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from datetime import datetime
 from typing import Any
 
 from app.database import BaseRepository
 from app.models import TaskDefinition, TaskRun, TaskRunLog
-from app.tasks.progress import phase_for_status, with_progress_state
+from app.tasks.progress import build_progress_snapshot, phase_for_status, with_progress_state
 
 DEFAULT_METRICS_LABEL = "最近结果"
 DEFAULT_TIMING_LABEL = "最近耗时"
@@ -38,13 +39,17 @@ def _decode_optional_jsonb_object(value: Any) -> dict[str, Any] | None:
 
 
 class TaskRepository(BaseRepository):
+    _task_select_columns = """
+        id, name, type, type_label, description, enabled, schedule_mode, cron, payload,
+        status, latest_run_id, latest_run_status, latest_run_started_at,
+        latest_run_finished_at, latest_error_message, latest_result_level,
+        metrics_label, metrics_value, timing_label, timing_value, error_message,
+        created_at, updated_at, next_run_at, last_scheduled_at
+    """
+
     async def find_all(self) -> list[TaskDefinition]:
-        sql = """
-            SELECT id, name, type, type_label, description, enabled, cron, payload,
-                   status, latest_run_id, latest_run_status, latest_run_started_at,
-                   latest_run_finished_at, latest_error_message, latest_result_level,
-                   metrics_label, metrics_value, timing_label, timing_value, error_message,
-                   created_at, updated_at
+        sql = f"""
+            SELECT {self._task_select_columns}
             FROM task
             ORDER BY updated_at DESC, id DESC
         """
@@ -81,7 +86,8 @@ class TaskRepository(BaseRepository):
         if keyword.strip():
             keyword_pattern = f"%{keyword.strip()}%"
             conditions.append(
-                f"(name ILIKE ${param_idx} OR type ILIKE ${param_idx} OR COALESCE(description, '') ILIKE ${param_idx})"
+                f"(name ILIKE ${param_idx} OR type ILIKE ${param_idx} "
+                f"OR COALESCE(description, '') ILIKE ${param_idx})"
             )
             params.append(keyword_pattern)
             param_idx += 1
@@ -99,11 +105,7 @@ class TaskRepository(BaseRepository):
 
         # Query with COUNT(*) OVER() for efficient total count
         sql = f"""
-            SELECT id, name, type, type_label, description, enabled, cron, payload,
-                   status, latest_run_id, latest_run_status, latest_run_started_at,
-                   latest_run_finished_at, latest_error_message, latest_result_level,
-                   metrics_label, metrics_value, timing_label, timing_value, error_message,
-                   created_at, updated_at,
+            SELECT {self._task_select_columns},
                    COUNT(*) OVER() as total_count
             FROM task
             {where_clause}
@@ -123,12 +125,8 @@ class TaskRepository(BaseRepository):
         return tasks, total_count
 
     async def find_by_id(self, task_id: int) -> TaskDefinition | None:
-        sql = """
-            SELECT id, name, type, type_label, description, enabled, cron, payload,
-                   status, latest_run_id, latest_run_status, latest_run_started_at,
-                   latest_run_finished_at, latest_error_message, latest_result_level,
-                   metrics_label, metrics_value, timing_label, timing_value, error_message,
-                   created_at, updated_at
+        sql = f"""
+            SELECT {self._task_select_columns}
             FROM task
             WHERE id = $1
         """
@@ -137,12 +135,8 @@ class TaskRepository(BaseRepository):
         return self._row_to_task(row) if row is not None else None
 
     async def find_by_name(self, name: str) -> TaskDefinition | None:
-        sql = """
-            SELECT id, name, type, type_label, description, enabled, cron, payload,
-                   status, latest_run_id, latest_run_status, latest_run_started_at,
-                   latest_run_finished_at, latest_error_message, latest_result_level,
-                   metrics_label, metrics_value, timing_label, timing_value, error_message,
-                   created_at, updated_at
+        sql = f"""
+            SELECT {self._task_select_columns}
             FROM task
             WHERE name = $1
         """
@@ -158,20 +152,23 @@ class TaskRepository(BaseRepository):
         type_label: str,
         description: str | None,
         enabled: bool,
+        schedule_mode: str,
         cron: str | None,
+        next_run_at: datetime | None,
         payload: dict[str, Any],
     ) -> TaskDefinition:
         sql = """
             INSERT INTO task (
-                name, type, type_label, description, enabled, cron, payload,
-                status, metrics_label, metrics_value, timing_label, timing_value
+                name, type, type_label, description, enabled, schedule_mode, cron, payload,
+                next_run_at, status, metrics_label, metrics_value, timing_label, timing_value
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, 'idle', $8, '', $9, '')
-            RETURNING id, name, type, type_label, description, enabled, cron, payload,
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'idle', $10, '', $11, '')
+            RETURNING id, name, type, type_label, description, enabled,
+                      schedule_mode, cron, payload,
                       status, latest_run_id, latest_run_status, latest_run_started_at,
                       latest_run_finished_at, latest_error_message, latest_result_level,
                       metrics_label, metrics_value, timing_label, timing_value, error_message,
-                      created_at, updated_at
+                      created_at, updated_at, next_run_at, last_scheduled_at
         """
         async with self._pool.acquire() as conn:
             row = await conn.fetchrow(
@@ -181,8 +178,10 @@ class TaskRepository(BaseRepository):
                 type_label,
                 description,
                 enabled,
+                schedule_mode,
                 cron,
                 _encode_jsonb(payload),
+                next_run_at,
                 DEFAULT_METRICS_LABEL,
                 DEFAULT_TIMING_LABEL,
             )
@@ -199,7 +198,9 @@ class TaskRepository(BaseRepository):
         type_label: str,
         description: str | None,
         enabled: bool,
+        schedule_mode: str,
         cron: str | None,
+        next_run_at: datetime | None,
         payload: dict[str, Any],
     ) -> TaskDefinition:
         sql = """
@@ -209,15 +210,18 @@ class TaskRepository(BaseRepository):
                 type_label = $4,
                 description = $5,
                 enabled = $6,
-                cron = $7,
-                payload = $8,
+                schedule_mode = $7,
+                cron = $8,
+                next_run_at = $9,
+                payload = $10,
                 updated_at = NOW()
             WHERE id = $1
-            RETURNING id, name, type, type_label, description, enabled, cron, payload,
+            RETURNING id, name, type, type_label, description, enabled,
+                      schedule_mode, cron, payload,
                       status, latest_run_id, latest_run_status, latest_run_started_at,
                       latest_run_finished_at, latest_error_message, latest_result_level,
                       metrics_label, metrics_value, timing_label, timing_value, error_message,
-                      created_at, updated_at
+                      created_at, updated_at, next_run_at, last_scheduled_at
         """
         async with self._pool.acquire() as conn:
             row = await conn.fetchrow(
@@ -228,7 +232,9 @@ class TaskRepository(BaseRepository):
                 type_label,
                 description,
                 enabled,
+                schedule_mode,
                 cron,
+                next_run_at,
                 _encode_jsonb(payload),
             )
         if row is None:
@@ -255,6 +261,127 @@ class TaskRepository(BaseRepository):
         """
         async with self._pool.acquire() as conn:
             await conn.execute(sql, task_id, run_id)
+
+    async def enqueue_due_scheduled_runs(
+        self,
+        *,
+        now: datetime,
+        limit: int,
+        requested_by: str,
+        compute_next_run_at: Callable[[str], datetime],
+    ) -> int:
+        candidate_sql = """
+            SELECT id, type, schedule_mode, cron
+            FROM task
+            WHERE enabled = TRUE
+              AND (
+                  schedule_mode IN ('once', 'cron')
+                  OR (schedule_mode IS NULL AND cron IS NOT NULL)
+              )
+              AND next_run_at IS NOT NULL
+              AND next_run_at <= $1
+            ORDER BY next_run_at ASC, id ASC
+            FOR UPDATE SKIP LOCKED
+            LIMIT $2
+        """
+        active_sql = """
+            SELECT 1
+            FROM task_run
+            WHERE task_id = $1
+              AND status IN ('pending', 'running')
+            LIMIT 1
+        """
+        create_run_sql = """
+            INSERT INTO task_run (
+                task_id,
+                task_name,
+                task_type,
+                trigger_mode,
+                status,
+                requested_by,
+                progress_snapshot,
+                cancel_requested
+            )
+            SELECT id, name, type, 'scheduled', 'pending', $2, $3, FALSE
+            FROM task
+            WHERE id = $1
+            RETURNING id
+        """
+        mark_pending_sql = """
+            UPDATE task
+            SET status = 'pending',
+                latest_run_id = $2,
+                latest_run_status = 'pending',
+                latest_run_started_at = NULL,
+                latest_run_finished_at = NULL,
+                latest_error_message = NULL,
+                latest_result_level = NULL,
+                error_message = NULL,
+                last_scheduled_at = $3,
+                next_run_at = $4,
+                updated_at = NOW()
+            WHERE id = $1
+        """
+        skip_sql = """
+            UPDATE task
+            SET next_run_at = $2,
+                updated_at = NOW()
+            WHERE id = $1
+        """
+        clear_once_sql = """
+            UPDATE task
+            SET status = 'pending',
+                latest_run_id = $2,
+                latest_run_status = 'pending',
+                latest_run_started_at = NULL,
+                latest_run_finished_at = NULL,
+                latest_error_message = NULL,
+                latest_result_level = NULL,
+                error_message = NULL,
+                last_scheduled_at = $3,
+                next_run_at = NULL,
+                updated_at = NOW()
+            WHERE id = $1
+        """
+        queued_count = 0
+        async with self._pool.acquire() as conn, conn.transaction():
+            rows = await conn.fetch(candidate_sql, now, limit)
+            for row in rows:
+                task_id = int(row["id"])
+                task_type = str(row["type"])
+                raw_schedule_mode = row["schedule_mode"]
+                cron = row["cron"]
+                schedule_mode = (
+                    str(raw_schedule_mode)
+                    if raw_schedule_mode is not None
+                    else ("cron" if cron is not None else "manual")
+                )
+                next_run_at = compute_next_run_at(str(cron)) if schedule_mode == "cron" else None
+                active = await conn.fetchval(active_sql, task_id)
+                if active:
+                    if schedule_mode == "cron" and next_run_at is not None:
+                        await conn.execute(skip_sql, task_id, next_run_at)
+                    continue
+                progress_snapshot = build_progress_snapshot(
+                    task_type,
+                    phase="queued",
+                    status="pending",
+                    details={"triggerMode": "scheduled"},
+                )
+                run_id = await conn.fetchval(
+                    create_run_sql,
+                    task_id,
+                    requested_by,
+                    _encode_jsonb(progress_snapshot),
+                )
+                if run_id is None:
+                    continue
+                if schedule_mode == "once":
+                    await conn.execute(clear_once_sql, task_id, int(run_id), now)
+                else:
+                    await conn.execute(mark_pending_sql, task_id, int(run_id), now, next_run_at)
+                queued_count += 1
+        return queued_count
 
     async def mark_task_running(self, task_id: int, run_id: int) -> None:
         sql = """
@@ -351,6 +478,10 @@ class TaskRepository(BaseRepository):
             type_label=str(record["type_label"]),
             description=record.get("description"),
             enabled=bool(record.get("enabled", True)),
+            schedule_mode=str(
+                record.get("schedule_mode")
+                or ("cron" if record.get("cron") is not None else "manual")
+            ),
             cron=record.get("cron"),
             payload=_decode_jsonb_object(record.get("payload")),
             status=str(record["status"]),
@@ -375,6 +506,8 @@ class TaskRepository(BaseRepository):
             error_message=record.get("error_message"),
             created_at=record["created_at"],
             updated_at=record["updated_at"],
+            next_run_at=record.get("next_run_at"),
+            last_scheduled_at=record.get("last_scheduled_at"),
         )
 
 
@@ -384,6 +517,7 @@ class TaskRunRepository(BaseRepository):
         *,
         task_id: int,
         requested_by: str = "admin",
+        trigger_mode: str = "manual",
         progress_snapshot: dict[str, Any] | None = None,
     ) -> TaskRun:
         sql = """
@@ -397,7 +531,7 @@ class TaskRunRepository(BaseRepository):
                 progress_snapshot,
                 cancel_requested
             )
-            SELECT id, name, type, 'manual', 'pending', $2, $3, FALSE
+            SELECT id, name, type, $3, 'pending', $2, $4, FALSE
             FROM task
             WHERE id = $1
             RETURNING id, task_id, task_name, task_type, trigger_mode, status,
@@ -411,6 +545,7 @@ class TaskRunRepository(BaseRepository):
                 sql,
                 task_id,
                 requested_by,
+                trigger_mode,
                 _encode_jsonb(progress_snapshot),
             )
         if row is None:

@@ -46,6 +46,16 @@ class TaskPayloadValidationError(BusinessError):
         super().__init__(f"任务类型“{task_type}”的参数无效：{detail}", http_status=400)
 
 
+class TaskCronValidationError(BusinessError):
+    def __init__(self, detail: str) -> None:
+        super().__init__(f"Cron 表达式无效：{detail}", http_status=400)
+
+
+class TaskCronUnsupported(BusinessError):
+    def __init__(self, task_type: str) -> None:
+        super().__init__(f"任务类型“{task_type}”不支持定时执行", http_status=400)
+
+
 class TaskDisabled(BusinessError):
     def __init__(self, task_id: int) -> None:
         super().__init__(f"任务 {task_id} 已停用，不能执行", http_status=409)

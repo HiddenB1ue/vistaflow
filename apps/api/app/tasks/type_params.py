@@ -8,9 +8,9 @@ TRAIN_DATE_PARAM: Final[TaskParamDefinition] = TaskParamDefinition(
     key="date",
     label="日期",
     value_type="date",
-    required=True,
+    required=False,
     placeholder="2026-04-05",
-    description="支持 YYYY-MM-DD 或 YYYYMMDD，保存时统一为 YYYY-MM-DD。",
+    description="固定日期模式支持 YYYY-MM-DD 或 YYYYMMDD；相对日期模式按执行时的 T+N 计算。",
 )
 
 TRAIN_KEYWORD_PARAM: Final[TaskParamDefinition] = TaskParamDefinition(

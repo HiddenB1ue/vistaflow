@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import UTC, date, datetime
+from datetime import date, datetime
 
 from app.database import BaseRepository
 
@@ -48,7 +48,9 @@ class OverviewRepository(BaseRepository):
         """Return (stations_with_coords, total_stations)."""
         query = """
             SELECT 
-                COUNT(*) FILTER (WHERE longitude IS NOT NULL AND latitude IS NOT NULL) AS with_coords,
+                COUNT(*) FILTER (
+                    WHERE longitude IS NOT NULL AND latitude IS NOT NULL
+                ) AS with_coords,
                 COUNT(*) AS total
             FROM stations
         """
@@ -83,6 +85,19 @@ class OverviewRepository(BaseRepository):
         async with self._pool.acquire() as conn:
             rows = await conn.fetch(query, days)
             return [DailyCount(date=row["day"], count=row["count"]) for row in rows]
+
+    async def count_today_record_changes(self) -> int:
+        """Count records created or updated today across core data tables."""
+        query = """
+            SELECT
+                (SELECT COUNT(*) FROM stations WHERE DATE(updated_at) = CURRENT_DATE) +
+                (SELECT COUNT(*) FROM trains WHERE DATE(updated_at) = CURRENT_DATE) +
+                (SELECT COUNT(*) FROM train_stops WHERE DATE(updated_at) = CURRENT_DATE) +
+                (SELECT COUNT(*) FROM train_runs WHERE DATE(updated_at) = CURRENT_DATE) AS total
+        """
+        async with self._pool.acquire() as conn:
+            row = await conn.fetchrow(query)
+            return row["total"] if row else 0
 
     async def get_active_tasks(self, limit: int = 5) -> list[ActiveTaskRecord]:
         """Return tasks with status 'running' or 'pending'."""
@@ -126,10 +141,8 @@ class OverviewRepository(BaseRepository):
                 for row in rows
             ]
 
-    async def count_todays_api_calls(self) -> int:
-        """Count API calls made today (from task_run_log or similar)."""
-        # For now, return a placeholder value
-        # In the future, this could query task_run_log or a dedicated API call tracking table
+    async def count_todays_task_runs(self) -> int:
+        """Count task runs created today."""
         query = """
             SELECT COUNT(*) AS count
             FROM task_run

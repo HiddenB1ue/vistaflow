@@ -2,7 +2,6 @@ import { useNavigate } from 'react-router-dom';
 import {
   Badge,
   Button,
-  DonutChart,
   KpiCard,
   PanelBody,
   PanelCard,
@@ -12,7 +11,7 @@ import {
   StatusDot,
 } from '@vistaflow/ui';
 import { OVERVIEW_LABELS } from '@/constants/labels';
-import type { ActiveTask, ApiQuota, KpiStats, SparklineData, SystemAlert } from '@/types/overview';
+import type { ActiveTask, KpiStats, SparklineData, SystemAlert } from '@/types/overview';
 
 interface OverviewKpiGridProps {
   kpiStats?: KpiStats;
@@ -23,7 +22,6 @@ interface OverviewTrendSectionProps {
   range: '7d' | '30d';
   onRangeChange: (value: '7d' | '30d') => void;
   sparklineData?: SparklineData;
-  apiQuota?: ApiQuota;
   isLoading?: boolean;
 }
 
@@ -40,7 +38,7 @@ export function OverviewKpiGrid({ kpiStats, isLoading }: OverviewKpiGridProps) {
         <KpiCard label={OVERVIEW_LABELS.totalRecords} value="--" />
         <KpiCard label={OVERVIEW_LABELS.stationCoverage} value="--" />
         <KpiCard label={OVERVIEW_LABELS.pendingAlerts} value="--" />
-        <KpiCard label={OVERVIEW_LABELS.todayApiCalls} value="--" />
+        <KpiCard label={OVERVIEW_LABELS.todayTaskRuns} value="--" />
       </div>
     );
   }
@@ -50,21 +48,14 @@ export function OverviewKpiGrid({ kpiStats, isLoading }: OverviewKpiGridProps) {
       <KpiCard
         label={OVERVIEW_LABELS.totalRecords}
         value={kpiStats.totalRecords.toLocaleString('zh-CN')}
-        trend={(
-          <>
-            <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 10l7-7m0 0l7 7m-7-7v18" />
-            </svg>
-            {OVERVIEW_LABELS.totalRecordsTrend}
-          </>
-        )}
+        trend={OVERVIEW_LABELS.todayRecordChanges(kpiStats.todayRecordChanges)}
       />
       <KpiCard
         label={OVERVIEW_LABELS.stationCoverage}
         value={kpiStats.stationCoverage.toLocaleString('zh-CN')}
         accentColor="#4ADE80"
         valueClassName="text-[#4ADE80]"
-        subtitle={<>{OVERVIEW_LABELS.coordCompletion} <span className="text-[#4ADE80]">{kpiStats.coordCompletionRate}%</span></>}
+        subtitle={<>{OVERVIEW_LABELS.coordCompletion} <span className="text-[#4ADE80]">{kpiStats.stationsWithCoordinates.toLocaleString('zh-CN')} / {kpiStats.coordCompletionRate}%</span></>}
       />
       <KpiCard
         label={OVERVIEW_LABELS.pendingAlerts}
@@ -72,30 +63,25 @@ export function OverviewKpiGrid({ kpiStats, isLoading }: OverviewKpiGridProps) {
         accentColor="#FACC15"
         alertDot={kpiStats.pendingAlerts > 0}
         valueClassName="text-[#FACC15]"
-        subtitle={OVERVIEW_LABELS.pendingAlertsSubtitle}
+        subtitle={OVERVIEW_LABELS.pendingAlertsSubtitle(kpiStats.pendingAlerts)}
       />
       <KpiCard
-        label={OVERVIEW_LABELS.todayApiCalls}
-        value={kpiStats.todayApiCalls.toLocaleString('zh-CN')}
+        label={OVERVIEW_LABELS.todayTaskRuns}
+        value={kpiStats.todayTaskRuns.toLocaleString('zh-CN')}
         accentColor="#8B5CF6"
         valueClassName="text-[#C4B5FD]"
-        subtitle={<>{OVERVIEW_LABELS.remainingQuota} <span className="text-[#C4B5FD]">{kpiStats.remainingQuota.toLocaleString('zh-CN')}</span></>}
+        subtitle={OVERVIEW_LABELS.todayTaskRunsSubtitle}
       />
     </div>
   );
 }
 
-export function OverviewTrendSection({ range, onRangeChange, sparklineData, apiQuota, isLoading }: OverviewTrendSectionProps) {
+export function OverviewTrendSection({ range, onRangeChange, sparklineData, isLoading }: OverviewTrendSectionProps) {
   const resolvedSparklineData = sparklineData ?? { values: [], labels: [] };
-  const resolvedApiQuota = apiQuota ?? {
-    percentage: 0,
-    used: 0,
-    total: 0,
-  };
 
   return (
-    <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
-      <PanelCard className="lg:col-span-2">
+    <div className="grid grid-cols-1 gap-5">
+      <PanelCard>
         <SectionHeader
           eyebrow={OVERVIEW_LABELS.dataPulse}
           title={OVERVIEW_LABELS.dataIngestionTrend}
@@ -117,22 +103,6 @@ export function OverviewTrendSection({ range, onRangeChange, sparklineData, apiQ
             <div className="flex h-48 items-center justify-center text-muted">加载中...</div>
           ) : (
             <SparklineChart data={resolvedSparklineData.values} labels={resolvedSparklineData.labels} />
-          )}
-        </PanelBody>
-      </PanelCard>
-
-      <PanelCard>
-        <SectionHeader eyebrow="配额" title={OVERVIEW_LABELS.apiUsage} subtitle={OVERVIEW_LABELS.amapService} />
-        <PanelBody className="flex-1 items-center justify-center text-center">
-          {isLoading ? (
-            <div className="flex h-48 items-center justify-center text-muted">加载中...</div>
-          ) : (
-            <>
-              <DonutChart percentage={resolvedApiQuota.percentage} label={`${resolvedApiQuota.percentage}%`} sublabel={OVERVIEW_LABELS.quotaUsed} />
-              <div className="text-xs text-muted">
-                {OVERVIEW_LABELS.quotaUsed} {resolvedApiQuota.used.toLocaleString('zh-CN')} / {resolvedApiQuota.total.toLocaleString('zh-CN')} 次
-              </div>
-            </>
           )}
         </PanelBody>
       </PanelCard>

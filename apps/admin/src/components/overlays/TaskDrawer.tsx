@@ -4,43 +4,31 @@ import {
   Button,
   CustomSelect,
   DatePicker,
+  DateTimePicker,
   DrawerBody,
   DrawerFooter,
   DrawerHeader,
   DrawerShell,
   InputBox,
-  ToggleSwitch,
+  NumberInput,
+  SegmentedControl,
 } from '@vistaflow/ui';
 import { COMMON_LABELS, TASK_DRAWER_FORM_LABELS, TASK_DRAWER_LABELS } from '@/constants/labels';
 import { useToastStore } from '@/stores/toastStore';
 import { createTask, extractApiErrorMessage, fetchTaskTypes } from '@/services/taskService';
-import type { TaskCreateRequest, TaskParamDefinition, TaskTypeDefinition } from '@/types/task';
+import type { TaskDateMode, TaskParamDefinition, TaskScheduleMode } from '@/types/task';
+import {
+  DEFAULT_CRON_EXPRESSION,
+  DEFAULT_DATE_OFFSET_DAYS,
+  buildTaskCreateRequest,
+  findMissingRequiredParam,
+  taskTypeSupportsDateMode,
+} from './taskDrawerPayload';
 
 interface TaskDrawerProps {
   isOpen: boolean;
   onClose: () => void;
   onSubmit: (taskName: string) => void;
-}
-
-const DEFAULT_CRON_EXPRESSION = '0 0/15 * * * ?';
-
-function buildPayload(
-  taskType: TaskTypeDefinition | undefined,
-  paramValues: Record<string, string>,
-): Record<string, string> {
-  if (!taskType) {
-    return {};
-  }
-
-  const payloadEntries = taskType.paramSchema.flatMap((param) => {
-    const value = (paramValues[param.key] ?? '').trim();
-    if (!value) {
-      return [];
-    }
-    return [[param.key, value] as const];
-  });
-
-  return Object.fromEntries(payloadEntries);
 }
 
 export function TaskDrawer({ isOpen, onClose, onSubmit }: TaskDrawerProps) {
@@ -50,9 +38,11 @@ export function TaskDrawer({ isOpen, onClose, onSubmit }: TaskDrawerProps) {
   const [taskName, setTaskName] = useState('');
   const [taskType, setTaskType] = useState('');
   const [description, setDescription] = useState('');
-  const [enabled, setEnabled] = useState(true);
-  const [cronEnabled, setCronEnabled] = useState(false);
+  const [scheduleMode, setScheduleMode] = useState<TaskScheduleMode>('manual');
   const [cronExpr, setCronExpr] = useState(DEFAULT_CRON_EXPRESSION);
+  const [runAt, setRunAt] = useState('');
+  const [dateMode, setDateMode] = useState<TaskDateMode>('fixed');
+  const [dateOffsetDays, setDateOffsetDays] = useState(String(DEFAULT_DATE_OFFSET_DAYS));
   const [paramValues, setParamValues] = useState<Record<string, string>>({});
 
   const { data: taskTypes = [], isLoading: taskTypesLoading } = useQuery({
@@ -101,10 +91,16 @@ export function TaskDrawer({ isOpen, onClose, onSubmit }: TaskDrawerProps) {
       ),
     );
 
-    if (!selectedTaskType.supportsCron) {
-      setCronEnabled(false);
+    if (!selectedTaskType.supportsCron && scheduleMode !== 'manual') {
+      setScheduleMode('manual');
     }
-  }, [selectedTaskType]);
+  }, [scheduleMode, selectedTaskType]);
+
+  useEffect(() => {
+    if (selectedTaskType?.type === 'fetch-train-runs' && scheduleMode === 'cron') {
+      setDateMode('relative');
+    }
+  }, [scheduleMode, selectedTaskType?.type]);
 
   useEffect(() => {
     if (isOpen) {
@@ -113,14 +109,16 @@ export function TaskDrawer({ isOpen, onClose, onSubmit }: TaskDrawerProps) {
 
     setTaskName('');
     setDescription('');
-    setEnabled(true);
-    setCronEnabled(false);
+    setScheduleMode('manual');
     setCronExpr(DEFAULT_CRON_EXPRESSION);
+    setRunAt('');
+    setDateMode('fixed');
+    setDateOffsetDays(String(DEFAULT_DATE_OFFSET_DAYS));
     setParamValues({});
   }, [isOpen]);
 
   const createTaskMutation = useMutation({
-    mutationFn: (payload: TaskCreateRequest) => createTask(payload),
+    mutationFn: createTask,
     onSuccess: async (createdTask) => {
       await queryClient.invalidateQueries({ queryKey: ['admin', 'tasks'] });
       onSubmit(createdTask.name);
@@ -150,32 +148,63 @@ export function TaskDrawer({ isOpen, onClose, onSubmit }: TaskDrawerProps) {
       return;
     }
 
-    const missingRequiredParam = selectedTaskType.paramSchema.find((param) => {
-      if (!param.required) {
-        return false;
-      }
-      return (paramValues[param.key] ?? '').trim().length === 0;
-    });
+    const missingRequiredParam = findMissingRequiredParam(selectedTaskType, paramValues, dateMode);
     if (missingRequiredParam) {
       addToast(TASK_DRAWER_FORM_LABELS.requiredField(missingRequiredParam.label), 'warn');
       return;
     }
 
-    const normalizedCron = cronEnabled ? cronExpr.trim() : '';
-    if (cronEnabled && normalizedCron.length === 0) {
+    const normalizedCron = scheduleMode === 'cron' ? cronExpr.trim() : '';
+    if (scheduleMode === 'cron' && normalizedCron.length === 0) {
       addToast(TASK_DRAWER_FORM_LABELS.cronRequired, 'warn');
       return;
     }
+    if (scheduleMode === 'once' && runAt.trim().length === 0) {
+      addToast(TASK_DRAWER_FORM_LABELS.runAtRequired, 'warn');
+      return;
+    }
+    if (taskTypeSupportsDateMode(selectedTaskType) && dateMode === 'relative') {
+      const offset = Number.parseInt(dateOffsetDays, 10);
+      if (!Number.isInteger(offset) || offset < 0 || offset > 60) {
+        addToast(TASK_DRAWER_FORM_LABELS.dateOffsetInvalid, 'warn');
+        return;
+      }
+    }
 
-    createTaskMutation.mutate({
-      name: normalizedName,
-      type: selectedTaskType.type,
-      description: description.trim() || undefined,
-      enabled,
-      cron: cronEnabled ? normalizedCron : null,
-      payload: buildPayload(selectedTaskType, paramValues),
-    });
+    createTaskMutation.mutate(
+      buildTaskCreateRequest({
+        name: normalizedName,
+        taskType: selectedTaskType,
+        description,
+        enabled: true,
+        scheduleMode,
+        cronExpr,
+        runAt,
+        dateMode,
+        dateOffsetDays,
+        paramValues,
+      }),
+    );
   }
+
+  const scheduleModeOptions = [
+    { value: 'manual' as const, label: TASK_DRAWER_LABELS.scheduleManual },
+    {
+      value: 'once' as const,
+      label: TASK_DRAWER_LABELS.scheduleOnce,
+      disabled: !selectedTaskType?.supportsCron,
+    },
+    {
+      value: 'cron' as const,
+      label: TASK_DRAWER_LABELS.scheduleCron,
+      disabled: !selectedTaskType?.supportsCron,
+    },
+  ];
+
+  const dateModeOptions = [
+    { value: 'fixed' as const, label: TASK_DRAWER_LABELS.dateModeFixed },
+    { value: 'relative' as const, label: TASK_DRAWER_LABELS.dateModeRelative },
+  ];
 
   return (
     <DrawerShell open={isOpen}>
@@ -224,6 +253,40 @@ export function TaskDrawer({ isOpen, onClose, onSubmit }: TaskDrawerProps) {
           </div>
         </section>
 
+        <section className="vf-drawer-group">
+          <div>
+            <label className="vf-drawer-label">{TASK_DRAWER_LABELS.scheduleMode}</label>
+            <SegmentedControl
+              value={scheduleMode}
+              onChange={setScheduleMode}
+              options={scheduleModeOptions}
+              className="mt-3"
+            />
+            {!selectedTaskType?.supportsCron ? (
+              <div className="vf-drawer-meta mt-3">{TASK_DRAWER_FORM_LABELS.cronUnsupportedHint}</div>
+            ) : null}
+          </div>
+          {scheduleMode === 'once' ? (
+            <div>
+              <label className="vf-drawer-label">{TASK_DRAWER_LABELS.runAt}</label>
+              <DateTimePicker value={runAt} onChange={setRunAt} minDate={new Date()} />
+              <div className="vf-drawer-meta mt-3">{TASK_DRAWER_FORM_LABELS.runAtHint}</div>
+            </div>
+          ) : null}
+          {scheduleMode === 'cron' ? (
+            <div>
+              <label className="vf-drawer-label">{TASK_DRAWER_LABELS.cronExpr}</label>
+              <InputBox
+                className="w-full font-mono text-sm text-[#8B5CF6]"
+                value={cronExpr}
+                onChange={(event) => setCronExpr(event.target.value)}
+                placeholder="0 3 * * *"
+              />
+              <div className="vf-drawer-meta mt-3">{TASK_DRAWER_FORM_LABELS.cronManualHint}</div>
+            </div>
+          ) : null}
+        </section>
+
         {selectedTaskType?.paramSchema.length ? (
           <section className="vf-drawer-group">
             {selectedTaskType.paramSchema.map((param) => (
@@ -232,7 +295,34 @@ export function TaskDrawer({ isOpen, onClose, onSubmit }: TaskDrawerProps) {
                   {param.label}
                   {param.required ? ' *' : ''}
                 </label>
-                {param.valueType === 'date' ? (
+                {param.valueType === 'date' && taskTypeSupportsDateMode(selectedTaskType) ? (
+                  <div className="space-y-3">
+                    <SegmentedControl
+                      value={dateMode}
+                      onChange={setDateMode}
+                      options={dateModeOptions}
+                      size="sm"
+                    />
+                    {dateMode === 'fixed' ? (
+                      <DatePicker
+                        value={paramValues[param.key] ?? ''}
+                        onChange={(value) => updateParamValue(param, value)}
+                        appearance="boxed"
+                        className="w-full"
+                        minDate={new Date()}
+                      />
+                    ) : (
+                      <NumberInput
+                        className="w-full"
+                        min={0}
+                        max={60}
+                        value={dateOffsetDays}
+                        onChange={(event) => setDateOffsetDays(event.target.value)}
+                        placeholder={TASK_DRAWER_LABELS.dateOffsetPlaceholder}
+                      />
+                    )}
+                  </div>
+                ) : param.valueType === 'date' ? (
                   <DatePicker
                     value={paramValues[param.key] ?? ''}
                     onChange={(value) => updateParamValue(param, value)}
@@ -255,34 +345,6 @@ export function TaskDrawer({ isOpen, onClose, onSubmit }: TaskDrawerProps) {
           </section>
         ) : null}
 
-        <section className="vf-drawer-group">
-          <div className="vf-drawer-toggle-row">
-            <span className="vf-drawer-toggle-row__title">{TASK_DRAWER_FORM_LABELS.enabled}</span>
-            <ToggleSwitch checked={enabled} onChange={setEnabled} />
-          </div>
-          <div className="vf-drawer-toggle-row">
-            <span className="vf-drawer-toggle-row__title">{TASK_DRAWER_LABELS.cronEnabled}</span>
-            <ToggleSwitch
-              checked={cronEnabled}
-              onChange={selectedTaskType?.supportsCron ? setCronEnabled : () => undefined}
-            />
-          </div>
-          <div className={!cronEnabled || !selectedTaskType?.supportsCron ? 'opacity-35' : ''}>
-            <label className="vf-drawer-label">{TASK_DRAWER_LABELS.cronExpr}</label>
-            <InputBox
-              className="w-full font-mono text-sm text-[#8B5CF6]"
-              value={cronExpr}
-              onChange={(event) => setCronExpr(event.target.value)}
-              placeholder="* * * * * *"
-              disabled={!cronEnabled || !selectedTaskType?.supportsCron}
-            />
-            <div className="vf-drawer-meta mt-3">
-              {selectedTaskType?.supportsCron
-                ? TASK_DRAWER_FORM_LABELS.cronManualHint
-                : TASK_DRAWER_FORM_LABELS.cronUnsupportedHint}
-            </div>
-          </div>
-        </section>
       </DrawerBody>
 
       <DrawerFooter>

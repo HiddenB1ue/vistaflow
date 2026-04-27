@@ -2,6 +2,8 @@ export type TaskStatus = 'idle' | 'pending' | 'running' | 'completed' | 'error' 
 export type TaskRunStatus = 'pending' | 'running' | 'completed' | 'error' | 'terminated';
 export type TaskResultLevel = 'success' | 'warning' | 'error';
 export type TaskValueType = 'date' | 'text';
+export type TaskScheduleMode = 'manual' | 'once' | 'cron';
+export type TaskDateMode = 'fixed' | 'relative';
 
 export interface TaskMetrics {
   label: string;
@@ -30,7 +32,10 @@ export interface Task {
   status: TaskStatus;
   description?: string | null;
   enabled: boolean;
+  scheduleMode?: TaskScheduleMode;
   cron?: string | null;
+  runAt?: string | null;
+  nextRunAt?: string | null;
   payload: Record<string, unknown>;
   metrics: TaskMetrics;
   timing: TaskTiming;
@@ -61,7 +66,9 @@ export interface TaskCreateRequest {
   type: string;
   description?: string;
   enabled?: boolean;
+  scheduleMode?: TaskScheduleMode;
   cron?: string | null;
+  runAt?: string | null;
   payload?: Record<string, unknown>;
 }
 

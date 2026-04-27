@@ -79,11 +79,15 @@ export function TrainStopsDrawer({ isOpen, train, onClose }: TrainStopsDrawerPro
             <div className="vf-drawer-meta">{DATA_LABELS.noStops}</div>
           ) : (
             <PanelCard className="overflow-hidden p-0">
-              <DataTable
-                columns={columns}
-                data={stops}
-                getId={(stop) => String(stop.stationNo)}
-              />
+              <div className="overflow-x-auto">
+                <div className="min-w-[980px]">
+                  <DataTable
+                    columns={columns}
+                    data={stops}
+                    getId={(stop) => String(stop.stationNo)}
+                  />
+                </div>
+              </div>
             </PanelCard>
           )}
         </section>

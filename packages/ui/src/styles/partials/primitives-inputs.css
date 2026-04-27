@@ -283,6 +283,65 @@
   flex: 1 1 0;
 }
 
+.vf-date-time-picker {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.75rem;
+  align-items: stretch;
+}
+.vf-date-time-picker__time {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(4.25rem, 1fr));
+  gap: 0.5rem;
+}
+.vf-date-time-picker__wheel {
+  min-width: 4.25rem;
+}
+
+/* === Number Wheel === */
+.vf-number-wheel {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.25rem;
+  width: 100%;
+  min-width: 4.25rem;
+  height: 2.75rem;
+  border-radius: 0.75rem;
+  border: 1px solid rgba(255,255,255,0.08);
+  background: rgba(0,0,0,0.28);
+  transition: border-color 0.18s ease, background 0.18s ease;
+}
+.vf-number-wheel:focus-within,
+.vf-number-wheel:hover {
+  border-color: var(--color-pulse);
+  background: rgba(0,0,0,0.42);
+}
+.vf-number-wheel__input {
+  width: 2.4rem;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: #F5F5F7;
+  text-align: center;
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: var(--text-base);
+  color: var(--color-pulse);
+}
+.vf-number-wheel__input::-webkit-outer-spin-button,
+.vf-number-wheel__input::-webkit-inner-spin-button {
+  margin: 0;
+  appearance: none;
+}
+.vf-number-wheel__input {
+  appearance: textfield;
+}
+.vf-number-wheel__label {
+  color: rgba(255,255,255,0.42);
+  font-family: 'Inter', sans-serif;
+  font-size: var(--text-xs);
+}
+
 /* === Button Variants === */
 .btn {
   display: inline-flex; align-items: center; justify-content: center; gap: 8px;
@@ -369,6 +428,9 @@
 }
 
 @media (max-width: 900px) {
+  .vf-date-time-picker {
+    grid-template-columns: 1fr;
+  }
   .vf-date-picker-preset {
     width: 100%;
     flex-basis: 100%;

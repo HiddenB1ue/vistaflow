@@ -57,7 +57,8 @@ TaskType = Literal[
 TaskStatus = Literal["idle", "pending", "running", "completed", "error", "terminated"]
 TaskRunStatus = Literal["pending", "running", "completed", "error", "terminated"]
 TaskResultLevel = Literal["success", "warning", "error"]
-TaskTriggerMode = Literal["manual"]
+TaskTriggerMode = Literal["manual", "scheduled"]
+TaskScheduleMode = Literal["manual", "once", "cron"]
 LogSeverity = Literal["SUCCESS", "INFO", "WARN", "ERROR", "SYSTEM"]
 CredentialHealth = Literal["healthy", "expired"]
 
@@ -70,6 +71,7 @@ class TaskDefinition:
     type_label: str
     description: str | None
     enabled: bool
+    schedule_mode: str
     cron: str | None
     payload: dict[str, Any]
     status: str
@@ -86,6 +88,8 @@ class TaskDefinition:
     error_message: str | None
     created_at: datetime
     updated_at: datetime
+    next_run_at: datetime | None = None
+    last_scheduled_at: datetime | None = None
 
 
 CrawlTask = TaskDefinition

@@ -27,6 +27,7 @@ def make_task(task_type: str, payload: dict[str, object]) -> TaskDefinition:
         type_label=task_type,
         description="test",
         enabled=True,
+        schedule_mode="manual",
         cron=None,
         payload=payload,
         status="idle",

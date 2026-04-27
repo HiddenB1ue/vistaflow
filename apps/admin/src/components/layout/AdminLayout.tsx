@@ -20,6 +20,13 @@ const ROUTE_META = {
   '/log': ROUTE_META_LABELS.log,
 } as const;
 
+const SIDEBAR_TASK_QUERY = {
+  page: 1,
+  pageSize: 100,
+  keyword: '',
+  status: 'all',
+};
+
 function formatTimestamp(date: Date) {
   return new Intl.DateTimeFormat('zh-CN', {
     month: '2-digit',
@@ -52,24 +59,38 @@ export function AdminLayout() {
   const timestamp = useMemo(() => formatTimestamp(new Date()), []);
 
   const { data: taskData, refetch: refetchTasks } = useQuery({
-    queryKey: ['admin', 'tasks'],
-    queryFn: fetchTasks,
+    queryKey: ['admin', 'tasks', 'sidebar'],
+    queryFn: () => fetchTasks(SIDEBAR_TASK_QUERY),
   });
 
   useEffect(() => {
     if (taskData) {
-      setTasks(taskData);
+      setTasks(taskData.items);
     }
   }, [setTasks, taskData]);
 
   const handleRefresh = useCallback(async () => {
-    await Promise.all([
-      refetchTasks(),
-      queryClient.invalidateQueries({ queryKey: ['admin', 'data'] }),
-      queryClient.invalidateQueries({ queryKey: ['admin', 'system'] }),
-    ]);
-    addToast(TOAST_MESSAGES.dataRefreshed, 'info');
-  }, [addToast, queryClient, refetchTasks]);
+    try {
+      if (location.pathname === '/tasks') {
+        await Promise.all([
+          refetchTasks(),
+          queryClient.refetchQueries({ queryKey: ['admin', 'tasks'] }),
+        ]);
+      } else if (location.pathname === '/data') {
+        await queryClient.refetchQueries({ queryKey: ['admin', 'data'] });
+      } else if (location.pathname === '/') {
+        await Promise.all([
+          refetchTasks(),
+          queryClient.refetchQueries({ queryKey: ['admin', 'overview'] }),
+        ]);
+      } else {
+        await queryClient.refetchQueries({ queryKey: ['admin'] });
+      }
+      addToast(TOAST_MESSAGES.dataRefreshed, 'info');
+    } catch {
+      addToast('刷新失败，请稍后重试', 'error');
+    }
+  }, [addToast, location.pathname, queryClient, refetchTasks]);
 
   const handleTaskDrawerSubmit = useCallback((taskName: string) => {
     closeTaskDrawer();

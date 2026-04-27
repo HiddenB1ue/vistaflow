@@ -26,6 +26,7 @@ def make_task(
         type_label=task_type,
         description="test",
         enabled=True,
+        schedule_mode="manual",
         cron=None,
         payload=payload or {},
         status="pending",

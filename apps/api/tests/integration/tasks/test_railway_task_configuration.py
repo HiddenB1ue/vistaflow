@@ -64,6 +64,7 @@ def _make_task(task_type: str, payload: dict[str, object]) -> TaskDefinition:
         type_label="铁路任务",
         description="test",
         enabled=True,
+        schedule_mode="manual",
         cron=None,
         payload=payload,
         status="idle",

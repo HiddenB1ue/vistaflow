@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock
 
 import pytest
@@ -14,6 +14,8 @@ from app.tasks.definition import (
 )
 from app.tasks.exceptions import (
     TaskAlreadyRunning,
+    TaskCronUnsupported,
+    TaskCronValidationError,
     TaskDeleteConflict,
     TaskDisabled,
     TaskNameConflict,
@@ -47,6 +49,7 @@ def make_task(
         type_label=type_label,
         description="同步站点",
         enabled=enabled,
+        schedule_mode="manual",
         cron=None,
         payload=payload or {},
         status=status,
@@ -151,6 +154,146 @@ async def test_create_task_success(
 
     assert result.name == "站点同步"
     task_repo.create_task.assert_awaited_once()
+    assert task_repo.create_task.await_args.kwargs["schedule_mode"] == "manual"
+    assert task_repo.create_task.await_args.kwargs["next_run_at"] is None
+
+
+@pytest.mark.asyncio
+async def test_create_task_with_cron_sets_next_run_at(
+    service: tuple[TaskService, AsyncMock, AsyncMock, AsyncMock],
+) -> None:
+    task_service, task_repo, _, _ = service
+    task_repo.find_by_name.return_value = None
+    task_repo.create_task.return_value = make_task()
+
+    await task_service.create_task(
+        TaskCreateRequest(name="站点同步", type="fetch-station", cron="0 3 * * *")
+    )
+
+    assert task_repo.create_task.await_args.kwargs["schedule_mode"] == "cron"
+    assert task_repo.create_task.await_args.kwargs["cron"] == "0 3 * * *"
+    assert task_repo.create_task.await_args.kwargs["next_run_at"] is not None
+
+
+@pytest.mark.asyncio
+async def test_create_once_task_sets_next_run_at(
+    service: tuple[TaskService, AsyncMock, AsyncMock, AsyncMock],
+) -> None:
+    task_service, task_repo, _, _ = service
+    run_at = datetime(2027, 4, 5, tzinfo=UTC)
+    task_repo.find_by_name.return_value = None
+    task_repo.create_task.return_value = make_task()
+
+    await task_service.create_task(
+        TaskCreateRequest(
+            name="One shot station sync",
+            type="fetch-station",
+            scheduleMode="once",
+            runAt=run_at,
+        )
+    )
+
+    assert task_repo.create_task.await_args.kwargs["schedule_mode"] == "once"
+    assert task_repo.create_task.await_args.kwargs["cron"] is None
+    assert task_repo.create_task.await_args.kwargs["next_run_at"] == run_at
+
+
+@pytest.mark.asyncio
+async def test_create_once_task_requires_future_run_at(
+    service: tuple[TaskService, AsyncMock, AsyncMock, AsyncMock],
+) -> None:
+    task_service, task_repo, _, _ = service
+    task_repo.find_by_name.return_value = None
+
+    with pytest.raises(TaskCronValidationError):
+        await task_service.create_task(
+            TaskCreateRequest(
+                name="Past one shot station sync",
+                type="fetch-station",
+                scheduleMode="once",
+                runAt=NOW - timedelta(minutes=1),
+            )
+        )
+
+
+@pytest.mark.asyncio
+async def test_create_task_rejects_invalid_cron(
+    service: tuple[TaskService, AsyncMock, AsyncMock, AsyncMock],
+) -> None:
+    task_service, task_repo, _, _ = service
+    task_repo.find_by_name.return_value = None
+
+    with pytest.raises(TaskCronValidationError):
+        await task_service.create_task(
+            TaskCreateRequest(name="站点同步", type="fetch-station", cron="bad cron")
+        )
+
+
+@pytest.mark.asyncio
+async def test_create_task_rejects_cron_for_unsupported_type() -> None:
+    task_repo = AsyncMock()
+    run_repo = AsyncMock()
+    run_log_repo = AsyncMock()
+    task_repo.find_by_name.return_value = None
+    registry = TaskDefinitionRegistry(
+        (
+            TaskTypeDefinition(
+                type="demo-task",
+                label="演示任务",
+                description="不支持 Cron",
+                implemented=True,
+                capability=TaskCapabilityContract(supports_cron=False),
+                executor=AsyncMock(),
+            ),
+        )
+    )
+    service = TaskService(
+        task_repo=task_repo,
+        run_repo=run_repo,
+        run_log_repo=run_log_repo,
+        task_registry=registry,
+    )
+
+    with pytest.raises(TaskCronUnsupported):
+        await service.create_task(
+            TaskCreateRequest(name="Demo task", type="demo-task", cron="0 3 * * *")
+        )
+
+
+@pytest.mark.asyncio
+async def test_create_once_task_rejects_unsupported_type() -> None:
+    task_repo = AsyncMock()
+    run_repo = AsyncMock()
+    run_log_repo = AsyncMock()
+    task_repo.find_by_name.return_value = None
+    registry = TaskDefinitionRegistry(
+        (
+            TaskTypeDefinition(
+                type="demo-task",
+                label="Demo task",
+                description="Does not support automatic scheduling",
+                implemented=True,
+                capability=TaskCapabilityContract(supports_cron=False),
+                executor=AsyncMock(),
+            ),
+        )
+    )
+    service = TaskService(
+        task_repo=task_repo,
+        run_repo=run_repo,
+        run_log_repo=run_log_repo,
+        task_registry=registry,
+    )
+
+    with pytest.raises(TaskCronUnsupported):
+        await service.create_task(
+            TaskCreateRequest(
+                name="Demo task",
+                type="demo-task",
+                scheduleMode="once",
+                runAt=NOW + timedelta(hours=1),
+            )
+        )
 
 
 @pytest.mark.asyncio
@@ -174,6 +317,7 @@ async def test_create_railway_task_normalizes_payload(
     )
 
     assert task_repo.create_task.await_args.kwargs["payload"] == {
+        "dateMode": "fixed",
         "date": "2026-04-05",
         "keyword": "G",
     }
@@ -260,9 +404,44 @@ async def test_update_railway_task_normalizes_payload(
     )
 
     assert task_repo.update_task.await_args.kwargs["payload"] == {
+        "dateMode": "fixed",
         "date": "2026-04-06",
         "keyword": "G1",
     }
+
+
+@pytest.mark.asyncio
+async def test_update_task_with_cron_sets_next_run_at(
+    service: tuple[TaskService, AsyncMock, AsyncMock, AsyncMock],
+) -> None:
+    task_service, task_repo, run_repo, _ = service
+    task_repo.find_by_id.return_value = make_task()
+    task_repo.find_by_name.return_value = None
+    task_repo.update_task.return_value = make_task()
+    run_repo.find_active_by_task.return_value = None
+
+    await task_service.update_task(1, TaskUpdateRequest(cron="*/15 * * * *"))
+
+    assert task_repo.update_task.await_args.kwargs["schedule_mode"] == "cron"
+    assert task_repo.update_task.await_args.kwargs["cron"] == "*/15 * * * *"
+    assert task_repo.update_task.await_args.kwargs["next_run_at"] is not None
+
+
+@pytest.mark.asyncio
+async def test_update_task_can_clear_existing_cron(
+    service: tuple[TaskService, AsyncMock, AsyncMock, AsyncMock],
+) -> None:
+    task_service, task_repo, run_repo, _ = service
+    task_repo.find_by_id.return_value = make_task()
+    task_repo.find_by_id.return_value.cron = "*/15 * * * *"
+    task_repo.find_by_name.return_value = None
+    task_repo.update_task.return_value = make_task()
+    run_repo.find_active_by_task.return_value = None
+
+    await task_service.update_task(1, TaskUpdateRequest(cron=""))
+
+    assert task_repo.update_task.await_args.kwargs["cron"] is None
+    assert task_repo.update_task.await_args.kwargs["next_run_at"] is None
 
 
 @pytest.mark.asyncio
@@ -286,6 +465,7 @@ async def test_create_fetch_train_stops_task_allows_missing_keyword(
     )
 
     assert task_repo.create_task.await_args.kwargs["payload"] == {
+        "dateMode": "fixed",
         "date": "2026-04-05",
     }
 
@@ -311,6 +491,7 @@ async def test_create_fetch_train_runs_task_normalizes_keyword(
     )
 
     assert task_repo.create_task.await_args.kwargs["payload"] == {
+        "dateMode": "fixed",
         "date": "2026-04-05",
         "keyword": "G1",
     }
@@ -337,6 +518,7 @@ async def test_create_fetch_train_runs_task_allows_missing_keyword(
     )
 
     assert task_repo.create_task.await_args.kwargs["payload"] == {
+        "dateMode": "fixed",
         "date": "2026-04-05",
     }
 
@@ -596,7 +778,10 @@ async def test_terminate_pending_run_marks_terminated(
 ) -> None:
     task_service, _, run_repo, _ = service
     run_repo.find_by_id.return_value = make_run(status="pending")
-    run_repo.terminate_pending_run.return_value = make_run(status="terminated", result_level="error")
+    run_repo.terminate_pending_run.return_value = make_run(
+        status="terminated",
+        result_level="error",
+    )
 
     result = await task_service.terminate_run(11)
 

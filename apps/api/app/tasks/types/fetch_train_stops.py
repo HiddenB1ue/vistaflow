@@ -13,6 +13,7 @@ from app.tasks.type_params import TRAIN_DATE_PARAM, TRAIN_LOOKUP_KEYWORD_PARAM
 async def execute_fetch_train_stops(ctx: TaskExecutionContext):
     helper = TaskExecutorHelper(ctx)
     payload = helper.parse_payload(FetchTrainStopsPayload)
+    resolved_date = payload.resolved_date()
     keyword_display = payload.keyword or "<all>"
     repo = RailwayTaskRepository(ctx.pool)
     target_train_nos = await resolve_stop_target_train_nos(repo, payload.keyword)
@@ -24,10 +25,15 @@ async def execute_fetch_train_stops(ctx: TaskExecutionContext):
         raise TaskExecutionError("数据库中没有可抓取经停的车次，请先执行 fetch-trains")
 
     await helper.begin(
-        f"任务 {ctx.task.name} 开始抓取经停：date={payload.date}, keyword={keyword_display}",
+        f"任务 {ctx.task.name} 开始抓取经停：date={resolved_date}, keyword={keyword_display}",
         total_units=len(target_train_nos),
         current={"unitId": keyword_display, "label": keyword_display},
-        details={"requestedDate": payload.date},
+        details={
+            "requestedDate": payload.date,
+            "dateMode": payload.date_mode,
+            "dateOffsetDays": payload.date_offset_days,
+            "resolvedDate": resolved_date,
+        },
     )
 
     total_stop_count = 0
@@ -38,9 +44,9 @@ async def execute_fetch_train_stops(ctx: TaskExecutionContext):
     for index, train_no in enumerate(target_train_nos, start=1):
         await helper.checkpoint()
         try:
-            stop_rows = await ctx.crawler_client.fetch_train_stops(train_no, payload.date)
+            stop_rows = await ctx.crawler_client.fetch_train_stops(train_no, resolved_date)
             if not stop_rows:
-                raise TaskExecutionError(f"未找到车次 {train_no} 在 {payload.date} 的经停数据")
+                raise TaskExecutionError(f"未找到车次 {train_no} 在 {resolved_date} 的经停数据")
             inserted = await repo.upsert_stop_rows(stop_rows)
             total_stop_count += inserted
             success_count += 1

@@ -6,6 +6,7 @@ export { ErrorFallback } from './components/ErrorFallback';
 export { GlassPanel } from './components/GlassPanel';
 export { InputBox } from './components/InputBox';
 export { NumberInput } from './components/NumberInput';
+export { NumberWheel } from './components/NumberWheel';
 export { Textarea } from './components/Textarea';
 export { CustomSelect } from './components/CustomSelect';
 export { ToggleSwitch } from './components/ToggleSwitch';
@@ -30,6 +31,7 @@ export { SegmentedControl } from './components/SegmentedControl';
 export { Topbar, TopbarBrand, TopbarActions } from './components/Topbar';
 export { ComboboxInput } from './components/ComboboxInput';
 export { DatePicker } from './components/DatePicker';
+export { DateTimePicker } from './components/DateTimePicker';
 export { LogRow } from './components/LogRow';
 export { PaginationFooter } from './components/PaginationFooter';
 
@@ -41,6 +43,7 @@ export type { ErrorFallbackProps, ErrorFallbackLabels } from './components/Error
 export type { GlassPanelProps } from './components/GlassPanel';
 export type { InputBoxProps } from './components/InputBox';
 export type { NumberInputProps } from './components/NumberInput';
+export type { NumberWheelProps } from './components/NumberWheel';
 export type { TextareaProps } from './components/Textarea';
 export type { CustomSelectProps, SelectOption } from './components/CustomSelect';
 export type { ToggleSwitchProps } from './components/ToggleSwitch';
@@ -78,5 +81,6 @@ export type { SegmentedControlProps, SegmentedControlOption, SegmentedControlSiz
 export type { TopbarProps, TopbarBrandProps, TopbarActionsProps, TopbarBlendMode } from './components/Topbar';
 export type { ComboboxInputProps, ComboboxInputAppearance, ComboboxInputRef } from './components/ComboboxInput';
 export type { DatePickerProps, DatePickerAppearance, DatePickerLabels } from './components/DatePicker';
+export type { DateTimePickerProps, DateTimeParts } from './components/DateTimePicker';
 export type { LogRowProps } from './components/LogRow';
 export type { PaginationFooterProps } from './components/PaginationFooter';
