@@ -25,6 +25,14 @@ def build_worker_id() -> str:
     return f"{socket.gethostname()}-{os.getpid()}"
 
 
+def normalize_worker_concurrency(value: int) -> int:
+    return max(1, value)
+
+
+def build_worker_slot_id(worker_id: str, slot_index: int) -> str:
+    return f"{worker_id}-slot-{slot_index + 1}"
+
+
 async def recover_stale_runs(run_repo: TaskRunRepository, task_repo: TaskRepository) -> None:
     settings = get_settings()
     stale_before = datetime.now(UTC) - timedelta(
@@ -33,6 +41,63 @@ async def recover_stale_runs(run_repo: TaskRunRepository, task_repo: TaskReposit
     recovered = await run_repo.recover_stale_running_runs(stale_before=stale_before)
     if recovered:
         await task_repo.recover_stale_tasks([run.id for run in recovered])
+
+
+async def run_scheduler_loop(
+    *,
+    scheduler: TaskScheduler,
+    run_repo: TaskRunRepository,
+    task_repo: TaskRepository,
+    log_repo: LogRepository,
+    stale_timeout_seconds: float,
+    poll_interval_seconds: float,
+) -> None:
+    await recover_stale_runs(run_repo, task_repo)
+    last_recovery = time.monotonic()
+
+    while True:
+        if time.monotonic() - last_recovery >= stale_timeout_seconds:
+            await recover_stale_runs(run_repo, task_repo)
+            last_recovery = time.monotonic()
+
+        try:
+            await scheduler.enqueue_due_tasks()
+        except Exception as exc:
+            await log_repo.write_log(
+                "ERROR",
+                f"任务调度器入队失败: {exc}",
+                highlighted_terms=["scheduler"],
+            )
+        await asyncio.sleep(poll_interval_seconds)
+
+
+async def run_consumer_loop(
+    *,
+    worker_id: str,
+    run_repo: TaskRunRepository,
+    runner: TaskRunner,
+    log_repo: LogRepository,
+    poll_interval_seconds: float,
+    stop_after_runs: int | None = None,
+) -> None:
+    executed_runs = 0
+    while True:
+        run = await run_repo.claim_next_pending_run(worker_id)
+        if run is None:
+            await asyncio.sleep(poll_interval_seconds)
+            continue
+
+        try:
+            await runner.execute(run)
+        except Exception as exc:
+            await log_repo.write_log(
+                "ERROR",
+                f"worker {worker_id} 执行任务 {run.id} 失败: {exc}",
+                highlighted_terms=[run.task_type],
+            )
+        executed_runs += 1
+        if stop_after_runs is not None and executed_runs >= stop_after_runs:
+            return
 
 
 async def run_worker() -> None:
@@ -75,29 +140,30 @@ async def run_worker() -> None:
             task_registry=task_registry,
         )
         scheduler = TaskScheduler(task_repo)
-
-        await recover_stale_runs(run_repo, task_repo)
-        last_recovery = time.monotonic()
-
-        while True:
-            if time.monotonic() - last_recovery >= settings.task_worker_stale_timeout_seconds:
-                await recover_stale_runs(run_repo, task_repo)
-                last_recovery = time.monotonic()
-
-            await scheduler.enqueue_due_tasks()
-            run = await run_repo.claim_next_pending_run(worker_id)
-            if run is None:
-                await asyncio.sleep(settings.task_worker_poll_interval_seconds)
-                continue
-
-            try:
-                await runner.execute(run)
-            except Exception as exc:
-                await log_repo.write_log(
-                    "ERROR",
-                    f"worker {worker_id} 执行任务 {run.id} 失败: {exc}",
-                    highlighted_terms=[run.task_type],
+        concurrency = normalize_worker_concurrency(settings.task_worker_concurrency)
+        scheduler_task = asyncio.create_task(
+            run_scheduler_loop(
+                scheduler=scheduler,
+                run_repo=run_repo,
+                task_repo=task_repo,
+                log_repo=log_repo,
+                stale_timeout_seconds=settings.task_worker_stale_timeout_seconds,
+                poll_interval_seconds=settings.task_worker_poll_interval_seconds,
+            )
+        )
+        consumer_tasks = [
+            asyncio.create_task(
+                run_consumer_loop(
+                    worker_id=build_worker_slot_id(worker_id, slot_index),
+                    run_repo=run_repo,
+                    runner=runner,
+                    log_repo=log_repo,
+                    poll_interval_seconds=settings.task_worker_poll_interval_seconds,
                 )
+            )
+            for slot_index in range(concurrency)
+        ]
+        await asyncio.gather(scheduler_task, *consumer_tasks)
     finally:
         await pool.close()
         await http_client.aclose()

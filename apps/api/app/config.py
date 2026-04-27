@@ -23,6 +23,7 @@ class Settings(BaseSettings):
     task_worker_poll_interval_seconds: float = 1.0
     task_worker_heartbeat_interval_seconds: float = 5.0
     task_worker_stale_timeout_seconds: float = 60.0
+    task_worker_concurrency: int = 5
 
     model_config = SettingsConfigDict(
         env_file=".env.development",
