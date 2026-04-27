@@ -100,6 +100,10 @@ export function routeHasAvailableTickets(route: Route): boolean {
   return hasTrainSegment;
 }
 
+export function getNextSelectedRoute(current: Route | null, clicked: Route): Route | null {
+  return current?.id === clicked.id ? null : clicked;
+}
+
 export function sortRoutesForDisplay(routes: RouteList, sortMode: JourneyDisplaySortMode): RouteList {
   const nextRoutes = [...routes];
 

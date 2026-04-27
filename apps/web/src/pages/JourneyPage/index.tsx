@@ -21,7 +21,7 @@ import { useSearchStore } from '@/stores/searchStore';
 import { useUiStore } from '@/stores/uiStore';
 import type { Route } from '@/types/route';
 import { RouteListPanel } from './RouteListPanel';
-import { routeHasAvailableTickets } from './routeList.helpers';
+import { getNextSelectedRoute, routeHasAvailableTickets } from './routeList.helpers';
 
 export function JourneyPage() {
   const navigate = useNavigate();
@@ -129,9 +129,11 @@ export function JourneyPage() {
     [journeyFilterPrefs.showOnlyAvailableTickets, routes],
   );
   const displaySelectedRoute =
-    displayRoutes.find((route) => route.id === selectedRoute?.id) ?? displayRoutes[0] ?? null;
+    displayRoutes.find((route) => route.id === selectedRoute?.id) ?? null;
   const listRef = useCardReveal([displayRoutes]);
-  const handleSelect = (route: Route) => selectRoute(route);
+  const handleSelect = (route: Route) => {
+    selectRoute(getNextSelectedRoute(selectedRoute, route));
+  };
   const sessionExpired = error instanceof Error;
 
   return (

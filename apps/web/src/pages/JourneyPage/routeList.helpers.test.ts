@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { routeFixtures } from '@/services/mock/routeFixtures';
 import {
+  getNextSelectedRoute,
   getCollapsedRouteSummary,
   routeHasAvailableTickets,
   sortRoutesForDisplay,
@@ -66,6 +67,20 @@ describe('routeHasAvailableTickets', () => {
     };
 
     expect(routeHasAvailableTickets(unavailableRoute)).toBe(false);
+  });
+});
+
+describe('getNextSelectedRoute', () => {
+  it('selects a route when nothing is selected', () => {
+    expect(getNextSelectedRoute(null, routeFixtures[0])).toBe(routeFixtures[0]);
+  });
+
+  it('clears selection when clicking the selected route again', () => {
+    expect(getNextSelectedRoute(routeFixtures[0], routeFixtures[0])).toBeNull();
+  });
+
+  it('switches selection when clicking a different route', () => {
+    expect(getNextSelectedRoute(routeFixtures[0], routeFixtures[1])).toBe(routeFixtures[1]);
   });
 });
 
