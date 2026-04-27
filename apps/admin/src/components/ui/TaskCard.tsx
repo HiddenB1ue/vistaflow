@@ -1,32 +1,17 @@
 import { TASK_LABELS, TASK_STATE_LABELS, TASK_STATUS_LABELS } from '@/constants/labels';
 import type { Task } from '@/types/task';
+import { canToggleTaskEnabled, getTaskDisplayStatus } from '@/utils/taskPresentation';
+import { formatTaskSchedule } from '@/utils/taskSchedule';
 import { Badge, Button, PanelCard, StatusDot } from '@vistaflow/ui';
 
 interface TaskCardProps {
   task: Task;
   onTerminate?: (task: Task) => void;
   onRun?: (task: Task) => void;
+  onToggleEnabled?: (task: Task) => void;
   onShowDetails?: (task: Task) => void;
   actionDisabled?: boolean;
 }
-
-const dotVariantMap: Record<string, 'running' | 'pending' | 'idle' | 'error'> = {
-  idle: 'idle',
-  running: 'running',
-  pending: 'pending',
-  completed: 'idle',
-  error: 'error',
-  terminated: 'error',
-};
-
-const badgeVariantMap: Record<string, 'green' | 'yellow' | 'blue' | 'red'> = {
-  idle: 'blue',
-  running: 'green',
-  pending: 'yellow',
-  completed: 'blue',
-  error: 'red',
-  terminated: 'red',
-};
 
 const badgeLabelMap: Record<string, string> = {
   idle: TASK_STATUS_LABELS.idle,
@@ -37,7 +22,14 @@ const badgeLabelMap: Record<string, string> = {
   terminated: TASK_STATUS_LABELS.terminated,
 };
 
-export function TaskCard({ task, onTerminate, onRun, onShowDetails, actionDisabled = false }: TaskCardProps) {
+export function TaskCard({
+  task,
+  onTerminate,
+  onRun,
+  onToggleEnabled,
+  onShowDetails,
+  actionDisabled = false,
+}: TaskCardProps) {
   const isPending = task.status === 'pending';
   const isError = task.status === 'error';
   const isCompleted = task.status === 'completed';
@@ -46,28 +38,33 @@ export function TaskCard({ task, onTerminate, onRun, onShowDetails, actionDisabl
   const isTerminated = task.status === 'terminated';
   const canTerminate = isRunning || isPending;
   const canRun = !canTerminate && task.enabled;
+  const canToggleEnabled = canToggleTaskEnabled(task);
   const runLabel = isIdle ? TASK_STATE_LABELS.runNow : TASK_LABELS.restart;
   const description = task.errorMessage || task.description || TASK_STATE_LABELS.noDescription;
   const latestRunText = task.latestRun
     ? TASK_STATE_LABELS.latestRun(task.latestRun.id)
     : TASK_STATE_LABELS.noRuns;
-  const scheduleText = task.cron ? `Cron: ${task.cron}` : TASK_STATE_LABELS.manualTrigger;
+  const scheduleText = formatTaskSchedule(task);
+  const displayStatus = getTaskDisplayStatus(task);
 
   let cardClassName = '';
   if (isPending) cardClassName += ' border border-[#FACC15]/25 bg-[#FACC15]/[0.04]';
   if (isError || isTerminated) cardClassName += ' border border-[#F87171]/20 bg-[#F87171]/[0.03]';
-  if (isCompleted) cardClassName += ' opacity-80';
+  if (isCompleted && !canToggleEnabled) cardClassName += ' opacity-80';
 
   return (
     <PanelCard className={cardClassName.trim()}>
       <div className="grid gap-5 md:grid-cols-[minmax(0,1fr)_auto] md:gap-6 lg:grid-cols-[minmax(0,1fr)_auto_auto] lg:items-center">
         <div className="min-w-0">
           <div className="mb-2 flex flex-wrap items-center gap-2">
-            <StatusDot variant={dotVariantMap[task.status] ?? 'idle'} />
-            <Badge variant={badgeVariantMap[task.status] ?? 'blue'}>
-              {badgeLabelMap[task.status] ?? task.status}
+            <StatusDot variant={displayStatus.dotVariant} />
+            <Badge variant={displayStatus.badgeVariant}>
+              {displayStatus.label}
             </Badge>
-            {!task.enabled ? <Badge variant="red">{TASK_STATE_LABELS.disabled}</Badge> : null}
+            {!task.enabled && !canToggleEnabled ? <Badge variant="red">{TASK_STATE_LABELS.disabled}</Badge> : null}
+            {canToggleEnabled && task.enabled && task.status !== 'pending' && task.status !== 'running' ? (
+              <Badge variant="blue">最近一次: {badgeLabelMap[task.status] ?? task.status}</Badge>
+            ) : null}
             <span className="text-[10px] font-display uppercase tracking-widest text-[#8A8A8E]">
               {task.typeLabel}
             </span>
@@ -110,6 +107,16 @@ export function TaskCard({ task, onTerminate, onRun, onShowDetails, actionDisabl
               disabled={actionDisabled || !task.latestRun}
             >
               {TASK_LABELS.stop}
+            </Button>
+          ) : null}
+          {canToggleEnabled ? (
+            <Button
+              variant={task.enabled ? 'warning' : 'success'}
+              size="sm"
+              onClick={() => onToggleEnabled?.(task)}
+              disabled={actionDisabled}
+            >
+              {task.enabled ? '停用' : '启用'}
             </Button>
           ) : null}
           {canRun ? (

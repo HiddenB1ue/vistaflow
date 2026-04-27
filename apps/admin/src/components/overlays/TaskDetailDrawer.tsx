@@ -7,6 +7,10 @@ import {
   DrawerFooter,
   DrawerHeader,
   DrawerShell,
+  ModalBody,
+  ModalFooter,
+  ModalHeader,
+  ModalShell,
   PanelCard,
 } from '@vistaflow/ui';
 import {
@@ -19,11 +23,14 @@ import {
 } from '@/constants/labels';
 import { fetchTask, fetchTaskRunLogs, fetchTaskRuns } from '@/services/taskService';
 import type { TaskRunLog } from '@/types/task';
+import { formatTaskSchedule } from '@/utils/taskSchedule';
 
 interface TaskDetailDrawerProps {
   isOpen: boolean;
   taskId: number | null;
   onClose: () => void;
+  onDelete?: (taskId: number) => void;
+  deleteDisabled?: boolean;
 }
 
 function formatDateTime(value?: string | null): string {
@@ -111,8 +118,15 @@ function severityVariant(severity: TaskRunLog['severity']): 'green' | 'yellow' |
 
 
 
-export function TaskDetailDrawer({ isOpen, taskId, onClose }: TaskDetailDrawerProps) {
+export function TaskDetailDrawer({
+  isOpen,
+  taskId,
+  onClose,
+  onDelete,
+  deleteDisabled = false,
+}: TaskDetailDrawerProps) {
   const [selectedRunId, setSelectedRunId] = useState<number | null>(null);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
 
   const { data: task, isLoading: taskLoading } = useQuery({
     queryKey: ['admin', 'task', taskId],
@@ -162,17 +176,24 @@ export function TaskDetailDrawer({ isOpen, taskId, onClose }: TaskDetailDrawerPr
     enabled: isOpen && selectedRunId !== null,
   });
 
-  return (
-    <DrawerShell open={isOpen}>
-      <DrawerHeader
-        eyebrow={TASK_DETAIL_LABELS.eyebrow}
-        title={task?.name ?? TASK_LABELS.details}
-        subtitle={task ? TASK_DETAIL_LABELS.subtitle(task.typeLabel) : ''}
-        onClose={onClose}
-        closeLabel={COMMON_LABELS.close}
-      />
+  useEffect(() => {
+    if (!isOpen) {
+      setDeleteConfirmOpen(false);
+    }
+  }, [isOpen]);
 
-      <DrawerBody>
+  return (
+    <>
+      <DrawerShell open={isOpen}>
+        <DrawerHeader
+          eyebrow={TASK_DETAIL_LABELS.eyebrow}
+          title={task?.name ?? TASK_LABELS.details}
+          subtitle={task ? TASK_DETAIL_LABELS.subtitle(task.typeLabel) : ''}
+          onClose={onClose}
+          closeLabel={COMMON_LABELS.close}
+        />
+
+        <DrawerBody>
         {taskLoading && !task ? (
           <div className="vf-drawer-meta">{TASK_DETAIL_LABELS.loadingTask}</div>
         ) : null}
@@ -193,7 +214,7 @@ export function TaskDetailDrawer({ isOpen, taskId, onClose }: TaskDetailDrawerPr
                   </div>
                   <div>
                     <div className="vf-drawer-label">{TASK_DETAIL_LABELS.cron}</div>
-                    <div className="vf-drawer-meta mt-2">{task.cron || TASK_STATE_LABELS.manualTrigger}</div>
+                    <div className="vf-drawer-meta mt-2">{formatTaskSchedule(task)}</div>
                   </div>
                   <div>
                     <div className="vf-drawer-label">{TASK_DETAIL_LABELS.enabled}</div>
@@ -288,13 +309,55 @@ export function TaskDetailDrawer({ isOpen, taskId, onClose }: TaskDetailDrawerPr
             </section>
           </>
         ) : null}
-      </DrawerBody>
+        </DrawerBody>
 
-      <DrawerFooter>
-        <Button variant="outline" onClick={onClose}>
-          {COMMON_LABELS.close}
-        </Button>
-      </DrawerFooter>
-    </DrawerShell>
+        <DrawerFooter align="between">
+          <Button
+            variant="danger"
+            onClick={() => setDeleteConfirmOpen(true)}
+            disabled={!task || deleteDisabled}
+          >
+            删除任务
+          </Button>
+          <Button variant="outline" onClick={onClose}>
+            {COMMON_LABELS.close}
+          </Button>
+        </DrawerFooter>
+      </DrawerShell>
+
+      <ModalShell
+        open={deleteConfirmOpen}
+        size="sm"
+        onBackdropClick={() => setDeleteConfirmOpen(false)}
+      >
+        <ModalHeader
+          title="删除任务"
+          subtitle={task ? `确认删除“${task.name}”？历史执行记录也会随任务移除。` : ''}
+          onClose={() => setDeleteConfirmOpen(false)}
+          closeLabel={COMMON_LABELS.close}
+        />
+        <ModalBody>
+          <div className="text-sm text-muted">
+            如果任务正在排队或运行中，后端会拒绝删除。需要关闭循环调度时，请优先在列表中停用任务。
+          </div>
+        </ModalBody>
+        <ModalFooter>
+          <Button variant="outline" onClick={() => setDeleteConfirmOpen(false)} disabled={deleteDisabled}>
+            {COMMON_LABELS.cancel}
+          </Button>
+          <Button
+            variant="danger"
+            onClick={() => {
+              if (task) {
+                onDelete?.(task.id);
+              }
+            }}
+            disabled={!task || deleteDisabled}
+          >
+            删除任务
+          </Button>
+        </ModalFooter>
+      </ModalShell>
+    </>
   );
 }

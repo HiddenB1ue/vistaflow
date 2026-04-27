@@ -72,6 +72,17 @@ export interface TaskCreateRequest {
   payload?: Record<string, unknown>;
 }
 
+export interface TaskUpdateRequest {
+  name?: string;
+  type?: string;
+  description?: string | null;
+  enabled?: boolean;
+  scheduleMode?: TaskScheduleMode;
+  cron?: string | null;
+  runAt?: string | null;
+  payload?: Record<string, unknown>;
+}
+
 export interface TaskRun {
   id: number;
   taskId: number;

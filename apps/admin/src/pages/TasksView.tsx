@@ -8,7 +8,7 @@ import {
   TOAST_MESSAGES,
 } from '@/constants/labels';
 import { TaskCard } from '@/components/ui/TaskCard';
-import { triggerTask, terminateTaskRun, extractApiErrorMessage, fetchTasks } from '@/services/taskService';
+import { triggerTask, terminateTaskRun, extractApiErrorMessage, fetchTasks, updateTask } from '@/services/taskService';
 import { useDrawerStore } from '@/stores/drawerStore';
 import { useToastStore } from '@/stores/toastStore';
 import { usePaginationFooter } from '@/utils/pagination';
@@ -88,6 +88,18 @@ export default function TasksView() {
     },
   });
 
+  const toggleTaskEnabledMutation = useMutation({
+    mutationFn: (task: Task) => updateTask(task.id, { enabled: !task.enabled }),
+    onSuccess: async (updatedTask) => {
+      await queryClient.invalidateQueries({ queryKey: ['admin', 'tasks'] });
+      await queryClient.invalidateQueries({ queryKey: ['admin', 'task', updatedTask.id] });
+      addToast(updatedTask.enabled ? '任务已启用' : '任务已停用，后续自动调度已关闭', 'success');
+    },
+    onError: (error: unknown) => {
+      addToast(extractApiErrorMessage(error), 'error');
+    },
+  });
+
   const tasks = tasksQuery.data?.items ?? [];
   const runningCount = tasks.filter((task) => task.status === 'running').length;
   const pendingCount = tasks.filter((task) => task.status === 'pending').length;
@@ -97,7 +109,9 @@ export default function TasksView() {
     ? runTaskMutation.variables.id
     : terminateTaskMutation.isPending
       ? terminateTaskMutation.variables.id
-      : null;
+      : toggleTaskEnabledMutation.isPending
+        ? toggleTaskEnabledMutation.variables.id
+        : null;
 
   const handleSearchChange = (value: string) => {
     setQuery((q) => ({ ...q, keyword: value, page: 1 }));
@@ -180,6 +194,7 @@ export default function TasksView() {
               task={task}
               onTerminate={(selectedTask) => terminateTaskMutation.mutate(selectedTask)}
               onRun={(selectedTask) => runTaskMutation.mutate(selectedTask)}
+              onToggleEnabled={(selectedTask) => toggleTaskEnabledMutation.mutate(selectedTask)}
               onShowDetails={(selectedTask) => openTaskDetailDrawer(selectedTask.id)}
               actionDisabled={busyTaskId === task.id}
             />

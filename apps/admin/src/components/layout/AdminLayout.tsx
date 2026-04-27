@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Outlet, useLocation } from 'react-router-dom';
 import { AuraBackground, DrawerBackdrop, ErrorBoundary, NoiseTexture, ToastContainer } from '@vistaflow/ui';
 import { TaskDetailDrawer } from '@/components/overlays/TaskDetailDrawer';
 import { TaskDrawer } from '@/components/overlays/TaskDrawer';
 import { ROUTE_META_LABELS, TOAST_MESSAGES } from '@/constants/labels';
-import { fetchTasks } from '@/services/taskService';
+import { deleteTask, extractApiErrorMessage, fetchTasks } from '@/services/taskService';
 import { useDrawerStore } from '@/stores/drawerStore';
 import { useTaskStore } from '@/stores/taskStore';
 import { useToastStore } from '@/stores/toastStore';
@@ -61,6 +61,21 @@ export function AdminLayout() {
   const { data: taskData, refetch: refetchTasks } = useQuery({
     queryKey: ['admin', 'tasks', 'sidebar'],
     queryFn: () => fetchTasks(SIDEBAR_TASK_QUERY),
+  });
+
+  const deleteTaskMutation = useMutation({
+    mutationFn: (taskId: number) => deleteTask(taskId),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['admin', 'tasks'] });
+      await queryClient.invalidateQueries({ queryKey: ['admin', 'task', taskDetailDrawerTaskId] });
+      await queryClient.invalidateQueries({ queryKey: ['admin', 'task-runs', taskDetailDrawerTaskId] });
+      await refetchTasks();
+      closeTaskDetailDrawer();
+      addToast('任务已删除', 'success');
+    },
+    onError: (error: unknown) => {
+      addToast(extractApiErrorMessage(error), 'error');
+    },
   });
 
   useEffect(() => {
@@ -137,6 +152,8 @@ export function AdminLayout() {
         isOpen={taskDetailDrawerOpen}
         taskId={taskDetailDrawerTaskId}
         onClose={closeTaskDetailDrawer}
+        onDelete={(taskId) => deleteTaskMutation.mutate(taskId)}
+        deleteDisabled={deleteTaskMutation.isPending}
       />
 
       <div className="flex h-screen overflow-hidden text-starlight">

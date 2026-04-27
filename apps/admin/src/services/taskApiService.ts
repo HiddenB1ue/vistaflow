@@ -1,5 +1,5 @@
 import { apiClient } from './api';
-import type { Task, TaskCreateRequest, TaskRun, TaskRunLog, TaskTypeDefinition } from '@/types/task';
+import type { Task, TaskCreateRequest, TaskRun, TaskRunLog, TaskTypeDefinition, TaskUpdateRequest } from '@/types/task';
 import type { PaginatedResponse, TaskListQuery } from '@/types/pagination';
 
 export async function fetchTasks(query: TaskListQuery): Promise<PaginatedResponse<Task>> {
@@ -27,6 +27,15 @@ export async function fetchTaskTypes(): Promise<TaskTypeDefinition[]> {
 export async function createTask(payload: TaskCreateRequest): Promise<Task> {
   const { data } = await apiClient.post<{ data: Task }>('/admin/tasks', payload);
   return data.data;
+}
+
+export async function updateTask(taskId: number, payload: TaskUpdateRequest): Promise<Task> {
+  const { data } = await apiClient.patch<{ data: Task }>(`/admin/tasks/${taskId}`, payload);
+  return data.data;
+}
+
+export async function deleteTask(taskId: number): Promise<void> {
+  await apiClient.delete(`/admin/tasks/${taskId}`);
 }
 
 export async function triggerTask(taskId: number): Promise<TaskRun> {

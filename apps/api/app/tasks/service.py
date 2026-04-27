@@ -115,7 +115,7 @@ class TaskService:
     async def update_task(self, task_id: int, payload: TaskUpdateRequest) -> TaskResponse:
         existing = await self._require_task(task_id)
         active = await self._run_repo.find_active_by_task(task_id)
-        if active is not None:
+        if active is not None and not self._is_enabled_only_update(payload):
             raise TaskUpdateConflict(task_id)
 
         task_type = payload.type or existing.type
@@ -141,6 +141,9 @@ class TaskService:
             cron=cron_value,
             run_at=run_at_value,
         )
+        enabled = payload.enabled if payload.enabled is not None else existing.enabled
+        if not enabled:
+            next_run_at = None
 
         updated = await self._task_repo.update_task(
             task_id,
@@ -150,7 +153,7 @@ class TaskService:
             description=(
                 payload.description if payload.description is not None else existing.description
             ),
-            enabled=payload.enabled if payload.enabled is not None else existing.enabled,
+            enabled=enabled,
             schedule_mode=schedule_mode,
             cron=cron,
             next_run_at=next_run_at,
@@ -321,6 +324,10 @@ class TaskService:
         if existing_mode in {"manual", "once", "cron"}:
             return existing_mode  # type: ignore[return-value]
         return "cron" if existing.cron is not None else "manual"
+
+    @staticmethod
+    def _is_enabled_only_update(payload: TaskUpdateRequest) -> bool:
+        return payload.model_fields_set == {"enabled"}
 
     @staticmethod
     def _normalize_schedule_for_definition(

@@ -1,5 +1,5 @@
 import { TASK_STATUS_LABELS } from '@/constants/labels';
-import type { Task, TaskCreateRequest, TaskRun, TaskRunLog, TaskTypeDefinition } from '@/types/task';
+import type { Task, TaskCreateRequest, TaskRun, TaskRunLog, TaskTypeDefinition, TaskUpdateRequest } from '@/types/task';
 import type { PaginatedResponse, TaskListQuery } from '@/types/pagination';
 import { MOCK_TASKS, MOCK_TASK_TYPES } from './tasks.mock';
 
@@ -188,6 +188,44 @@ export async function createTask(payload: TaskCreateRequest): Promise<Task> {
   };
   mockTasksState = [createdTask, ...mockTasksState];
   return cloneTask(createdTask);
+}
+
+export async function updateTask(taskId: number, payload: TaskUpdateRequest): Promise<Task> {
+  await sleep(200);
+  const task = mockTasksState.find((candidate) => candidate.id === taskId);
+  if (!task) {
+    throw new Error('任务不存在');
+  }
+
+  const taskType = payload.type ? findTaskType(payload.type) : undefined;
+  const updatedTask: Task = {
+    ...task,
+    name: payload.name ?? task.name,
+    type: payload.type ?? task.type,
+    typeLabel: taskType?.label ?? task.typeLabel,
+    description: payload.description !== undefined ? payload.description : task.description,
+    enabled: payload.enabled ?? task.enabled,
+    scheduleMode: payload.scheduleMode ?? task.scheduleMode,
+    cron: payload.cron !== undefined ? payload.cron : task.cron,
+    runAt: payload.runAt !== undefined ? payload.runAt : task.runAt,
+    nextRunAt: payload.runAt !== undefined ? payload.runAt : task.nextRunAt,
+    payload: payload.payload ? { ...payload.payload } : { ...task.payload },
+  };
+
+  mockTasksState = mockTasksState.map((candidate) => (candidate.id === taskId ? updatedTask : candidate));
+  return cloneTask(updatedTask);
+}
+
+export async function deleteTask(taskId: number): Promise<void> {
+  await sleep(200);
+  const task = mockTasksState.find((candidate) => candidate.id === taskId);
+  if (!task) {
+    throw new Error('任务不存在');
+  }
+  if (task.status === 'pending' || task.status === 'running') {
+    throw new Error('任务正在运行中，不能删除');
+  }
+  mockTasksState = mockTasksState.filter((candidate) => candidate.id !== taskId);
 }
 
 export async function triggerTask(taskId: number): Promise<TaskRun> {

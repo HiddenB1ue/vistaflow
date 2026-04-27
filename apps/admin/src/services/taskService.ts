@@ -1,5 +1,5 @@
 import { TASK_FEEDBACK_LABELS } from '@/constants/labels';
-import type { Task, TaskCreateRequest, TaskRun, TaskRunLog, TaskTypeDefinition } from '@/types/task';
+import type { Task, TaskCreateRequest, TaskRun, TaskRunLog, TaskTypeDefinition, TaskUpdateRequest } from '@/types/task';
 import type { PaginatedResponse, TaskListQuery } from '@/types/pagination';
 import * as taskApiService from './taskApiService';
 import * as taskMockService from './mock/taskMockService';
@@ -46,6 +46,14 @@ export async function fetchTaskTypes(): Promise<TaskTypeDefinition[]> {
 
 export async function createTask(payload: TaskCreateRequest): Promise<Task> {
   return taskServiceImpl.createTask(payload);
+}
+
+export async function updateTask(taskId: number, payload: TaskUpdateRequest): Promise<Task> {
+  return taskServiceImpl.updateTask(taskId, payload);
+}
+
+export async function deleteTask(taskId: number): Promise<void> {
+  return taskServiceImpl.deleteTask(taskId);
 }
 
 export async function triggerTask(taskId: number): Promise<TaskRun> {

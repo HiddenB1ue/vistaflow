@@ -40,6 +40,9 @@ def make_task(
     type_label: str = "站点主数据同步",
     enabled: bool = True,
     status: str = "idle",
+    schedule_mode: str = "manual",
+    cron: str | None = None,
+    next_run_at: datetime | None = None,
     payload: dict[str, object] | None = None,
 ) -> TaskDefinition:
     return TaskDefinition(
@@ -49,8 +52,8 @@ def make_task(
         type_label=type_label,
         description="同步站点",
         enabled=enabled,
-        schedule_mode="manual",
-        cron=None,
+        schedule_mode=schedule_mode,
+        cron=cron,
         payload=payload or {},
         status=status,
         latest_run_id=None,
@@ -66,6 +69,7 @@ def make_task(
         error_message=None,
         created_at=NOW,
         updated_at=NOW,
+        next_run_at=next_run_at,
     )
 
 
@@ -378,6 +382,31 @@ async def test_update_task_rejects_active_run(
 
 
 @pytest.mark.asyncio
+async def test_update_task_allows_enabled_toggle_with_active_run(
+    service: tuple[TaskService, AsyncMock, AsyncMock, AsyncMock],
+) -> None:
+    task_service, task_repo, run_repo, _ = service
+    task_repo.find_by_id.return_value = make_task(
+        schedule_mode="cron",
+        cron="*/15 * * * *",
+        next_run_at=NOW + timedelta(minutes=15),
+    )
+    task_repo.find_by_name.return_value = None
+    task_repo.update_task.return_value = make_task(
+        enabled=False,
+        schedule_mode="cron",
+        cron="*/15 * * * *",
+    )
+    run_repo.find_active_by_task.return_value = make_run(status="running")
+
+    await task_service.update_task(1, TaskUpdateRequest(enabled=False))
+
+    assert task_repo.update_task.await_args.kwargs["enabled"] is False
+    assert task_repo.update_task.await_args.kwargs["schedule_mode"] == "cron"
+    assert task_repo.update_task.await_args.kwargs["cron"] == "*/15 * * * *"
+
+
+@pytest.mark.asyncio
 async def test_update_railway_task_normalizes_payload(
     service: tuple[TaskService, AsyncMock, AsyncMock, AsyncMock],
 ) -> None:
@@ -442,6 +471,33 @@ async def test_update_task_can_clear_existing_cron(
 
     assert task_repo.update_task.await_args.kwargs["cron"] is None
     assert task_repo.update_task.await_args.kwargs["next_run_at"] is None
+
+
+@pytest.mark.asyncio
+async def test_update_task_reenabling_cron_recomputes_next_run_at(
+    service: tuple[TaskService, AsyncMock, AsyncMock, AsyncMock],
+) -> None:
+    task_service, task_repo, run_repo, _ = service
+    task_repo.find_by_id.return_value = make_task(
+        enabled=False,
+        schedule_mode="cron",
+        cron="*/15 * * * *",
+        next_run_at=None,
+    )
+    task_repo.find_by_name.return_value = None
+    task_repo.update_task.return_value = make_task(
+        enabled=True,
+        schedule_mode="cron",
+        cron="*/15 * * * *",
+    )
+    run_repo.find_active_by_task.return_value = None
+
+    await task_service.update_task(1, TaskUpdateRequest(enabled=True))
+
+    assert task_repo.update_task.await_args.kwargs["enabled"] is True
+    assert task_repo.update_task.await_args.kwargs["schedule_mode"] == "cron"
+    assert task_repo.update_task.await_args.kwargs["cron"] == "*/15 * * * *"
+    assert task_repo.update_task.await_args.kwargs["next_run_at"] is not None
 
 
 @pytest.mark.asyncio
