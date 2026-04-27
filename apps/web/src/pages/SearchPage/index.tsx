@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type RefObject } from 'react';
+import { useRef, useState, type RefObject } from 'react';
 import {
   AuraBackground,
   ContentSection,
@@ -26,7 +26,7 @@ export function SearchPage() {
   const setViewResult = useRouteStore((state) => state.setViewResult);
   const setSortMode = useRouteStore((state) => state.setSortMode);
   const { greetingRef, headlineRef, formRef, btnRef } = useSearchReveal();
-  const { navigateTo, revealPage } = usePageTransition();
+  const { navigateTo } = usePageTransition();
   const greeting = useTimeGreeting();
   const {
     isSearchFilterOpen,
@@ -41,10 +41,6 @@ export function SearchPage() {
   const [originError, setOriginError] = useState<string>('');
   const [destinationError, setDestinationError] = useState<string>('');
   const [isSubmitting, setIsSubmitting] = useState(false);
-
-  useEffect(() => {
-    revealPage();
-  }, [revealPage]);
 
   const handleSearch = async () => {
     setOriginError('');
@@ -136,26 +132,18 @@ export function SearchPage() {
               type="button"
               onClick={handleSearch}
               disabled={isSubmitting}
-              className="group relative cursor-pointer overflow-hidden rounded-full bg-starlight px-12 py-5 text-sm font-medium uppercase tracking-[0.2em] text-void transition-colors"
+              className={`group relative overflow-hidden rounded-full bg-starlight px-12 py-5 text-sm font-medium uppercase tracking-[0.2em] text-void transition-colors ${
+                isSubmitting ? 'cursor-default' : 'cursor-pointer'
+              }`}
             >
-              <span className="relative z-10 flex items-center gap-3">
+              <span className="relative z-10 flex items-center">
                 {isSubmitting ? '生成中...' : SEARCH_LABELS.submitButton}
-                <svg
-                  className="h-4 w-4"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                  aria-hidden="true"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M17 8l4 4m0 0l-4 4m4-4H3"
-                  />
-                </svg>
               </span>
-              <div className="time-theme-bg absolute inset-0 translate-y-full transition-transform duration-500 group-hover:translate-y-0" />
+              <div
+                className={`time-theme-bg absolute inset-0 transition-transform duration-500 ${
+                  isSubmitting ? 'translate-y-0' : 'translate-y-full group-hover:translate-y-0'
+                }`}
+              />
             </button>
           </div>
         </ContentSection>

@@ -33,7 +33,7 @@ def client(monkeypatch: pytest.MonkeyPatch) -> Generator[TestClient, None, None]
         "app.main.get_settings",
         lambda: SimpleNamespace(
             database_url="postgresql://test",
-            ticket_12306_cookie="",
+            ticket_12306_enabled=False,
             amap_api_key="",
             app_env="test",
             app_version="test",

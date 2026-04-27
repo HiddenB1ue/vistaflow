@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+from datetime import date
 from typing import Any
 
 import httpx
@@ -20,7 +21,6 @@ from app.system.settings_provider import SystemSettingsDataError, SystemSettings
 
 @dataclass(frozen=True)
 class TicketClientConfig:
-    cookie: str = ""
     timeout_seconds: float = 20.0
 
 
@@ -39,9 +39,51 @@ class AbstractTicketClient(ABC):
 
     @abstractmethod
     async def fetch_leg(
-        self, run_date: str, from_telecode: str, to_telecode: str
+        self,
+        run_date: str,
+        from_station: str,
+        to_station: str,
+        from_telecode: str,
+        to_telecode: str,
     ) -> dict[str, Any]:
         """Query a single leg and return raw row data keyed by train_no and station_train_code."""
+
+
+def _escape_station_name(name: str) -> str:
+    escaped = []
+    for ch in name.strip():
+        codepoint = ord(ch)
+        if codepoint > 0x7F:
+            escaped.append(f"%u{codepoint:04X}")
+        else:
+            escaped.append(ch)
+    return "".join(escaped)
+
+
+def build_minimal_ticket_cookie(
+    *,
+    run_date: str,
+    from_station: str,
+    from_telecode: str,
+    to_station: str,
+    to_telecode: str,
+) -> str:
+    try:
+        today = date.today().isoformat()
+    except Exception:
+        today = run_date
+
+    cookie_items = [
+        f"_jc_save_fromStation={_escape_station_name(from_station)}%2C{from_telecode}",
+        f"_jc_save_toStation={_escape_station_name(to_station)}%2C{to_telecode}",
+        "_jc_save_wfdc_flag=dc",
+        f"_jc_save_fromDate={run_date}",
+        f"_jc_save_toDate={today}",
+        "guidesStatus=off",
+        "highContrastMode=defaltMode",
+        "cursorStatus=off",
+    ]
+    return "; ".join(cookie_items)
 
 
 class Live12306TicketClient(AbstractTicketClient):
@@ -52,10 +94,21 @@ class Live12306TicketClient(AbstractTicketClient):
         self._http = http_client
 
     async def fetch_leg(
-        self, run_date: str, from_telecode: str, to_telecode: str
+        self,
+        run_date: str,
+        from_station: str,
+        to_station: str,
+        from_telecode: str,
+        to_telecode: str,
     ) -> dict[str, Any]:
         """Query a single leg and return raw row data keyed by train_no and station_train_code."""
-        return await self._query_leg(run_date, from_telecode, to_telecode)
+        return await self._query_leg(
+            run_date,
+            from_station,
+            to_station,
+            from_telecode,
+            to_telecode,
+        )
 
     async def fetch_tickets(
         self,
@@ -74,7 +127,13 @@ class Live12306TicketClient(AbstractTicketClient):
             if not from_code or not to_code:
                 leg_cache[leg] = {}
                 continue
-            leg_cache[leg] = await self.fetch_leg(run_date, from_code, to_code)
+            leg_cache[leg] = await self.fetch_leg(
+                run_date,
+                from_station,
+                to_station,
+                from_code,
+                to_code,
+            )
 
         result: dict[SeatLookupKey, TicketSegmentData] = {}
         for train_no, from_station, to_station in sorted(segments):
@@ -106,6 +165,8 @@ class Live12306TicketClient(AbstractTicketClient):
     async def _query_leg(
         self,
         run_date: str,
+        from_station: str,
+        to_station: str,
         from_telecode: str,
         to_telecode: str,
     ) -> dict[str, Any]:
@@ -116,8 +177,13 @@ class Live12306TicketClient(AbstractTicketClient):
             "purpose_codes": "ADULT",
         }
         headers = dict(BASE_HEADERS)
-        if self._config.cookie.strip():
-            headers["Cookie"] = self._config.cookie.strip()
+        headers["Cookie"] = build_minimal_ticket_cookie(
+            run_date=run_date,
+            from_station=from_station,
+            from_telecode=from_telecode,
+            to_station=to_station,
+            to_telecode=to_telecode,
+        )
 
         try:
             resp = await self._http.get(
@@ -158,14 +224,14 @@ async def build_ticket_client(
     http_client: httpx.AsyncClient,
 ) -> AbstractTicketClient | None:
     try:
-        cookie = await settings_provider.get_optional_string("ticket_12306_cookie")
+        enabled = await settings_provider.get_bool("ticket_12306_enabled")
     except SystemSettingsDataError:
         return None
 
-    if not cookie.strip():
+    if not enabled:
         return None
 
     return Live12306TicketClient(
-        config=TicketClientConfig(cookie=cookie),
+        config=TicketClientConfig(),
         http_client=http_client,
     )

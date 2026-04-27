@@ -212,7 +212,13 @@ class TestPrefetchAllPrices:
         mock_client = AsyncMock()
 
         # Use side_effect function to control which leg fails based on args
-        async def _fetch_leg(run_date: str, from_code: str, to_code: str) -> dict[str, Any]:
+        async def _fetch_leg(
+            run_date: str,
+            from_station: str,
+            to_station: str,
+            from_code: str,
+            to_code: str,
+        ) -> dict[str, Any]:
             if to_code == "SHH":
                 return _make_fetch_leg_rows("T1", "G1")
             raise Exception("network error")

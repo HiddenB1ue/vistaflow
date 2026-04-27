@@ -155,8 +155,13 @@ class Ticket12306Service:
             ) -> tuple[tuple[str, str], dict[str, Any]]:
                 async with semaphore:
                     try:
+                        from_station, to_station = leg_key
                         return leg_key, await self._ticket_client.fetch_leg(  # type: ignore[union-attr]
-                            run_date, from_code, to_code
+                            run_date,
+                            from_station,
+                            to_station,
+                            from_code,
+                            to_code,
                         )
                     except Exception as exc:
                         logger.warning(

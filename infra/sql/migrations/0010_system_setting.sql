@@ -39,7 +39,7 @@ VALUES
     ('amap_retry_delay_seconds', '1.0', 'float', 'amap', '高德基础重试间隔', '高德限流后的基础重试间隔，单位秒。', TRUE),
     ('amap_min_interval_seconds', '0.35', 'float', 'amap', '高德最小请求间隔', '两次高德请求之间的最小间隔，单位秒。', TRUE),
     ('amap_rate_limit_cooldown_seconds', '3.0', 'float', 'amap', '高德限流冷却时间', '高德明确限流后的冷却等待时间，单位秒。', TRUE),
-    ('ticket_12306_cookie', '', 'string', 'ticket_12306', '12306 Cookie', '票价与余票查询使用的浏览器 Cookie。留空表示未配置。', TRUE),
+    ('ticket_12306_enabled', 'false', 'bool', 'system', '12306 票价查询', '控制是否启用 12306 实时票价与余票查询。', TRUE),
     ('geo_enrich_enabled', 'false', 'bool', 'task', '坐标补全开关', '是否允许自动执行站点坐标补全流程。', TRUE),
     ('auto_crawl_enabled', 'false', 'bool', 'task', '自动抓取开关', '是否允许按计划自动执行抓取任务。', TRUE),
     ('price_sync_enabled', 'false', 'bool', 'task', '票价同步开关', '是否启用票价与余票增强链路。', TRUE),

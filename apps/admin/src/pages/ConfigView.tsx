@@ -215,15 +215,26 @@ export default function ConfigView() {
                 <div className="min-w-0 flex-1">
                   <div className="text-sm text-starlight">{setting.label}</div>
                   <div className="mt-0.5 text-xs text-muted">{setting.description}</div>
-                  <div className="mt-3 text-[11px] uppercase tracking-[0.24em] text-muted/60">
-                    {CONFIG_LABELS.settingValue}
-                  </div>
-                  <InputBox
-                    className="mt-2 w-full font-mono text-sm"
-                    value={String(draft.value ?? '')}
-                    placeholder={CONFIG_LABELS.emptyValueHint}
-                    onChange={(event) => updateDraftValue(setting, event.target.value)}
-                  />
+                  {setting.valueType === 'bool' ? (
+                    <div className="mt-4">
+                      <ToggleSwitch
+                        checked={Boolean(draft.value)}
+                        onChange={(value) => updateDraftValue(setting, value)}
+                      />
+                    </div>
+                  ) : (
+                    <>
+                      <div className="mt-3 text-[11px] uppercase tracking-[0.24em] text-muted/60">
+                        {CONFIG_LABELS.settingValue}
+                      </div>
+                      <InputBox
+                        className="mt-2 w-full font-mono text-sm"
+                        value={String(draft.value ?? '')}
+                        placeholder={CONFIG_LABELS.emptyValueHint}
+                        onChange={(event) => updateDraftValue(setting, event.target.value)}
+                      />
+                    </>
+                  )}
                 </div>
               </div>
             );

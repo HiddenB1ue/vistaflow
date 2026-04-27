@@ -1,9 +1,8 @@
 
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { Topbar, TopbarActions, TopbarBrand } from '@vistaflow/ui';
 import { NAVBAR_LABELS } from '@/constants/labels';
 import { useTheme } from '@/hooks/useTheme';
-import { usePageTransition } from '@/hooks/usePageTransition';
 
 interface NavbarProps {
   onFilterOpen?: () => void;
@@ -11,13 +10,13 @@ interface NavbarProps {
 
 export function Navbar({ onFilterOpen }: NavbarProps) {
   const { theme, toggleTheme } = useTheme();
-  const { navigateTo } = usePageTransition();
   const location = useLocation();
+  const navigate = useNavigate();
   const isJourney = location.pathname === '/journey';
 
   return (
     <Topbar blendMode="difference" className="z-50">
-      <TopbarBrand logoSrc="/vistaflow-brand-mark.svg" logoAlt="" onClick={() => navigateTo('/')}>{NAVBAR_LABELS.brand}</TopbarBrand>
+      <TopbarBrand logoSrc="/vistaflow-brand-mark.svg" logoAlt="" onClick={() => navigate('/')}>{NAVBAR_LABELS.brand}</TopbarBrand>
 
       <TopbarActions className="gap-4 md:gap-8">
         {isJourney && (
@@ -28,7 +27,7 @@ export function Navbar({ onFilterOpen }: NavbarProps) {
             <button
               type="button"
               className="cursor-pointer transition-colors hover:text-white"
-              onClick={() => navigateTo('/')}
+              onClick={() => navigate('/')}
             >
               {NAVBAR_LABELS.home}
             </button>
