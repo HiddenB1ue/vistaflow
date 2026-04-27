@@ -36,7 +36,7 @@ export default function LoginView() {
         <div className="login-card">
           <div className="login-header">
             <div className="text-eyebrow-sm" style={{ marginBottom: '8px' }}>ADMIN PORTAL</div>
-            <TopbarBrand type="button" style={{ color: 'var(--color-starlight)' }}>
+            <TopbarBrand type="button" logoSrc="/vistaflow-brand-mark.svg" logoAlt="" style={{ color: 'var(--color-starlight)' }}>
               VistaFlow
             </TopbarBrand>
           </div>

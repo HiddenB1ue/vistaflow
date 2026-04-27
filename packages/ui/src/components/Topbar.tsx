@@ -11,6 +11,8 @@ export interface TopbarProps {
 
 export interface TopbarBrandProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   children: React.ReactNode;
+  logoSrc?: string;
+  logoAlt?: string;
 }
 
 export interface TopbarActionsProps extends React.HTMLAttributes<HTMLDivElement> {
@@ -30,10 +32,18 @@ export function Topbar({
   );
 }
 
-export function TopbarBrand({ children, className = '', type = 'button', ...rest }: TopbarBrandProps) {
+export function TopbarBrand({
+  children,
+  className = '',
+  type = 'button',
+  logoSrc,
+  logoAlt = '',
+  ...rest
+}: TopbarBrandProps) {
   return (
     <button type={type} className={`vf-topbar__brand ${className}`.trim()} {...rest}>
-      {children}
+      {logoSrc ? <img className="vf-topbar__brand-mark" src={logoSrc} alt={logoAlt} /> : null}
+      <span className="vf-topbar__brand-text">{children}</span>
     </button>
   );
 }

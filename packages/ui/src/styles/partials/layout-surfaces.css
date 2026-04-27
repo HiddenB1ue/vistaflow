@@ -44,6 +44,9 @@
 .vf-topbar__brand {
   position: relative;
   z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.625rem;
   border: 0;
   padding: 0;
   background: transparent;
@@ -55,6 +58,16 @@
   letter-spacing: 0.22em;
   text-transform: uppercase;
   color: #fff;
+}
+.vf-topbar__brand-mark {
+  display: block;
+  width: 2rem;
+  height: 2rem;
+  flex: 0 0 2rem;
+  border-radius: 0.4375rem;
+}
+.vf-topbar__brand-text {
+  display: inline-block;
 }
 .vf-topbar__actions {
   position: relative;

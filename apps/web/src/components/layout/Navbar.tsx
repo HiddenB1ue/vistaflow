@@ -17,7 +17,7 @@ export function Navbar({ onFilterOpen }: NavbarProps) {
 
   return (
     <Topbar blendMode="difference" className="z-50">
-      <TopbarBrand onClick={() => navigateTo('/')}>{NAVBAR_LABELS.brand}</TopbarBrand>
+      <TopbarBrand logoSrc="/vistaflow-brand-mark.svg" logoAlt="" onClick={() => navigateTo('/')}>{NAVBAR_LABELS.brand}</TopbarBrand>
 
       <TopbarActions className="gap-4 md:gap-8">
         {isJourney && (
