@@ -72,6 +72,7 @@ cp .env.example .env.development
 ```bash
 cd apps/api
 uv sync
+python -m playwright install chromium
 ```
 
 启动 API：
@@ -84,6 +85,10 @@ uv run uvicorn app.main:app --reload --port 8000
 
 - Swagger：`http://localhost:8000/docs`
 - Health：`http://localhost:8000/healthz`
+
+12306 real-time pricing requires a local Playwright Chromium install.
+If Chromium is missing, the API can still start, but the first 12306 price query
+will fail with an installation hint.
 
 ## Worker
 

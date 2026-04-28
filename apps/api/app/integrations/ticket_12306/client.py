@@ -2,14 +2,14 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from datetime import date
 from typing import Any
 
-import httpx
-
+from app.integrations.ticket_12306.browser_manager import (
+    PlaywrightBrowserManager,
+    PlaywrightUnavailableError,
+)
 from app.integrations.ticket_12306.models import TicketSegmentData
 from app.integrations.ticket_12306.parser import (
-    BASE_HEADERS,
     LEFT_TICKET_QUERY_URL,
     build_seat_infos,
     parse_result_row,
@@ -21,11 +21,11 @@ from app.system.settings_provider import SystemSettingsDataError, SystemSettings
 
 @dataclass(frozen=True)
 class TicketClientConfig:
-    timeout_seconds: float = 20.0
+    timeout_ms: int = 600_000
 
 
 class AbstractTicketClient(ABC):
-    """票价查询客户端抽象基类。"""
+    """12306 票价查询客户端抽象基类。"""
 
     @abstractmethod
     async def fetch_tickets(
@@ -49,49 +49,17 @@ class AbstractTicketClient(ABC):
         """Query a single leg and return raw row data keyed by train_no and station_train_code."""
 
 
-def _escape_station_name(name: str) -> str:
-    escaped = []
-    for ch in name.strip():
-        codepoint = ord(ch)
-        if codepoint > 0x7F:
-            escaped.append(f"%u{codepoint:04X}")
-        else:
-            escaped.append(ch)
-    return "".join(escaped)
+class PlaywrightTicketClient(AbstractTicketClient):
+    """12306 ticket client backed by a shared Playwright Chromium browser."""
 
-
-def build_minimal_ticket_cookie(
-    *,
-    run_date: str,
-    from_station: str,
-    from_telecode: str,
-    to_station: str,
-    to_telecode: str,
-) -> str:
-    try:
-        today = date.today().isoformat()
-    except Exception:
-        today = run_date
-
-    cookie_items = [
-        f"_jc_save_fromStation={_escape_station_name(from_station)}%2C{from_telecode}",
-        f"_jc_save_toStation={_escape_station_name(to_station)}%2C{to_telecode}",
-        "_jc_save_wfdc_flag=dc",
-        f"_jc_save_fromDate={run_date}",
-        f"_jc_save_toDate={today}",
-        "guidesStatus=off",
-        "highContrastMode=defaltMode",
-        "cursorStatus=off",
-    ]
-    return "; ".join(cookie_items)
-
-
-class Live12306TicketClient(AbstractTicketClient):
-    """真实 12306 HTTP 客户端实现（异步）。"""
-
-    def __init__(self, config: TicketClientConfig, http_client: httpx.AsyncClient) -> None:
+    def __init__(
+        self,
+        *,
+        browser_manager: PlaywrightBrowserManager,
+        config: TicketClientConfig,
+    ) -> None:
+        self._browser_manager = browser_manager
         self._config = config
-        self._http = http_client
 
     async def fetch_leg(
         self,
@@ -101,14 +69,89 @@ class Live12306TicketClient(AbstractTicketClient):
         from_telecode: str,
         to_telecode: str,
     ) -> dict[str, Any]:
-        """Query a single leg and return raw row data keyed by train_no and station_train_code."""
-        return await self._query_leg(
-            run_date,
-            from_station,
-            to_station,
-            from_telecode,
-            to_telecode,
+        return await self._browser_manager.run_with_browser(
+            lambda browser: self._fetch_leg_with_browser(
+                browser=browser,
+                run_date=run_date,
+                from_station=from_station,
+                to_station=to_station,
+                from_telecode=from_telecode,
+                to_telecode=to_telecode,
+            )
         )
+
+    async def _fetch_leg_with_browser(
+        self,
+        *,
+        browser: Any,
+        run_date: str,
+        from_station: str,
+        to_station: str,
+        from_telecode: str,
+        to_telecode: str,
+    ) -> dict[str, Any]:
+        context = await browser.new_context(
+            locale="zh-CN",
+            timezone_id="Asia/Shanghai",
+        )
+
+        try:
+            page = await context.new_page()
+            page.set_default_timeout(self._config.timeout_ms)
+            page.set_default_navigation_timeout(self._config.timeout_ms)
+
+            await page.goto(
+                "https://kyfw.12306.cn/otn/leftTicket/init?linktypeid=dc",
+                wait_until="domcontentloaded",
+                timeout=self._config.timeout_ms,
+            )
+            await page.wait_for_load_state("networkidle", timeout=self._config.timeout_ms)
+
+            await page.locator("input#fromStationText").fill(from_station)
+            await page.locator("input#toStationText").fill(to_station)
+            await page.locator("input#train_date").fill(run_date)
+            await page.evaluate(
+                """({fromName, fromCode, toName, toCode, runDate}) => {
+                    const setValue = (id, value) => {
+                        const el = document.getElementById(id);
+                        if (!el) return;
+                        el.value = value;
+                        el.dispatchEvent(new Event("input", { bubbles: true }));
+                        el.dispatchEvent(new Event("change", { bubbles: true }));
+                    };
+                    setValue("fromStationText", fromName);
+                    setValue("fromStation", fromCode);
+                    setValue("toStationText", toName);
+                    setValue("toStation", toCode);
+                    setValue("train_date", runDate);
+                    setValue("back_train_date", runDate);
+                }""",
+                {
+                    "fromName": from_station,
+                    "fromCode": from_telecode,
+                    "toName": to_station,
+                    "toCode": to_telecode,
+                    "runDate": run_date,
+                },
+            )
+
+            try:
+                async with page.expect_response(
+                    lambda response: (
+                        response.request.method == "GET"
+                        and response.url.startswith(LEFT_TICKET_QUERY_URL)
+                    ),
+                    timeout=self._config.timeout_ms,
+                ) as response_info:
+                    await page.locator("#query_ticket").click()
+                response = await response_info.value
+                payload = await response.json()
+            except Exception:
+                return {}
+
+            return self._parse_query_rows(payload)
+        finally:
+            await context.close()
 
     async def fetch_tickets(
         self,
@@ -162,49 +205,17 @@ class Live12306TicketClient(AbstractTicketClient):
 
         return result
 
-    async def _query_leg(
-        self,
-        run_date: str,
-        from_station: str,
-        to_station: str,
-        from_telecode: str,
-        to_telecode: str,
-    ) -> dict[str, Any]:
-        params = {
-            "leftTicketDTO.train_date": run_date,
-            "leftTicketDTO.from_station": from_telecode,
-            "leftTicketDTO.to_station": to_telecode,
-            "purpose_codes": "ADULT",
-        }
-        headers = dict(BASE_HEADERS)
-        headers["Cookie"] = build_minimal_ticket_cookie(
-            run_date=run_date,
-            from_station=from_station,
-            from_telecode=from_telecode,
-            to_station=to_station,
-            to_telecode=to_telecode,
-        )
-
-        try:
-            resp = await self._http.get(
-                LEFT_TICKET_QUERY_URL,
-                params=params,
-                headers=headers,
-                timeout=self._config.timeout_seconds,
-                follow_redirects=False,
-            )
-            if resp.status_code == 302:
-                return {}
-            resp.raise_for_status()
-            payload: dict[str, Any] = resp.json()
-        except Exception:
+    def _parse_query_rows(self, payload: Any) -> dict[str, Any]:
+        if not isinstance(payload, dict) or not payload.get("status"):
             return {}
 
-        if not payload.get("status"):
+        data = payload.get("data")
+        if not isinstance(data, dict):
             return {}
 
-        data = payload.get("data") or {}
-        raw_results: list[str] = data.get("result") or []
+        raw_results = data.get("result")
+        if not isinstance(raw_results, list):
+            return {}
 
         rows: dict[str, Any] = {}
         for raw in raw_results:
@@ -221,7 +232,7 @@ class Live12306TicketClient(AbstractTicketClient):
 
 async def build_ticket_client(
     settings_provider: SystemSettingsProvider,
-    http_client: httpx.AsyncClient,
+    browser_manager: PlaywrightBrowserManager,
 ) -> AbstractTicketClient | None:
     try:
         enabled = await settings_provider.get_bool("ticket_12306_enabled")
@@ -231,7 +242,16 @@ async def build_ticket_client(
     if not enabled:
         return None
 
-    return Live12306TicketClient(
+    return PlaywrightTicketClient(
+        browser_manager=browser_manager,
         config=TicketClientConfig(),
-        http_client=http_client,
     )
+
+
+__all__ = [
+    "AbstractTicketClient",
+    "PlaywrightTicketClient",
+    "PlaywrightUnavailableError",
+    "TicketClientConfig",
+    "build_ticket_client",
+]

@@ -5,10 +5,11 @@ import json
 import logging
 from collections.abc import Iterable
 from dataclasses import asdict
-from typing import Any
+from typing import Any, Literal
 
 from redis.asyncio import Redis
 
+from app.integrations.ticket_12306.browser_manager import PlaywrightUnavailableError
 from app.integrations.ticket_12306.client import AbstractTicketClient
 from app.integrations.ticket_12306.models import TicketSegmentData
 from app.integrations.ticket_12306.parser import build_seat_infos, segment_min_price
@@ -62,7 +63,7 @@ class Ticket12306Service:
         *,
         run_date: str,
         candidates: list[CachedRouteCandidate],
-        max_concurrency: int = 5,
+        max_concurrency: int = 2,
     ) -> dict[str, PriceCacheEntry]:
         """Prefetch ticket prices for all unique legs across all candidates.
 
@@ -100,7 +101,7 @@ class Ticket12306Service:
         # Load cached rows for all segments
         cached_data: dict[tuple[str, str, str], TicketSegmentData] = {}
         cache_key_map: dict[str, tuple[str, str, str]] = {}
-        for seg_key, seg in segment_keys.items():
+        for seg_key, _seg in segment_keys.items():
             redis_key = self._cache_key_for_segment(run_date, seg, telecodes)
             if redis_key:
                 cache_key_map[redis_key] = seg_key
@@ -163,6 +164,8 @@ class Ticket12306Service:
                             from_code,
                             to_code,
                         )
+                    except PlaywrightUnavailableError:
+                        raise
                     except Exception as exc:
                         logger.warning(
                             "Prefetch failed for leg %s→%s: %s",
@@ -237,7 +240,7 @@ class Ticket12306Service:
         all_data.update(fetched_data)
 
         price_map: dict[str, PriceCacheEntry] = {}
-        for seg_key, seg in segment_keys.items():
+        for seg_key, _seg in segment_keys.items():
             train_no, from_station, to_station = seg_key
             map_key = price_map_key(train_no, from_station, to_station)
             ticket = all_data.get(seg_key)
@@ -321,7 +324,9 @@ class Ticket12306Service:
         ticket_map.update(fetched)
         return [self._merge_route_tickets(route, ticket_map) for route in routes]
 
-    def _collect_train_segments(self, routes: Iterable[RouteResponse]) -> list[RouteTrainSegmentResponse]:
+    def _collect_train_segments(
+        self, routes: Iterable[RouteResponse]
+    ) -> list[RouteTrainSegmentResponse]:
         return [
             segment
             for route in routes
@@ -398,7 +403,11 @@ class Ticket12306Service:
             lookup_key = (segment.trainNo, segment.origin.name, segment.destination.name)
             ticket = ticket_map.get(lookup_key)
             if ticket is None:
-                next_segs.append(segment.model_copy(update={"ticketStatus": "unavailable", "seats": []}))
+                next_segs.append(
+                    segment.model_copy(
+                        update={"ticketStatus": "unavailable", "seats": []}
+                    )
+                )
                 statuses.append("unavailable")
                 continue
 
@@ -425,7 +434,9 @@ class Ticket12306Service:
         ]
         return route.model_copy(update={"segs": next_segs, "ticketStatus": "disabled"})
 
-    def _derive_route_status(self, statuses: list[str]) -> Literal["ready", "partial", "unavailable", "disabled"]:
+    def _derive_route_status(
+        self, statuses: list[str]
+    ) -> Literal["ready", "partial", "unavailable", "disabled"]:
         if not statuses:
             return "disabled"
         unique_statuses = set(statuses)

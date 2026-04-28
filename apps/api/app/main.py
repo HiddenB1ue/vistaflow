@@ -16,6 +16,7 @@ from app.config import get_settings
 from app.exceptions import BusinessError
 from app.integrations.crawler.client import Live12306CrawlerClient
 from app.integrations.geo.client import DynamicGeoClient
+from app.integrations.ticket_12306.browser_manager import PlaywrightBrowserManager
 from app.journey_search_sessions.router import (
     router as journey_search_sessions_router,
 )
@@ -44,6 +45,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     )
     app.state.task_registry = create_task_registry()
     app.state.system_settings_provider = build_system_settings_provider(app.state.db_pool)
+    app.state.ticket_browser_manager = PlaywrightBrowserManager()
 
     http_client = httpx.AsyncClient()
     app.state.http_client = http_client
@@ -63,6 +65,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     yield
 
     await app.state.db_pool.close()
+    await app.state.ticket_browser_manager.close()
     await http_client.aclose()
     await redis_client.aclose()
 

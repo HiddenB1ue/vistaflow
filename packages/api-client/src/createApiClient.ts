@@ -13,7 +13,7 @@ export interface ApiClientOptions {
 export function createApiClient(options: ApiClientOptions): AxiosInstance {
   const {
     baseURL,
-    timeout = 10000,
+    timeout = 600000,
     getToken = () => localStorage.getItem('token'),
     onUnauthorized = () => localStorage.removeItem('token'),
     requestInterceptors = [],

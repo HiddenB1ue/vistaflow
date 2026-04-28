@@ -6,19 +6,16 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from app.integrations.ticket_12306.models import TicketSegmentData
+from app.integrations.ticket_12306.browser_manager import PlaywrightUnavailableError
 from app.integrations.ticket_12306.service import Ticket12306Service
 from app.journey_search_sessions.schemas import (
     CachedRouteCandidate,
     CachedTrainSegment,
     PriceCacheEntry,
-    RoutePointResponse,
     RouteStationResponse,
     RouteTransferSegmentResponse,
     price_map_key,
 )
-from app.models import SeatInfo
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -321,7 +318,23 @@ class TestPrefetchAllPrices:
         key = price_map_key("T1", "北京", "上海")
         assert result[key].failed is True
 
-    # --- Req 2.2: Default max concurrency is 5 ---
+    async def test_browser_init_error_bubbles_up(
+        self, redis: FakeRedis, station_repo: FakeStationRepo
+    ) -> None:
+        mock_client = AsyncMock()
+        mock_client.fetch_leg.side_effect = PlaywrightUnavailableError(
+            "missing chromium"
+        )
+
+        service = self._build_service(redis, station_repo, ticket_client=mock_client)
+        candidates = [_candidate([_train_seg("T1", "G1", "北京", "上海")])]
+
+        with pytest.raises(PlaywrightUnavailableError, match="missing chromium"):
+            await service.prefetch_all_prices(
+                run_date="2025-01-01", candidates=candidates
+            )
+
+    # --- Req 2.2: Default max concurrency is 2 ---
     async def test_default_max_concurrency(
         self, redis: FakeRedis, station_repo: FakeStationRepo
     ) -> None:
@@ -329,12 +342,10 @@ class TestPrefetchAllPrices:
         mock_client.fetch_leg.return_value = {}
 
         service = self._build_service(redis, station_repo, ticket_client=mock_client)
-        candidates = [_candidate([_train_seg("T1", "G1", "北京", "上海")])]
-
         # Just verify it runs without error with default concurrency
         import inspect
         sig = inspect.signature(service.prefetch_all_prices)
-        assert sig.parameters["max_concurrency"].default == 5
+        assert sig.parameters["max_concurrency"].default == 2
 
     # --- Transfer segments are skipped ---
     async def test_skips_transfer_segments(

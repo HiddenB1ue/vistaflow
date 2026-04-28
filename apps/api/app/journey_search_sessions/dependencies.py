@@ -2,17 +2,17 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import Depends
+from fastapi import Depends, Request
+from redis.asyncio import Redis
 
+from app.config import get_settings
+from app.integrations.ticket_12306.browser_manager import PlaywrightBrowserManager
 from app.integrations.ticket_12306.client import build_ticket_client
 from app.integrations.ticket_12306.service import Ticket12306Service
 from app.journey_search_sessions.service import JourneySearchSessionService
 from app.journeys.dependencies import JourneyServiceDep
 from app.railway.dependencies import DbPool
 from app.railway.repository import StationRepository
-from redis.asyncio import Redis
-from fastapi import Request
-from app.config import get_settings
 
 
 def get_redis_client(request: Request) -> Redis:
@@ -24,9 +24,10 @@ async def get_ticket_service(
     redis_client: Annotated[Redis, Depends(get_redis_client)],
     pool: DbPool,
 ) -> Ticket12306Service:
+    browser_manager: PlaywrightBrowserManager = request.app.state.ticket_browser_manager
     ticket_client = await build_ticket_client(
         settings_provider=request.app.state.system_settings_provider,
-        http_client=request.app.state.http_client,
+        browser_manager=browser_manager,
     )
     return Ticket12306Service(
         redis_client=redis_client,
