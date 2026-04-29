@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+import time
 from pathlib import Path
 
 from app.models import Segment, StopEvent, Timetable
@@ -82,24 +83,30 @@ def _load_seed_timetable() -> Timetable:
 def _format_route(route: list[Segment]) -> str:
     parts = []
     for segment in route:
+        depart_day = segment.depart_abs_min // MINUTES_PER_DAY
+        arrive_day = segment.arrive_abs_min // MINUTES_PER_DAY
+        depart_label = f"+{depart_day} " if depart_day else ""
+        arrive_label = f"+{arrive_day} " if arrive_day else ""
         parts.append(
             f"{segment.train_code}/{segment.train_no} "
-            f"{segment.from_station} {abs_min_to_hhmm(segment.depart_abs_min)} -> "
-            f"{segment.to_station} {abs_min_to_hhmm(segment.arrive_abs_min)}"
+            f"{segment.from_station} {depart_label}{abs_min_to_hhmm(segment.depart_abs_min)} -> "
+            f"{segment.to_station} {arrive_label}{abs_min_to_hhmm(segment.arrive_abs_min)}"
         )
     total_minutes = route[-1].arrive_abs_min - route[0].depart_abs_min
     return f"{total_minutes // 60}h{total_minutes % 60:02d}m | " + " | ".join(parts)
 
 
-def test_shanghai_to_yanjixi_on_may_1_with_three_transfers() -> None:
-    """Exploratory seed-data search for 2026-05-01: Shanghai -> Yanji West, 3 transfers."""
-    timetable = _load_seed_timetable()
+def _search_exact_transfer_count(
+    timetable: Timetable,
+    transfer_count: int,
+) -> tuple[list[list[Segment]], float, float]:
     station_index = build_station_index(timetable)
 
+    start = time.perf_counter()
     routes = search_journeys(
         from_stations={"上海"},
         to_stations={"延吉西"},
-        transfer_values=[3],
+        transfer_values=[transfer_count],
         min_transfer_minutes=30,
         max_transfer_minutes=None,
         arrival_deadline_abs_min=None,
@@ -112,13 +119,49 @@ def test_shanghai_to_yanjixi_on_may_1_with_three_transfers() -> None:
         excluded_train_type_prefixes=set(),
         excluded_train_tokens=set(),
         allowed_train_tokens=set(),
+        search_start_abs_min=0,
+        first_departure_latest_abs_min=MINUTES_PER_DAY - 1,
+        latest_arrival_abs_min=(3 * MINUTES_PER_DAY) - 1,
         timetable=timetable,
         station_index=station_index,
     )
-    ranked_routes = group_and_rank(routes, sort_by="duration", top_n_per_sequence=3)
+    search_seconds = time.perf_counter() - start
 
-    print(f"\nShanghai -> Yanji West, 2026-05-01, exactly 3 transfers: {len(ranked_routes)}")
-    for index, route in enumerate(ranked_routes[:20], start=1):
-        print(f"{index:02d}. {_format_route(route)}")
+    start = time.perf_counter()
+    ranked_routes = group_and_rank(routes, sort_by="duration", top_n_per_sequence=0)
+    rank_seconds = time.perf_counter() - start
+    return ranked_routes, search_seconds, rank_seconds
 
-    assert all(len(route) == 4 for route in ranked_routes)
+
+def test_shanghai_to_yanjixi_on_may_1_print_top_10_by_transfer_count() -> None:
+    """Print exploratory seed-data results for Shanghai -> Yanji West."""
+    start = time.perf_counter()
+    timetable = _load_seed_timetable()
+    load_seconds = time.perf_counter() - start
+
+    start = time.perf_counter()
+    station_index = build_station_index(timetable)
+    index_seconds = time.perf_counter() - start
+    assert "上海" in station_index.departures_by_station
+    assert "延吉西" in station_index.arrivals_by_station
+
+    print(
+        "\nShanghai -> Yanji West seed-data exploratory search "
+        f"(trains={len(timetable)}, load={load_seconds:.3f}s, index={index_seconds:.3f}s)"
+    )
+
+    for transfer_count in (1, 2, 3):
+        ranked_routes, search_seconds, rank_seconds = _search_exact_transfer_count(
+            timetable,
+            transfer_count,
+        )
+        print(
+            f"\n=== transfers={transfer_count} "
+            f"total={len(ranked_routes)} "
+            f"search={search_seconds:.3f}s "
+            f"rank={rank_seconds:.3f}s ==="
+        )
+        for index, route in enumerate(ranked_routes[:10], start=1):
+            print(f"{index:02d}. {_format_route(route)}")
+
+        assert all(len(route) == transfer_count + 1 for route in ranked_routes)

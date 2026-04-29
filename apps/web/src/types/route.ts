@@ -27,7 +27,9 @@ export interface TrainSegment {
   no: string;
   origin: Station;
   destination: Station;
+  departureDate: string;
   departureTime: string;
+  arrivalDate: string;
   arrivalTime: string;
   stops: TrainStop[];
   stopsCount?: number;
@@ -51,7 +53,9 @@ export interface Route {
   type: string;
   origin: Station;
   destination: Station;
+  departureDate: string;
   departureTime: string;
+  arrivalDate: string;
   arrivalTime: string;
   durationMinutes: number;
   segs: RouteSegment[];

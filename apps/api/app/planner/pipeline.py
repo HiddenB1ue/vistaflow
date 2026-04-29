@@ -140,6 +140,9 @@ class SearchRoutesStep(PipelineStep):
             excluded_train_type_prefixes=compiled.excluded_train_type_prefixes,
             excluded_train_tokens=compiled.excluded_train_tokens,
             allowed_train_tokens=compiled.allowed_train_tokens,
+            search_start_abs_min=compiled.search_start_abs_min,
+            first_departure_latest_abs_min=compiled.first_departure_latest_abs_min,
+            latest_arrival_abs_min=compiled.latest_arrival_abs_min,
             timetable=context.timetable,
             station_index=context.station_index,
         )
@@ -235,7 +238,10 @@ class SearchPipeline:
                 context.compiled_query.to_station,
             )
 
-        journeys = [_build_journey_result(route) for route in context.ranked_routes]
+        journeys = [
+            _build_journey_result(route, context.compiled_query.run_date)
+            for route in context.ranked_routes
+        ]
 
         total_duration = time.time() - start_time
         logger.info(

@@ -45,7 +45,9 @@ function buildTrainSegment(
     no: segment.train_code,
     origin: buildStation(segment.from_station, geoMap),
     destination: buildStation(segment.to_station, geoMap),
+    departureDate: segment.departure_date,
     departureTime: segment.departure_time,
+    arrivalDate: segment.arrival_date,
     arrivalTime: segment.arrival_time,
     stops: [], // 初始为空，按需加载
     stopsCount: segment.stops_count, // 经停数量
@@ -109,7 +111,9 @@ export function mapJourneyToRoute(
     type: routeTypeLabel(result),
     origin: buildStation(firstSegment.from_station, geoMap),
     destination: buildStation(lastSegment.to_station, geoMap),
+    departureDate: result.departure_date,
     departureTime: result.departure_time,
+    arrivalDate: result.arrival_date,
     arrivalTime: result.arrival_time,
     durationMinutes: result.total_duration_minutes,
     segs: buildRouteSegments(result.segments, geoMap),

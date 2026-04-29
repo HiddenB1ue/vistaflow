@@ -5,6 +5,7 @@ import { isTransfer } from '@/types/route';
 import { JOURNEY_LABELS } from '@/constants/labels';
 import { formatDuration, formatPrice } from '@vistaflow/utils';
 import { getRouteReferencePrice } from '@/utils/seat';
+import { formatRouteDateTime } from '@/utils/dateTime';
 import { RouteSegmentCard } from './RouteSegmentCard';
 import { getCollapsedRouteSummary } from './routeList.helpers';
 
@@ -44,7 +45,7 @@ export function RouteCard({ route, isActive, onClick }: RouteCardProps) {
           <div className="font-serif text-3xl font-light tracking-wide text-starlight md:text-4xl">
             {route.departureTime}
             <span className="px-3 font-sans text-xl font-light text-muted">→</span>
-            {route.arrivalTime}
+            {formatRouteDateTime(route.arrivalDate, route.arrivalTime, route.departureDate)}
           </div>
           <div className="route-card-summary mt-4">
             <div className="route-card-summary__row route-card-summary__row--train-codes">

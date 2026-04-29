@@ -10,7 +10,9 @@ export interface BackendJourneySegment {
   train_code: string;
   from_station: string;
   to_station: string;
+  departure_date: string;
   departure_time: string;
+  arrival_date: string;
   arrival_time: string;
   duration_minutes: number;
   stops_count: number;
@@ -21,7 +23,9 @@ export interface BackendJourneyResult {
   id: string;
   is_direct: boolean;
   total_duration_minutes: number;
+  departure_date: string;
   departure_time: string;
+  arrival_date: string;
   arrival_time: string;
   min_price: number | null;
   segments: BackendJourneySegment[];

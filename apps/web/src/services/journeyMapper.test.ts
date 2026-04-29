@@ -21,7 +21,9 @@ describe('collectStationNames', () => {
           id: 'j1',
           is_direct: true,
           total_duration_minutes: 278,
+          departure_date: '2026-04-04',
           departure_time: '07:00',
+          arrival_date: '2026-04-04',
           arrival_time: '11:38',
           min_price: 553,
           segments: [
@@ -29,7 +31,9 @@ describe('collectStationNames', () => {
               train_code: 'G1',
               from_station: '北京南',
               to_station: '上海虹桥',
+              departure_date: '2026-04-04',
               departure_time: '07:00',
+              arrival_date: '2026-04-04',
               arrival_time: '11:38',
               duration_minutes: 278,
               stops_count: 0,
@@ -55,23 +59,27 @@ describe('collectStationNames', () => {
           id: 'j1',
           is_direct: true,
           total_duration_minutes: 100,
+          departure_date: '2026-04-04',
           departure_time: '07:00',
+          arrival_date: '2026-04-04',
           arrival_time: '08:40',
           min_price: null,
           segments: [
-            { train_code: 'G1', from_station: 'A', to_station: 'B', departure_time: '07:00', arrival_time: '08:40', duration_minutes: 100, stops_count: 0, seats: [] },
+            { train_code: 'G1', from_station: 'A', to_station: 'B', departure_date: '2026-04-04', departure_time: '07:00', arrival_date: '2026-04-04', arrival_time: '08:40', duration_minutes: 100, stops_count: 0, seats: [] },
           ],
         },
         {
           id: 'j2',
           is_direct: false,
           total_duration_minutes: 200,
+          departure_date: '2026-04-04',
           departure_time: '09:00',
+          arrival_date: '2026-04-05',
           arrival_time: '12:20',
           min_price: null,
           segments: [
-            { train_code: 'G2', from_station: 'A', to_station: 'C', departure_time: '09:00', arrival_time: '10:30', duration_minutes: 90, stops_count: 0, seats: [] },
-            { train_code: 'G3', from_station: 'C', to_station: 'B', departure_time: '11:00', arrival_time: '12:20', duration_minutes: 80, stops_count: 0, seats: [] },
+            { train_code: 'G2', from_station: 'A', to_station: 'C', departure_date: '2026-04-04', departure_time: '09:00', arrival_date: '2026-04-04', arrival_time: '10:30', duration_minutes: 90, stops_count: 0, seats: [] },
+            { train_code: 'G3', from_station: 'C', to_station: 'B', departure_date: '2026-04-05', departure_time: '11:00', arrival_date: '2026-04-05', arrival_time: '12:20', duration_minutes: 80, stops_count: 0, seats: [] },
           ],
         },
       ],
@@ -108,7 +116,9 @@ describe('mapJourneyToRoute', () => {
       id: 'G1',
       is_direct: true,
       total_duration_minutes: 278,
+      departure_date: '2026-04-04',
       departure_time: '07:00',
+      arrival_date: '2026-04-04',
       arrival_time: '11:38',
       min_price: 553,
       segments: [
@@ -116,7 +126,9 @@ describe('mapJourneyToRoute', () => {
           train_code: 'G1',
           from_station: '北京南',
           to_station: '上海虹桥',
+          departure_date: '2026-04-04',
           departure_time: '07:00',
+          arrival_date: '2026-04-04',
           arrival_time: '11:38',
           duration_minutes: 278,
           stops_count: 0,
@@ -136,6 +148,8 @@ describe('mapJourneyToRoute', () => {
     expect(route.id).toBe('G1');
     expect(route.type).toBe('直达');
     expect(route.durationMinutes).toBe(278);
+    expect(route.departureDate).toBe('2026-04-04');
+    expect(route.arrivalDate).toBe('2026-04-04');
     expect(route.segs).toHaveLength(1);
     expect(route.pathPoints).toHaveLength(2);
   });
@@ -145,7 +159,9 @@ describe('mapJourneyToRoute', () => {
       id: 'G2',
       is_direct: true,
       total_duration_minutes: 278,
+      departure_date: '2026-04-04',
       departure_time: '07:00',
+      arrival_date: '2026-04-04',
       arrival_time: '11:38',
       min_price: 553,
       segments: [
@@ -153,7 +169,9 @@ describe('mapJourneyToRoute', () => {
           train_code: 'G2',
           from_station: '北京南',
           to_station: '上海虹桥',
+          departure_date: '2026-04-04',
           departure_time: '07:00',
+          arrival_date: '2026-04-04',
           arrival_time: '11:38',
           duration_minutes: 278,
           stops_count: 0,

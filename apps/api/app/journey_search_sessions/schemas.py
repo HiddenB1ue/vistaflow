@@ -116,7 +116,9 @@ class CachedTrainSegment(BaseModel):
     no: str
     origin: RouteStationResponse
     destination: RouteStationResponse
+    departureDate: str
     departureTime: str
+    arrivalDate: str
     arrivalTime: str
     stopsCount: int | None = None
 
@@ -137,7 +139,9 @@ class RouteResponse(BaseModel):
     type: str
     origin: RouteStationResponse
     destination: RouteStationResponse
+    departureDate: str
     departureTime: str
+    arrivalDate: str
     arrivalTime: str
     durationMinutes: int
     segs: list[RouteTrainSegmentResponse | RouteTransferSegmentResponse]
@@ -220,7 +224,9 @@ class CachedRouteCandidate(BaseModel):
     type: str
     origin: RouteStationResponse
     destination: RouteStationResponse
+    departureDate: str
     departureTime: str
+    arrivalDate: str
     arrivalTime: str
     durationMinutes: int
     segs: list[CachedTrainSegment | RouteTransferSegmentResponse]

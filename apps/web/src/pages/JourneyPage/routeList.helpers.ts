@@ -106,6 +106,7 @@ export function getNextSelectedRoute(current: Route | null, clicked: Route): Rou
 
 export function sortRoutesForDisplay(routes: RouteList, sortMode: JourneyDisplaySortMode): RouteList {
   const nextRoutes = [...routes];
+  const departureKey = (route: RouteList[number]) => `${route.departureDate}T${route.departureTime}`;
 
   if (sortMode === 'price') {
     nextRoutes.sort((left, right) => {
@@ -127,13 +128,13 @@ export function sortRoutesForDisplay(routes: RouteList, sortMode: JourneyDisplay
       if (left.durationMinutes !== right.durationMinutes) {
         return left.durationMinutes - right.durationMinutes;
       }
-      return left.departureTime.localeCompare(right.departureTime);
+      return departureKey(left).localeCompare(departureKey(right));
     });
     return nextRoutes;
   }
 
   if (sortMode === 'departure') {
-    nextRoutes.sort((left, right) => left.departureTime.localeCompare(right.departureTime));
+    nextRoutes.sort((left, right) => departureKey(left).localeCompare(departureKey(right)));
     return nextRoutes;
   }
 

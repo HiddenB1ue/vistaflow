@@ -21,7 +21,9 @@ def _build_search_response() -> JourneySearchResponse:
                 id="direct-1",
                 is_direct=True,
                 total_duration_minutes=120,
+                departure_date="2026-04-15",
                 departure_time="08:00",
+                arrival_date="2026-04-15",
                 arrival_time="10:00",
                 segments=[
                     JourneySegment(
@@ -29,7 +31,9 @@ def _build_search_response() -> JourneySearchResponse:
                         train_code="G1",
                         from_station="Beijing South",
                         to_station="Shanghai Hongqiao",
+                        departure_date="2026-04-15",
                         departure_time="08:00",
+                        arrival_date="2026-04-15",
                         arrival_time="10:00",
                         duration_minutes=120,
                         stops_count=2,
@@ -40,7 +44,9 @@ def _build_search_response() -> JourneySearchResponse:
                 id="transfer-1",
                 is_direct=False,
                 total_duration_minutes=180,
+                departure_date="2026-04-15",
                 departure_time="07:30",
+                arrival_date="2026-04-16",
                 arrival_time="10:30",
                 segments=[
                     JourneySegment(
@@ -48,7 +54,9 @@ def _build_search_response() -> JourneySearchResponse:
                         train_code="G1",
                         from_station="Beijing South",
                         to_station="Jinan West",
+                        departure_date="2026-04-15",
                         departure_time="07:30",
+                        arrival_date="2026-04-15",
                         arrival_time="08:30",
                         duration_minutes=60,
                         stops_count=1,
@@ -58,7 +66,9 @@ def _build_search_response() -> JourneySearchResponse:
                         train_code="D11",
                         from_station="Jinan West",
                         to_station="Shanghai Hongqiao",
+                        departure_date="2026-04-16",
                         departure_time="09:00",
+                        arrival_date="2026-04-16",
                         arrival_time="10:30",
                         duration_minutes=90,
                         stops_count=2,
@@ -115,6 +125,10 @@ async def test_create_session_caches_candidates_and_returns_first_view(
     assert response.searchSummary.totalCandidates == 2
     assert response.viewResult.total == 2
     assert len(response.viewResult.items) == 2
+    assert response.viewResult.items[0].departureDate == "2026-04-15"
+    assert response.viewResult.items[1].arrivalDate == "2026-04-16"
+    first_transfer_segment = response.viewResult.items[1].segs[0]
+    assert getattr(first_transfer_segment, "departureDate") == "2026-04-15"
     assert response.viewResult.availableFacets.transferCounts == [0, 1]
     assert response.viewResult.availableFacets.trainTypes == ["D", "G"]
 

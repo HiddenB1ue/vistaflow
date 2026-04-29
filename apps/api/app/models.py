@@ -16,6 +16,8 @@ class StopEvent:
     arrive_abs_min: int | None
     depart_abs_min: int | None
     total_stops: int | None = None  # 该车次的全程经停数量
+    service_id: str = ""
+    run_date: str | None = None
 
 
 @dataclass(frozen=True)
@@ -29,6 +31,8 @@ class Segment:
     depart_abs_min: int
     arrive_abs_min: int
     total_stops: int | None = None  # 该车次的全程经停数量
+    service_id: str = ""
+    run_date: str | None = None
 
 
 @dataclass(frozen=True)

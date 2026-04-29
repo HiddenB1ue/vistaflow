@@ -1,7 +1,7 @@
 ﻿from __future__ import annotations
 
 import itertools
-from datetime import date as date_type
+from datetime import date as date_type, timedelta
 from typing import Any
 
 import asyncpg
@@ -502,14 +502,15 @@ MINUTES_PER_DAY = 1440
 
 class TimetableRepository(BaseRepository):
     async def load_timetable(self, run_date: str, filter_running_only: bool) -> Timetable:
-        # Convert ISO format string to date object for database query
-        from datetime import date as date_type
         run_date_obj = date_type.fromisoformat(run_date) if isinstance(run_date, str) else run_date
         
         if filter_running_only:
+            run_date_start = run_date_obj - timedelta(days=3)
+            run_date_end = run_date_obj + timedelta(days=2)
             sql = """
                 SELECT
                     ts.train_no,
+                    tr.run_date,
                     ts.station_no,
                     COALESCE(ts.station_name, '') AS station_name,
                     COALESCE(ts.station_train_code, '') AS station_train_code,
@@ -521,15 +522,16 @@ class TimetableRepository(BaseRepository):
                 JOIN trains t ON t.train_no = ts.train_no
                 JOIN train_runs tr
                     ON tr.train_id = t.id
-                   AND tr.run_date = $1
+                   AND tr.run_date BETWEEN $1 AND $2
                    AND tr.status = 'running'
-                ORDER BY ts.train_no, ts.station_no
+                ORDER BY tr.run_date, ts.train_no, ts.station_no
             """
-            params: tuple[date_type, ...] = (run_date_obj,)
+            params: tuple[date_type, date_type] = (run_date_start, run_date_end)
         else:
             sql = """
                 SELECT
                     ts.train_no,
+                    $1::date AS run_date,
                     ts.station_no,
                     COALESCE(ts.station_name, '') AS station_name,
                     COALESCE(ts.station_train_code, '') AS station_train_code,
@@ -541,7 +543,7 @@ class TimetableRepository(BaseRepository):
                 JOIN trains t ON t.train_no = ts.train_no
                 ORDER BY ts.train_no, ts.station_no
             """
-            params = ()
+            params = (run_date_obj,)
 
         async with self._pool.acquire() as conn:
             rows = await conn.fetch(sql, *params)
@@ -549,14 +551,27 @@ class TimetableRepository(BaseRepository):
         timetable: Timetable = {}
         grouped_rows = itertools.groupby(
             rows,
-            key=lambda row: str(row["train_no"] or "").strip(),
+            key=lambda row: (
+                str(row["run_date"]),
+                str(row["train_no"] or "").strip(),
+            ),
         )
-        for train_no, group in grouped_rows:
+        for (service_run_date, train_no), group in grouped_rows:
             if not train_no:
                 continue
-            events = _parse_stop_rows(train_no, list(group))
+            service_id = f"{service_run_date}:{train_no}"
+            run_offset_days = (
+                date_type.fromisoformat(service_run_date) - run_date_obj
+            ).days
+            events = _parse_stop_rows(
+                service_id,
+                train_no,
+                service_run_date,
+                run_offset_days * MINUTES_PER_DAY,
+                list(group),
+            )
             if len(events) >= 2:
-                timetable[train_no] = events
+                timetable[service_id] = events
 
         return timetable
 
@@ -720,7 +735,13 @@ async def _prepare_train_values(
     return values
 
 
-def _parse_stop_rows(train_no: str, rows: list[asyncpg.Record]) -> list[StopEvent]:
+def _parse_stop_rows(
+    service_id: str,
+    train_no: str,
+    run_date: str,
+    service_offset_minutes: int,
+    rows: list[asyncpg.Record],
+) -> list[StopEvent]:
     events: list[StopEvent] = []
     previous_depart: int | None = None
     
@@ -732,7 +753,7 @@ def _parse_stop_rows(train_no: str, rows: list[asyncpg.Record]) -> list[StopEven
         if not row["station_no"] or not station_name:
             continue
 
-        base_minutes = int(row["arrive_day_diff"] or 0) * MINUTES_PER_DAY
+        base_minutes = service_offset_minutes + int(row["arrive_day_diff"] or 0) * MINUTES_PER_DAY
         arrive_clock = parse_hhmm(row["arrive_time"])
         start_clock = parse_hhmm(row["start_time"])
 
@@ -768,6 +789,8 @@ def _parse_stop_rows(train_no: str, rows: list[asyncpg.Record]) -> list[StopEven
                 arrive_abs_min=arrive_abs,
                 depart_abs_min=depart_abs,
                 total_stops=total_stops,
+                service_id=service_id,
+                run_date=run_date,
             )
         )
 

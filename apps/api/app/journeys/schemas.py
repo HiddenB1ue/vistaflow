@@ -11,7 +11,9 @@ class JourneySegment(BaseModel):
     train_code: str
     from_station: str
     to_station: str
+    departure_date: str
     departure_time: str  # "HH:mm"
+    arrival_date: str
     arrival_time: str    # "HH:mm"
     duration_minutes: int
     stops_count: int = 0  # 区间经停数量（不含起终点）
@@ -21,7 +23,9 @@ class JourneyResult(BaseModel):
     id: str
     is_direct: bool
     total_duration_minutes: int
+    departure_date: str
     departure_time: str
+    arrival_date: str
     arrival_time: str
     segments: list[JourneySegment]
 

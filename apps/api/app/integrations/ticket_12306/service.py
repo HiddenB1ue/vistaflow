@@ -91,18 +91,17 @@ class Ticket12306Service:
         telecodes = await self._station_repo.get_telecodes_by_names(station_names)
 
         # 3. Build segment lookup info and check per-segment Redis cache
-        #    Each segment is identified by (train_no, from_station, to_station)
-        segment_keys: dict[tuple[str, str, str], CachedTrainSegment] = {}
+        segment_keys: dict[tuple[str, str, str, str], CachedTrainSegment] = {}
         for seg in all_segments:
-            key = (seg.trainNo, seg.origin.name, seg.destination.name)
+            key = (seg.departureDate, seg.trainNo, seg.origin.name, seg.destination.name)
             if key not in segment_keys:
                 segment_keys[key] = seg
 
         # Load cached rows for all segments
-        cached_data: dict[tuple[str, str, str], TicketSegmentData] = {}
-        cache_key_map: dict[str, tuple[str, str, str]] = {}
+        cached_data: dict[tuple[str, str, str, str], TicketSegmentData] = {}
+        cache_key_map: dict[str, tuple[str, str, str, str]] = {}
         for seg_key, _seg in segment_keys.items():
-            redis_key = self._cache_key_for_segment(run_date, seg, telecodes)
+            redis_key = self._cache_key_for_segment(seg.departureDate, seg, telecodes)
             if redis_key:
                 cache_key_map[redis_key] = seg_key
 
@@ -129,36 +128,36 @@ class Ticket12306Service:
             seg_key for seg_key in segment_keys if seg_key not in cached_data
         }
 
-        # 5. Group uncached segments by unique leg (from_station, to_station)
+        # 5. Group uncached segments by unique dated leg
         #    and collect which segment keys belong to each leg
-        legs_segments: dict[tuple[str, str], list[tuple[str, str, str]]] = {}
+        legs_segments: dict[tuple[str, str, str], list[tuple[str, str, str, str]]] = {}
         for seg_key in uncached_seg_keys:
-            _train_no, from_station, to_station = seg_key
-            leg = (from_station, to_station)
+            departure_date, _train_no, from_station, to_station = seg_key
+            leg = (departure_date, from_station, to_station)
             legs_segments.setdefault(leg, []).append(seg_key)
 
         # Build the list of legs to fetch with their telecodes
-        legs_to_fetch: list[tuple[tuple[str, str], str, str]] = []
+        legs_to_fetch: list[tuple[tuple[str, str, str], str, str]] = []
         for leg_key in legs_segments:
-            from_station, to_station = leg_key
+            _departure_date, from_station, to_station = leg_key
             from_code = telecodes.get(from_station)
             to_code = telecodes.get(to_station)
             if from_code and to_code:
                 legs_to_fetch.append((leg_key, from_code, to_code))
 
         # 6. Fetch uncached legs concurrently
-        fetched_legs: dict[tuple[str, str], dict[str, Any]] = {}
+        fetched_legs: dict[tuple[str, str, str], dict[str, Any]] = {}
         if legs_to_fetch:
             semaphore = asyncio.Semaphore(max_concurrency)
 
             async def fetch_one_leg(
-                leg_key: tuple[str, str], from_code: str, to_code: str
-            ) -> tuple[tuple[str, str], dict[str, Any]]:
+                leg_key: tuple[str, str, str], from_code: str, to_code: str
+            ) -> tuple[tuple[str, str, str], dict[str, Any]]:
                 async with semaphore:
                     try:
-                        from_station, to_station = leg_key
+                        departure_date, from_station, to_station = leg_key
                         return leg_key, await self._ticket_client.fetch_leg(  # type: ignore[union-attr]
-                            run_date,
+                            departure_date,
                             from_station,
                             to_station,
                             from_code,
@@ -185,10 +184,10 @@ class Ticket12306Service:
                 fetched_legs[leg_key] = rows
 
         # 7. Extract ticket data for each uncached segment from fetched legs
-        fetched_data: dict[tuple[str, str, str], TicketSegmentData] = {}
+        fetched_data: dict[tuple[str, str, str, str], TicketSegmentData] = {}
         for seg_key in uncached_seg_keys:
-            train_no, from_station, to_station = seg_key
-            leg = (from_station, to_station)
+            departure_date, train_no, from_station, to_station = seg_key
+            leg = (departure_date, from_station, to_station)
             rows = fetched_legs.get(leg, {})
             if not rows:
                 continue
@@ -216,7 +215,7 @@ class Ticket12306Service:
         # 8. Store fetched results in per-segment Redis cache
         for seg_key in uncached_seg_keys:
             seg = segment_keys[seg_key]
-            redis_key = self._cache_key_for_segment(run_date, seg, telecodes)
+            redis_key = self._cache_key_for_segment(seg.departureDate, seg, telecodes)
             if not redis_key:
                 continue
             ticket = fetched_data.get(seg_key)
@@ -241,7 +240,7 @@ class Ticket12306Service:
 
         price_map: dict[str, PriceCacheEntry] = {}
         for seg_key, _seg in segment_keys.items():
-            train_no, from_station, to_station = seg_key
+            _departure_date, train_no, from_station, to_station = seg_key
             map_key = price_map_key(train_no, from_station, to_station)
             ticket = all_data.get(seg_key)
             if ticket is not None:
@@ -293,22 +292,36 @@ class Ticket12306Service:
         missing_route_segments = [
             segment
             for segment in segments
-            if (segment.trainNo, segment.origin.name, segment.destination.name)
+            if (
+                segment.departureDate,
+                segment.trainNo,
+                segment.origin.name,
+                segment.destination.name,
+            )
             not in cached_rows
         ]
         missing_segments = {
-            (segment.trainNo, segment.origin.name, segment.destination.name)
+            (
+                segment.departureDate,
+                segment.trainNo,
+                segment.origin.name,
+                segment.destination.name,
+            )
             for segment in missing_route_segments
         }
 
-        fetched: dict[SeatLookupKey, TicketSegmentData] = {}
+        fetched: dict[tuple[str, str, str, str], TicketSegmentData] = {}
         if missing_segments:
             train_codes = {
-                (segment.trainNo, segment.origin.name, segment.destination.name): segment.no
+                (
+                    segment.departureDate,
+                    segment.trainNo,
+                    segment.origin.name,
+                    segment.destination.name,
+                ): segment.no
                 for segment in missing_route_segments
             }
-            fetched = await self._ticket_client.fetch_tickets(
-                run_date=run_date,
+            fetched = await self._fetch_tickets_by_segment_date(
                 segments=missing_segments,
                 telecodes=telecodes,
                 train_codes=train_codes,
@@ -323,6 +336,34 @@ class Ticket12306Service:
         ticket_map = dict(cached_rows)
         ticket_map.update(fetched)
         return [self._merge_route_tickets(route, ticket_map) for route in routes]
+
+    async def _fetch_tickets_by_segment_date(
+        self,
+        *,
+        segments: set[tuple[str, str, str, str]],
+        telecodes: dict[str, str],
+        train_codes: dict[tuple[str, str, str, str], str],
+    ) -> dict[tuple[str, str, str, str], TicketSegmentData]:
+        fetched: dict[tuple[str, str, str, str], TicketSegmentData] = {}
+        by_date: dict[str, set[SeatLookupKey]] = {}
+        code_by_date: dict[str, dict[SeatLookupKey, str]] = {}
+        for departure_date, train_no, from_station, to_station in segments:
+            key = (train_no, from_station, to_station)
+            by_date.setdefault(departure_date, set()).add(key)
+            code_by_date.setdefault(departure_date, {})[key] = train_codes[
+                (departure_date, train_no, from_station, to_station)
+            ]
+
+        for departure_date, date_segments in by_date.items():
+            date_fetched = await self._ticket_client.fetch_tickets(  # type: ignore[union-attr]
+                run_date=departure_date,
+                segments=date_segments,
+                telecodes=telecodes,
+                train_codes=code_by_date[departure_date],
+            )
+            for (train_no, from_station, to_station), ticket in date_fetched.items():
+                fetched[(departure_date, train_no, from_station, to_station)] = ticket
+        return fetched
 
     def _collect_train_segments(
         self, routes: Iterable[RouteResponse]
@@ -340,10 +381,10 @@ class Ticket12306Service:
         run_date: str,
         segments: list[RouteTrainSegmentResponse],
         telecodes: dict[str, str],
-    ) -> dict[SeatLookupKey, TicketSegmentData]:
-        result: dict[SeatLookupKey, TicketSegmentData] = {}
+    ) -> dict[tuple[str, str, str, str], TicketSegmentData]:
+        result: dict[tuple[str, str, str, str], TicketSegmentData] = {}
         cache_keys = {
-            self._cache_key_for_segment(run_date, segment, telecodes): segment
+            self._cache_key_for_segment(segment.departureDate, segment, telecodes): segment
             for segment in segments
         }
         valid_keys = {key: segment for key, segment in cache_keys.items() if key}
@@ -358,7 +399,12 @@ class Ticket12306Service:
             if not payload.get("ok"):
                 continue
             segment = valid_keys[cache_key]
-            lookup_key = (segment.trainNo, segment.origin.name, segment.destination.name)
+            lookup_key = (
+                segment.departureDate,
+                segment.trainNo,
+                segment.origin.name,
+                segment.destination.name,
+            )
             result[lookup_key] = TicketSegmentData(
                 seats=[SeatInfo(**seat) for seat in payload["data"]["seats"]],
                 min_price=payload["data"]["min_price"],
@@ -372,13 +418,18 @@ class Ticket12306Service:
         run_date: str,
         segments: list[RouteTrainSegmentResponse],
         telecodes: dict[str, str],
-        fetched: dict[SeatLookupKey, TicketSegmentData],
+        fetched: dict[tuple[str, str, str, str], TicketSegmentData],
     ) -> None:
         for segment in segments:
-            cache_key = self._cache_key_for_segment(run_date, segment, telecodes)
+            cache_key = self._cache_key_for_segment(segment.departureDate, segment, telecodes)
             if not cache_key:
                 continue
-            lookup_key = (segment.trainNo, segment.origin.name, segment.destination.name)
+            lookup_key = (
+                segment.departureDate,
+                segment.trainNo,
+                segment.origin.name,
+                segment.destination.name,
+            )
             ticket = fetched.get(lookup_key)
             if ticket is None:
                 payload = {"ok": False}
@@ -391,7 +442,7 @@ class Ticket12306Service:
     def _merge_route_tickets(
         self,
         route: RouteResponse,
-        ticket_map: dict[SeatLookupKey, TicketSegmentData],
+        ticket_map: dict[tuple[str, str, str, str], TicketSegmentData],
     ) -> RouteResponse:
         next_segs = []
         statuses: list[str] = []
@@ -400,7 +451,12 @@ class Ticket12306Service:
                 next_segs.append(segment)
                 continue
 
-            lookup_key = (segment.trainNo, segment.origin.name, segment.destination.name)
+            lookup_key = (
+                segment.departureDate,
+                segment.trainNo,
+                segment.origin.name,
+                segment.destination.name,
+            )
             ticket = ticket_map.get(lookup_key)
             if ticket is None:
                 next_segs.append(

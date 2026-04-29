@@ -30,13 +30,16 @@ def _train_seg(
     no: str,
     origin_name: str,
     dest_name: str,
+    departure_date: str = "2025-01-01",
 ) -> CachedTrainSegment:
     return CachedTrainSegment(
         trainNo=train_no,
         no=no,
         origin=_station(origin_name),
         destination=_station(dest_name),
+        departureDate=departure_date,
         departureTime="08:00",
+        arrivalDate=departure_date,
         arrivalTime="10:00",
     )
 
@@ -54,7 +57,9 @@ def _candidate(
         type="direct",
         origin=origin,
         destination=dest,
+        departureDate=first_train.departureDate if first_train else "2025-01-01",
         departureTime="08:00",
+        arrivalDate=first_train.arrivalDate if first_train else "2025-01-01",
         arrivalTime="10:00",
         durationMinutes=120,
         segs=segs,
@@ -124,6 +129,8 @@ class TestPrefetchAllPrices:
     @pytest.fixture
     def station_repo(self) -> FakeStationRepo:
         return FakeStationRepo({
+            "A": "BJP",
+            "B": "SHH",
             "北京": "BJP",
             "上海": "SHH",
             "南京": "NJH",
@@ -201,6 +208,34 @@ class TestPrefetchAllPrices:
 
         # Only one fetch_leg call since both segments share the same leg
         assert mock_client.fetch_leg.call_count == 1
+
+    async def test_segment_departure_date_controls_prefetch_date(
+        self, redis: FakeRedis, station_repo: FakeStationRepo
+    ) -> None:
+        mock_client = AsyncMock()
+        mock_client.fetch_leg.return_value = _make_fetch_leg_rows("T1", "G1")
+
+        service = self._build_service(redis, station_repo, ticket_client=mock_client)
+        candidates = [
+            _candidate([
+                _train_seg(
+                    "T1",
+                    "G1",
+                    "A",
+                    "B",
+                    departure_date="2025-01-02",
+                )
+            ])
+        ]
+
+        await service.prefetch_all_prices(
+            run_date="2025-01-01", candidates=candidates
+        )
+
+        mock_client.fetch_leg.assert_awaited_once()
+        assert mock_client.fetch_leg.await_args.args[0] == "2025-01-02"
+        cache_key = "journey_search:ticket_segment:2025-01-02:T1:BJP:SHH"
+        assert cache_key in redis._store
 
     # --- Req 1.5: Partial failure resilience ---
     async def test_partial_failure_does_not_raise(

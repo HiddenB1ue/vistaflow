@@ -78,6 +78,10 @@ function getTransferCount(route: RouteList[number]): number {
   return route.segs.filter((segment) => 'transfer' in segment).length;
 }
 
+function routeDepartureKey(route: RouteList[number]): string {
+  return `${route.departureDate}T${route.departureTime}`;
+}
+
 function isDirectRoute(route: RouteList[number]): boolean {
   return getTransferCount(route) === 0;
 }
@@ -123,7 +127,7 @@ function applyMockView(routes: RouteList, request: JourneyViewRequest): JourneyV
   }
 
   if (request.sort_by === 'departure') {
-    nextRoutes.sort((a, b) => a.departureTime.localeCompare(b.departureTime));
+    nextRoutes.sort((a, b) => routeDepartureKey(a).localeCompare(routeDepartureKey(b)));
   } else {
     nextRoutes.sort((a, b) => a.durationMinutes - b.durationMinutes);
   }

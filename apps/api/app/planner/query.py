@@ -44,6 +44,9 @@ class CompiledQuery:
     departure_time_end_min: int | None
     departure_time_cross_day: bool
     arrival_deadline_abs_min: int | None
+    search_start_abs_min: int
+    first_departure_latest_abs_min: int
+    latest_arrival_abs_min: int
 
     # Transfer constraints
     min_transfer_minutes: int
@@ -160,6 +163,9 @@ def compile_query(req: JourneySearchRequest) -> CompiledQuery:
         departure_time_end_min=departure_time_end_min,
         departure_time_cross_day=departure_time_cross_day,
         arrival_deadline_abs_min=arrival_deadline_abs_min,
+        search_start_abs_min=0,
+        first_departure_latest_abs_min=(24 * 60) - 1,
+        latest_arrival_abs_min=(3 * 24 * 60) - 1,
         min_transfer_minutes=req.min_transfer_minutes,
         max_transfer_minutes=effective_max_transfer_minutes,
         transfer_values=transfer_values,
