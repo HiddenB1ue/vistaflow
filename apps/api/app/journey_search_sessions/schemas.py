@@ -235,13 +235,3 @@ class CachedRouteCandidate(BaseModel):
     transferCount: int
     trainTypes: list[str] = Field(default_factory=list)
     trainCodes: list[str] = Field(default_factory=list)
-
-
-class SearchSessionCacheRecord(BaseModel):
-    searchId: str
-    createdAt: datetime
-    expiresAt: datetime
-    searchQuery: SearchSessionCreateRequest
-    searchSummary: SearchSummaryResponse
-    candidates: list[CachedRouteCandidate]
-    price_map: dict[str, PriceCacheEntry] = Field(default_factory=dict)

@@ -43,6 +43,7 @@ def mock_search_session_service() -> MagicMock:
                     transferCounts=[],
                     page=1,
                     pageSize=20,
+                    includeTickets=True,
                 ),
                 facets=SearchSessionAvailableFacetsResponse(
                     transferCounts=[0, 1],
@@ -74,6 +75,7 @@ def mock_search_session_service() -> MagicMock:
                 transferCounts=[0],
                 page=1,
                 pageSize=20,
+                includeTickets=True,
             ),
             facets=SearchSessionAvailableFacetsResponse(
                 transferCounts=[0, 1],

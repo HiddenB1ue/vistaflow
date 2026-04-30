@@ -86,6 +86,17 @@
   overflow-wrap: anywhere;
 }
 
+.route-time-offset {
+  margin-left: 0.12em;
+  font-family: var(--font-display, inherit);
+  font-size: 0.42em;
+  font-weight: 600;
+  line-height: 1;
+  vertical-align: super;
+  letter-spacing: 0;
+  color: rgba(var(--color-pulse-rgb), 0.95);
+}
+
 /* ====== details-panel: 卡片展开详情 ====== */
 .details-panel {
   max-height: 0;

@@ -1,6 +1,15 @@
-export function formatRouteDateTime(date: string, time: string, baseDate: string): string {
-  if (!date || date === baseDate) {
-    return time;
+const MS_PER_DAY = 24 * 60 * 60 * 1000;
+
+export function getRouteDayOffset(date: string, baseDate: string): number {
+  if (!date || !baseDate || date === baseDate) {
+    return 0;
   }
-  return `${date.slice(5)} ${time}`;
+
+  const targetTime = Date.parse(`${date}T00:00:00Z`);
+  const baseTime = Date.parse(`${baseDate}T00:00:00Z`);
+  if (!Number.isFinite(targetTime) || !Number.isFinite(baseTime)) {
+    return 0;
+  }
+
+  return Math.max(0, Math.round((targetTime - baseTime) / MS_PER_DAY));
 }

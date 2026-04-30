@@ -52,3 +52,18 @@
   background: var(--color-pulse);
   color: var(--color-pulse-contrast);
 }
+
+.hero-gradient-text {
+  background: linear-gradient(90deg, #e8e8ed, #8b5fbf, #d4af37);
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: hero-gradient-shine 5s linear infinite;
+}
+
+@keyframes hero-gradient-shine {
+  to {
+    background-position: 200% center;
+  }
+}

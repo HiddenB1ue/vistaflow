@@ -3,7 +3,7 @@ import type { TrainSegment, TrainStop } from '@/types/route';
 import { JOURNEY_LABELS } from '@/constants/labels';
 import { formatPrice } from '@vistaflow/utils';
 import { apiClient } from '@/services/api';
-import { formatRouteDateTime } from '@/utils/dateTime';
+import { RouteTimeText } from './RouteTimeText';
 
 interface RouteSegmentCardProps {
   segment: TrainSegment;
@@ -89,9 +89,12 @@ export function RouteSegmentCard({ segment }: RouteSegmentCardProps) {
             <span className="mx-1 text-xs text-muted">{segment.departureTime}</span>
             <span className="mx-1 text-muted">→</span>
             {segment.destination.name}
-            <span className="mx-1 text-xs text-muted">
-              {formatRouteDateTime(segment.arrivalDate, segment.arrivalTime, segment.departureDate)}
-            </span>
+            <RouteTimeText
+              date={segment.arrivalDate}
+              time={segment.arrivalTime}
+              baseDate={segment.departureDate}
+              className="mx-1 text-xs text-muted"
+            />
           </div>
         </div>
         <button

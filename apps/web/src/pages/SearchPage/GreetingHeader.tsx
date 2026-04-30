@@ -10,12 +10,19 @@ interface GreetingHeaderProps {
 
 export function GreetingHeader({ greeting, greetingRef, headlineRef }: GreetingHeaderProps) {
   return (
-    <h1 className="mb-16 text-5xl font-light tracking-widest md:text-7xl">
-      <span ref={greetingRef} className="mb-6 block font-serif text-4xl italic text-muted">
+    <h1 className="mx-auto mb-16 flex w-full max-w-3xl flex-col gap-5 text-5xl font-light md:text-7xl">
+      <span
+        ref={greetingRef}
+        className="block self-start text-left font-serif text-4xl italic text-muted md:text-5xl"
+      >
         {greeting}
       </span>
-      {SEARCH_LABELS.headline}
-      <span ref={headlineRef} className="font-serif italic time-theme-text">
+
+      <span
+        ref={headlineRef}
+        className="hero-gradient-text block self-end text-right font-serif italic"
+      >
+        {SEARCH_LABELS.headline}
         {SEARCH_LABELS.headlineAccent}
       </span>
     </h1>

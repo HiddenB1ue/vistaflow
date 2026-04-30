@@ -13,6 +13,7 @@ from app.journey_search_sessions.service import JourneySearchSessionService
 from app.journeys.dependencies import JourneyServiceDep
 from app.railway.dependencies import DbPool
 from app.railway.repository import StationRepository
+from app.route_plan_cache.repository import RoutePlanRepository
 
 
 def get_redis_client(request: Request) -> Redis:
@@ -37,18 +38,17 @@ async def get_ticket_service(
 
 
 def get_journey_search_session_service(
-    redis_client: Annotated[Redis, Depends(get_redis_client)],
     journey_service: JourneyServiceDep,
     pool: DbPool,
     ticket_service: Annotated[Ticket12306Service, Depends(get_ticket_service)],
 ) -> JourneySearchSessionService:
     settings = get_settings()
     return JourneySearchSessionService(
-        redis_client=redis_client,
         ttl_seconds=settings.journey_search_ttl_seconds,
         journey_service=journey_service,
         station_repo=StationRepository(pool),
         ticket_service=ticket_service,
+        route_plan_repo=RoutePlanRepository(pool),
     )
 
 

@@ -1,12 +1,12 @@
 const WEB_LOCALES = {
   'zh-CN': {
     search: {
-      greetingMorning: '早上好',
-      greetingNoon: '中午好',
-      greetingAfternoon: '下午好',
-      greetingEvening: '晚上好',
-      headline: '智能规划，',
-      headlineAccent: '让出行更简单。',
+      greetingMorning: '风会经过站台',
+      greetingNoon: '风会经过站台',
+      greetingAfternoon: '风会经过站台',
+      greetingEvening: '风会经过站台',
+      headline: '',
+      headlineAccent: '人会选择远方。',
       fromPrefix: '我想从',
       fromSuffix: '出发，前往',
       datePrefix: '，日期是',

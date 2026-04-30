@@ -146,7 +146,7 @@ async def test_live_db_shanghai_to_yanjixi_on_may_1_print_top_10_by_transfer_cou
                 excluded_transfer_stations=set(),
                 allowed_transfer_stations=set(),
                 allowed_train_type_prefixes=(),
-                excluded_train_type_prefixes={"G", "C","Z"},
+                excluded_train_type_prefixes=set(),
                 excluded_train_tokens=set(),
                 allowed_train_tokens=set(),
                 search_start_abs_min=0,
