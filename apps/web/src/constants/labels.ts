@@ -71,7 +71,7 @@ const WEB_LOCALES = {
       saveButton: '保存设置',
     },
     transition: {
-      loading: '环境感知中…',
+      loading: 'Flowing...',
     },
     map: {
       noMapHint: 'AI 宏观拓扑预演',

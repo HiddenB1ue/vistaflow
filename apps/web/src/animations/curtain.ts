@@ -4,7 +4,7 @@ type CurtainDirection = 'up' | 'down';
 
 /**
  * 剧场级幕布转场动画
- * - 'up'：幕布从下向上覆盖屏幕 + 显示「环境感知中…」文字（页面离开前调用）
+ * - 'up'：幕布从下向上覆盖屏幕 + 显示「Flowing...」文字（页面离开前调用）
  * - 'down'：幕布从上向下收起（新页面挂载后调用）
  */
 export function createCurtainTimeline(
