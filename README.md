@@ -1,11 +1,11 @@
 <p align="center">
-  [LOGO 占位]
+  <img src=".assert/logo.png" alt="VistaFlow Logo" width="120" />
 </p>
 
 <h1 align="center">VistaFlow</h1>
 
 <p align="center">
-  一个更公正、更完整的铁路乘车方案搜索项目。
+  一个更自由、更完整的铁路乘车方案搜索引擎。
 </p>
 
 <p align="center">
@@ -16,7 +16,7 @@
 - 不受商业推荐影响
 - 支持按时间、换乘、车次、车型等条件筛选
 
-`[首页核心截图占位]`
+![VistaFlow 首页核心截图](.assert/search.png)
 
 ## 它是做什么的
 
@@ -78,20 +78,13 @@ VistaFlow 不把结果和商业推荐绑定在一起。
 除了用户搜索端，项目还提供管理后台，用来维护基础数据、更新任务和查看系统状态。  
 它不是一个一次性的页面，而是一套可以持续维护的完整系统。
 
-## 适合谁
-
-- 想查更完整铁路乘车方案的人
-- 不想被商业推荐影响判断的人
-- 想做铁路出行搜索工具的人
-- 想搭一个带前台和后台的完整项目的人
-
 ## 界面预览
 
-`[项目首页截图占位]`
+![VistaFlow 项目首页截图](.assert/search.png)
 
-`[搜索结果页截图占位]`
+![VistaFlow 搜索结果页截图](.assert/result.png)
 
-`[管理后台截图占位]`
+![VistaFlow 管理后台截图](.assert/admin.png)
 
 ## 与常见平台的区别
 
