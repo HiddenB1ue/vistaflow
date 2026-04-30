@@ -1,19 +1,13 @@
 const WEB_LOCALES = {
   'zh-CN': {
     search: {
-      greetingMorning: '风会经过站台',
-      greetingNoon: '风会经过站台',
-      greetingAfternoon: '风会经过站台',
-      greetingEvening: '风会经过站台',
-      headline: '',
-      headlineAccent: '人会选择远方。',
       fromPrefix: '我想从',
       fromSuffix: '出发，前往',
       datePrefix: '，日期是',
       dateSuffix: '。',
       originPlaceholder: '出发地',
       destinationPlaceholder: '目的地',
-      submitButton: '生成出行方案',
+      submitButton: 'Flow',
     },
     datePicker: {
       selectedDateEyebrow: '已选日期',

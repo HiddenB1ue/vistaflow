@@ -25,7 +25,7 @@ This document summarizes the preservation property tests written for the destina
 - ✅ Origin dropdown maintains hero appearance
 - ✅ Origin dropdown maintains autoSelectOnBlur behavior
 
-### Requirement 3.2: Submit Button ("生成出行方案")
+### Requirement 3.2: Submit Button ("Flow")
 - ✅ Submit button maintains its display hierarchy
 - ✅ Submit button remains clickable and responsive
 - ✅ Submit button continues to trigger form validation and navigation

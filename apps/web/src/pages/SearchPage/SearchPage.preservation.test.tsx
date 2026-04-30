@@ -113,7 +113,7 @@ describe('SearchPage Preservation Properties', () => {
     /**
      * **Validates: Requirement 3.2**
      * 
-     * Property: "生成出行方案" button SHALL CONTINUE TO display normally
+     * Property: "Flow" button SHALL CONTINUE TO display normally
      * and respond to click events.
      * 
      * This test verifies the button's display hierarchy and interaction

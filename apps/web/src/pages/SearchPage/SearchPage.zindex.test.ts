@@ -4,7 +4,7 @@
  * **Validates: Requirements 1.1, 1.2**
  * 
  * This test explores the bug condition where the destination ComboboxInput dropdown menu
- * is obscured by the "生成出行方案" button due to insufficient z-index.
+ * is obscured by the "Flow" button due to insufficient z-index.
  * 
  * **CRITICAL**: This test MUST FAIL on unfixed code - failure confirms the bug exists.
  * 

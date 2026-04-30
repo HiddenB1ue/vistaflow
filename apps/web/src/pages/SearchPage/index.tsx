@@ -24,7 +24,7 @@ export function SearchPage() {
     useSearchStore();
   const setViewResult = useRouteStore((state) => state.setViewResult);
   const setSortMode = useRouteStore((state) => state.setSortMode);
-  const { greetingRef, headlineRef, formRef, btnRef } = useSearchReveal();
+  const { logoRef, brandRef, formRef, btnRef } = useSearchReveal();
   const { navigateTo } = usePageTransition();
   const {
     isSearchFilterOpen,
@@ -99,8 +99,8 @@ export function SearchPage() {
       >
         <ContentSection spacing="hero" width="wide" className="text-center">
           <GreetingHeader
-            logoRef={greetingRef as RefObject<HTMLSpanElement | null>}
-            brandRef={headlineRef as RefObject<HTMLSpanElement | null>}
+            logoRef={logoRef as RefObject<HTMLSpanElement | null>}
+            brandRef={brandRef as RefObject<HTMLSpanElement | null>}
           />
 
           <SearchHeroForm
@@ -134,7 +134,7 @@ export function SearchPage() {
               }`}
             >
               <span className="relative z-10 flex items-center">
-                {isSubmitting ? '生成中...' : SEARCH_LABELS.submitButton}
+                {isSubmitting ? 'Flowing...' : SEARCH_LABELS.submitButton}
               </span>
               <div
                 className={`time-theme-bg absolute inset-0 transition-transform duration-500 ${
