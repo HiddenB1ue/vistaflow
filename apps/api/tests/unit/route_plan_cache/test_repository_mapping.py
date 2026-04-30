@@ -36,6 +36,15 @@ def test_route_plan_segment_uses_plan_level_foreign_key() -> None:
     assert "REFERENCES route_plan_candidate(plan_id, route_id)" not in migration_sql
 
 
+def test_route_plan_cache_does_not_use_expires_at() -> None:
+    migration_sql = (
+        REPO_ROOT / "infra/sql/migrations/0013_route_plan_cache.sql"
+    ).read_text(encoding="utf-8")
+
+    assert "expires_at" not in migration_sql
+    assert "idx_route_plan_cache_status_expires" not in migration_sql
+
+
 def test_candidate_and_segment_rows_round_trip() -> None:
     repo = RoutePlanRepository(pool=None)  # type: ignore[arg-type]
     plan_id = UUID("00000000-0000-0000-0000-000000000001")

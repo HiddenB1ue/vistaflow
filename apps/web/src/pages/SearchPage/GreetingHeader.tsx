@@ -1,29 +1,35 @@
 
 import type { RefObject } from 'react';
-import { SEARCH_LABELS } from '@/constants/labels';
 
 interface GreetingHeaderProps {
-  greeting: string;
-  greetingRef: RefObject<HTMLSpanElement | null>;
-  headlineRef: RefObject<HTMLSpanElement | null>;
+  logoRef: RefObject<HTMLSpanElement | null>;
+  brandRef: RefObject<HTMLSpanElement | null>;
 }
 
-export function GreetingHeader({ greeting, greetingRef, headlineRef }: GreetingHeaderProps) {
+export function GreetingHeader({ logoRef, brandRef }: GreetingHeaderProps) {
   return (
-    <h1 className="mx-auto mb-16 flex w-full max-w-3xl flex-col gap-5 text-5xl font-light md:text-7xl">
+    <h1
+      className="mx-auto mb-16 flex w-full items-center justify-center gap-4 text-5xl font-light md:gap-6 md:text-7xl"
+      aria-label="VistaFlow"
+    >
       <span
-        ref={greetingRef}
-        className="block self-start text-left font-serif text-4xl italic text-muted md:text-5xl"
+        ref={logoRef}
+        className="flex h-16 w-16 shrink-0 items-center justify-center md:h-20 md:w-20"
+        aria-hidden="true"
       >
-        {greeting}
+        <img
+          src="/vistaflow-brand-mark.svg"
+          alt=""
+          className="h-full w-full object-contain"
+        />
       </span>
 
       <span
-        ref={headlineRef}
-        className="hero-gradient-text block self-end text-right font-serif italic"
+        ref={brandRef}
+        className="hero-gradient-text block font-serif italic"
+        aria-hidden="true"
       >
-        {SEARCH_LABELS.headline}
-        {SEARCH_LABELS.headlineAccent}
+        VistaFlow
       </span>
     </h1>
   );

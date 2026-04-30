@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date, datetime, time
+from datetime import date, time
 from math import ceil
 from typing import Literal
 
@@ -203,14 +203,12 @@ class SearchSessionViewResultResponse(BaseModel):
 
 class SearchSessionCreateResponse(BaseModel):
     searchId: str
-    expiresAt: datetime
     searchSummary: SearchSummaryResponse
     viewResult: SearchSessionViewResultResponse
 
 
 class SearchSessionSummaryResponse(BaseModel):
     searchId: str
-    expiresAt: datetime
     searchSummary: SearchSummaryResponse
 
 

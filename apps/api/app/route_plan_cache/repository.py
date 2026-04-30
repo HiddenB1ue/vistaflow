@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
-from datetime import date, datetime
+from datetime import date
 from typing import Any
 from uuid import UUID
 
@@ -153,15 +153,13 @@ class RoutePlanRepository(BaseRepository):
                    status,
                    total_candidates,
                    created_at,
-                   updated_at,
-                   expires_at
+                   updated_at
             FROM route_plan_cache
             WHERE from_station = $1
               AND to_station = $2
               AND search_date = $3
               AND transfer_count = $4
               AND status = 1
-              AND expires_at > NOW()
             LIMIT 1
         """
         async with self._pool.acquire() as conn:
@@ -188,12 +186,10 @@ class RoutePlanRepository(BaseRepository):
                    status,
                    total_candidates,
                    created_at,
-                   updated_at,
-                   expires_at
+                   updated_at
             FROM route_plan_cache
             WHERE plan_id = ANY($1::uuid[])
               AND status = 1
-              AND expires_at > NOW()
             ORDER BY transfer_count, plan_id
         """
         async with self._pool.acquire() as conn:
@@ -207,7 +203,6 @@ class RoutePlanRepository(BaseRepository):
         to_station: str,
         search_date: date,
         transfer_count: int,
-        expires_at: datetime,
         candidates: list[CachedRouteCandidate],
     ) -> dict[str, Any]:
         async with self._pool.acquire() as conn, conn.transaction():
@@ -219,15 +214,13 @@ class RoutePlanRepository(BaseRepository):
                     search_date,
                     transfer_count,
                     status,
-                    total_candidates,
-                    expires_at
+                    total_candidates
                 )
-                VALUES ($1, $2, $3, $4, 0, 0, $5)
+                VALUES ($1, $2, $3, $4, 0, 0)
                 ON CONFLICT (from_station, to_station, search_date, transfer_count)
                 DO UPDATE SET
                     status = 0,
                     total_candidates = 0,
-                    expires_at = EXCLUDED.expires_at,
                     updated_at = NOW()
                 RETURNING plan_id,
                           from_station,
@@ -237,14 +230,12 @@ class RoutePlanRepository(BaseRepository):
                           status,
                           total_candidates,
                           created_at,
-                          updated_at,
-                          expires_at
+                          updated_at
                 """,
                 from_station,
                 to_station,
                 search_date,
                 transfer_count,
-                expires_at,
             )
             if plan is None:
                 raise RuntimeError("failed to create route plan cache row")
@@ -391,8 +382,7 @@ class RoutePlanRepository(BaseRepository):
                           status,
                           total_candidates,
                           created_at,
-                          updated_at,
-                          expires_at
+                          updated_at
                 """,
                 plan_id,
                 len(candidates),
@@ -508,34 +498,6 @@ class RoutePlanRepository(BaseRepository):
         sql = "DELETE FROM route_plan_cache WHERE plan_id = ANY($1::uuid[])"
         async with self._pool.acquire() as conn:
             result = await conn.execute(sql, ids)
-        return int(result.rsplit(" ", maxsplit=1)[-1])
-
-    async def delete_expired_plans(self) -> int:
-        sql = "DELETE FROM route_plan_cache WHERE expires_at <= NOW()"
-        async with self._pool.acquire() as conn:
-            result = await conn.execute(sql)
-        return int(result.rsplit(" ", maxsplit=1)[-1])
-
-    async def mark_expired_plans_unavailable(self) -> int:
-        sql = """
-            WITH expired AS (
-                SELECT plan_id
-                FROM route_plan_cache
-                WHERE expires_at <= NOW()
-                  AND status <> 0
-            ),
-            deleted_candidates AS (
-                DELETE FROM route_plan_candidate
-                WHERE plan_id IN (SELECT plan_id FROM expired)
-            )
-            UPDATE route_plan_cache
-            SET status = 0,
-                total_candidates = 0,
-                updated_at = NOW()
-            WHERE plan_id IN (SELECT plan_id FROM expired)
-        """
-        async with self._pool.acquire() as conn:
-            result = await conn.execute(sql)
         return int(result.rsplit(" ", maxsplit=1)[-1])
 
     def _candidate_row(

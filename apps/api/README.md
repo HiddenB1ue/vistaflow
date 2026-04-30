@@ -63,7 +63,6 @@ cp .env.example .env.development
 - `ADMIN_USERNAME`：管理员用户名
 - `ADMIN_PASSWORD`：管理员密码
 - `ADMIN_TOKEN`：可选，预置管理端令牌
-- `JOURNEY_SEARCH_TTL_SECONDS`：出行搜索会话缓存时间
 
 ## Local Development
 

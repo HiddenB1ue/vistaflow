@@ -133,7 +133,6 @@ def service() -> JourneySearchSessionService:
         to_station: str,
         search_date: date,
         transfer_count: int,
-        expires_at: Any,
         candidates: list[CachedRouteCandidate],
     ) -> dict[str, object]:
         plan_id = str(uuid5(NAMESPACE_DNS, f"plan-{transfer_count}"))
@@ -145,7 +144,6 @@ def service() -> JourneySearchSessionService:
             "transfer_count": transfer_count,
             "status": 1,
             "total_candidates": len(candidates),
-            "expires_at": expires_at,
         }
         plans[transfer_count] = plan
         candidates_by_plan_id[plan_id] = [
@@ -247,7 +245,6 @@ def service() -> JourneySearchSessionService:
     route_plan_repo.plans = plans
 
     return JourneySearchSessionService(
-        ttl_seconds=900,
         journey_service=journey_service,
         station_repo=station_repo,
         ticket_service=ticket_service,
@@ -641,7 +638,7 @@ async def test_exclude_direct_train_codes_filters_transfer_routes(
 async def test_missing_search_context_raises_not_found(
     service: JourneySearchSessionService,
 ) -> None:
-    with pytest.raises(NotFoundError):
+    with pytest.raises(NotFoundError, match="方案已过期，请重新搜索"):
         await service.get_view("missing-session", SearchSessionViewRequest())
 
 

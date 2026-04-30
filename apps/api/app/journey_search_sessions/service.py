@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import base64
 import json
-from datetime import UTC, date, datetime, time, timedelta
-from typing import Any, cast
+from datetime import date, time
+from typing import Any
 from uuid import UUID
 
 from app.exceptions import BusinessError, NotFoundError
@@ -38,6 +38,8 @@ from app.route_plan_cache.repository import (
     RoutePlanRepository,
     RoutePlanViewQuery,
 )
+
+PLAN_EXPIRED_MESSAGE = "方案已过期，请重新搜索"
 
 
 def _get_train_type(train_code: str) -> str:
@@ -85,16 +87,16 @@ def _decode_search_context(search_id: str) -> dict[str, Any]:
         raw = base64.urlsafe_b64decode(padded.encode("ascii"))
         payload = json.loads(raw.decode("utf-8"))
     except (ValueError, json.JSONDecodeError) as exc:
-        raise NotFoundError("搜索方案池不存在或已过期") from exc
+        raise NotFoundError(PLAN_EXPIRED_MESSAGE) from exc
 
     if not isinstance(payload, dict) or not isinstance(payload.get("planIds"), list):
-        raise NotFoundError("搜索方案池不存在或已过期")
+        raise NotFoundError(PLAN_EXPIRED_MESSAGE)
     if not all(isinstance(plan_id, str) for plan_id in payload["planIds"]):
-        raise NotFoundError("搜索方案池不存在或已过期")
+        raise NotFoundError(PLAN_EXPIRED_MESSAGE)
     try:
         [UUID(plan_id) for plan_id in payload["planIds"]]
     except ValueError as exc:
-        raise NotFoundError("搜索方案池不存在或已过期") from exc
+        raise NotFoundError(PLAN_EXPIRED_MESSAGE) from exc
     return payload
 
 
@@ -105,13 +107,11 @@ def _is_no_routes_found_error(exc: BusinessError) -> bool:
 class JourneySearchSessionService:
     def __init__(
         self,
-        ttl_seconds: int,
         journey_service: JourneyService,
         station_repo: StationRepository,
         ticket_service: Ticket12306Service,
         route_plan_repo: RoutePlanRepository,
     ) -> None:
-        self._ttl_seconds = ttl_seconds
         self._journey_service = journey_service
         self._station_repo = station_repo
         self._ticket_service = ticket_service
@@ -124,7 +124,6 @@ class JourneySearchSessionService:
         from_station = payload.from_station.strip()
         to_station = payload.to_station.strip()
         transfer_counts = self._requested_transfer_counts(payload)
-        expires_at = datetime.now(UTC) + timedelta(seconds=self._ttl_seconds)
 
         plans = [
             await self._ensure_plan(
@@ -132,12 +131,10 @@ class JourneySearchSessionService:
                 to_station=to_station,
                 search_date=payload.date,
                 transfer_count=transfer_count,
-                expires_at=expires_at,
             )
             for transfer_count in transfer_counts
         ]
         plan_ids = [str(plan["plan_id"]) for plan in plans]
-        response_expires_at = self._plans_expires_at(plans)
         base_filters = self._query_filters_from_payload(payload)
         search_id = _encode_search_context(
             {
@@ -168,7 +165,6 @@ class JourneySearchSessionService:
         )
         return SearchSessionCreateResponse(
             searchId=search_id,
-            expiresAt=response_expires_at,
             searchSummary=summary,
             viewResult=view_result,
         )
@@ -180,10 +176,8 @@ class JourneySearchSessionService:
             context["planIds"],
             base_filters,
         )
-        expires_at = self._context_expires_at(context)
         return SearchSessionSummaryResponse(
             searchId=search_id,
-            expiresAt=expires_at,
             searchSummary=SearchSummaryResponse(
                 fromStation=str(context["fromStation"]),
                 toStation=str(context["toStation"]),
@@ -217,7 +211,6 @@ class JourneySearchSessionService:
         to_station: str,
         search_date: date,
         transfer_count: int,
-        expires_at: datetime,
     ) -> dict[str, Any]:
         existing = await self._route_plan_repo.find_ready_plan(
             from_station=from_station,
@@ -261,7 +254,6 @@ class JourneySearchSessionService:
             to_station=to_station,
             search_date=search_date,
             transfer_count=transfer_count,
-            expires_at=expires_at,
             candidates=candidates,
         )
 
@@ -271,20 +263,9 @@ class JourneySearchSessionService:
             [str(plan_id) for plan_id in context["planIds"]]
         )
         if len(plans) != len(context["planIds"]):
-            raise NotFoundError("搜索方案池不存在或已过期")
+            raise NotFoundError(PLAN_EXPIRED_MESSAGE)
         context["plans"] = plans
         return context
-
-    def _context_expires_at(self, context: dict[str, Any]) -> datetime:
-        plans = context.get("plans")
-        if not isinstance(plans, list) or not plans:
-            raise NotFoundError("搜索方案池不存在或已过期")
-        return self._plans_expires_at(cast(list[dict[str, Any]], plans))
-
-    def _plans_expires_at(self, plans: list[dict[str, Any]]) -> datetime:
-        if not plans:
-            raise NotFoundError("搜索方案池不存在或已过期")
-        return min(cast(datetime, plan["expires_at"]) for plan in plans)
 
     def _requested_transfer_counts(self, payload: SearchSessionCreateRequest) -> list[int]:
         if payload.include_fewer_transfers:

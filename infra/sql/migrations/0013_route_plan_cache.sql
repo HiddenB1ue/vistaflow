@@ -12,12 +12,11 @@ CREATE TABLE IF NOT EXISTS route_plan_cache (
     total_candidates INTEGER NOT NULL DEFAULT 0 CHECK (total_candidates >= 0),
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    expires_at TIMESTAMPTZ NOT NULL,
     UNIQUE (from_station, to_station, search_date, transfer_count)
 );
 
-CREATE INDEX IF NOT EXISTS idx_route_plan_cache_status_expires
-    ON route_plan_cache (status, expires_at);
+CREATE INDEX IF NOT EXISTS idx_route_plan_cache_status
+    ON route_plan_cache (status);
 
 CREATE TABLE IF NOT EXISTS route_plan_candidate (
     plan_id UUID NOT NULL REFERENCES route_plan_cache(plan_id) ON DELETE CASCADE,

@@ -11,7 +11,6 @@ import { SearchFilterDrawer } from '@/components/overlays/SearchFilterDrawer';
 import { SEARCH_LABELS } from '@/constants/labels';
 import { usePageTransition } from '@/hooks/usePageTransition';
 import { useSearchReveal } from '@/hooks/useSearchReveal';
-import { useTimeGreeting } from '@/hooks/useTimeGreeting';
 import { createJourneySearchSession } from '@/services/routeService';
 import { useRouteStore } from '@/stores/routeStore';
 import { useSearchStore } from '@/stores/searchStore';
@@ -27,7 +26,6 @@ export function SearchPage() {
   const setSortMode = useRouteStore((state) => state.setSortMode);
   const { greetingRef, headlineRef, formRef, btnRef } = useSearchReveal();
   const { navigateTo } = usePageTransition();
-  const greeting = useTimeGreeting();
   const {
     isSearchFilterOpen,
     setSearchFilterOpen,
@@ -101,9 +99,8 @@ export function SearchPage() {
       >
         <ContentSection spacing="hero" width="wide" className="text-center">
           <GreetingHeader
-            greeting={greeting}
-            greetingRef={greetingRef}
-            headlineRef={headlineRef}
+            logoRef={greetingRef as RefObject<HTMLSpanElement | null>}
+            brandRef={headlineRef as RefObject<HTMLSpanElement | null>}
           />
 
           <SearchHeroForm

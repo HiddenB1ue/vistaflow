@@ -5,7 +5,6 @@ from typing import Annotated
 from fastapi import Depends, Request
 from redis.asyncio import Redis
 
-from app.config import get_settings
 from app.integrations.ticket_12306.browser_manager import PlaywrightBrowserManager
 from app.integrations.ticket_12306.client import build_ticket_client
 from app.integrations.ticket_12306.service import Ticket12306Service
@@ -42,9 +41,7 @@ def get_journey_search_session_service(
     pool: DbPool,
     ticket_service: Annotated[Ticket12306Service, Depends(get_ticket_service)],
 ) -> JourneySearchSessionService:
-    settings = get_settings()
     return JourneySearchSessionService(
-        ttl_seconds=settings.journey_search_ttl_seconds,
         journey_service=journey_service,
         station_repo=StationRepository(pool),
         ticket_service=ticket_service,

@@ -44,7 +44,6 @@ export interface JourneyViewResult {
 
 export interface JourneySearchSessionResult {
   searchId: string;
-  expiresAt: string;
   searchSummary: {
     fromStation: string;
     toStation: string;
@@ -194,7 +193,6 @@ export async function createJourneySearchSession(
     mockSessions.set(searchId, mockRoutes);
     return {
       searchId,
-      expiresAt: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
       searchSummary: {
         fromStation: params.origin,
         toStation: params.destination,

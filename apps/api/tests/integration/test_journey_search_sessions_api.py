@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from collections.abc import Generator
-from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -26,7 +25,6 @@ def mock_search_session_service() -> MagicMock:
     service.create_session = AsyncMock(
         return_value=SearchSessionCreateResponse(
             searchId="session-1",
-            expiresAt=datetime(2026, 4, 15, 10, 0, tzinfo=UTC),
             searchSummary=SearchSummaryResponse(
                 fromStation="Beijing South",
                 toStation="Shanghai Hongqiao",
@@ -55,7 +53,6 @@ def mock_search_session_service() -> MagicMock:
     service.get_summary = AsyncMock(
         return_value=SearchSessionSummaryResponse(
             searchId="session-1",
-            expiresAt=datetime(2026, 4, 15, 10, 0, tzinfo=UTC),
             searchSummary=SearchSummaryResponse(
                 fromStation="Beijing South",
                 toStation="Shanghai Hongqiao",

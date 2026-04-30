@@ -7,10 +7,6 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     database_url: str = Field(alias="DATABASE_URL")
     redis_url: str = Field(default="redis://localhost:6379/2", alias="REDIS_URL")
-    journey_search_ttl_seconds: int = Field(
-        default=900,
-        alias="JOURNEY_SEARCH_TTL_SECONDS",
-    )
 
     cors_origins: list[str] = Field(default=[
         "http://localhost:5173",
