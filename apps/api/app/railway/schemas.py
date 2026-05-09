@@ -35,6 +35,8 @@ class StopItem(BaseModel):
     arrival_time: str | None    # "HH:mm"，始发站为 null
     departure_time: str | None  # "HH:mm"，终到站为 null
     stop_number: int
+    longitude: float | None = None
+    latitude: float | None = None
 
 
 class TrainStopsResponse(BaseModel):

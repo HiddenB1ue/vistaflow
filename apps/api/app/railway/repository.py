@@ -1,7 +1,8 @@
 ﻿from __future__ import annotations
 
 import itertools
-from datetime import date as date_type, timedelta
+from datetime import date as date_type
+from datetime import timedelta
 from typing import Any
 
 import asyncpg
@@ -280,8 +281,11 @@ class TrainRepository(BaseRepository):
                 ts.station_no,
                 ts.arrive_time,
                 ts.start_time,
-                ts.arrive_day_diff
+                ts.arrive_day_diff,
+                s.longitude,
+                s.latitude
             FROM train_stops ts
+            LEFT JOIN stations s ON s.name = ts.station_name
             WHERE UPPER(ts.train_no) = UPPER($1)
             ORDER BY ts.station_no
         """
@@ -295,6 +299,8 @@ class TrainRepository(BaseRepository):
                 "arrival_time": str(row["arrive_time"]) if row["arrive_time"] else None,
                 "departure_time": str(row["start_time"]) if row["start_time"] else None,
                 "arrive_day_diff": int(row["arrive_day_diff"]) if row["arrive_day_diff"] else 0,
+                "longitude": float(row["longitude"]) if row["longitude"] is not None else None,
+                "latitude": float(row["latitude"]) if row["latitude"] is not None else None,
             }
             for row in rows
         ]

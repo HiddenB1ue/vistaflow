@@ -42,6 +42,50 @@ function wgs84ToGcj02(lng: number, lat: number): { lng: number; lat: number } {
   return { lng: mgLng, lat: mgLat };
 }
 
+/** GCJ-02 → WGS-84（迭代法逼近，精度 < 0.5m） */
+function gcj02ToWgs84(gcjLng: number, gcjLat: number): { lng: number; lat: number } {
+  let wgsLng = gcjLng;
+  let wgsLat = gcjLat;
+  for (let i = 0; i < 3; i++) {
+    const { lng: mgLng, lat: mgLat } = wgs84ToGcj02(wgsLng, wgsLat);
+    wgsLng += gcjLng - mgLng;
+    wgsLat += gcjLat - mgLat;
+  }
+  return { lng: wgsLng, lat: wgsLat };
+}
+
+/** 单点 GCJ-02 → WGS-84 */
+export function convertPointToWgs84(point: { lng: number; lat: number }): { lng: number; lat: number } {
+  return gcj02ToWgs84(point.lng, point.lat);
+}
+
+/** 将 Route 中的所有坐标从 GCJ-02 转换为 WGS-84（用于 MapLibre/OpenMapTiles） */
+function convertRouteToWgs84(route: Route): Route {
+  return {
+    ...route,
+    origin: { ...route.origin, ...gcj02ToWgs84(route.origin.lng, route.origin.lat) },
+    destination: { ...route.destination, ...gcj02ToWgs84(route.destination.lng, route.destination.lat) },
+    segs: route.segs.map((seg) => {
+      if ('transfer' in seg) return seg;
+      return {
+        ...seg,
+        origin: { ...seg.origin, ...gcj02ToWgs84(seg.origin.lng, seg.origin.lat) },
+        destination: { ...seg.destination, ...gcj02ToWgs84(seg.destination.lng, seg.destination.lat) },
+        stops: seg.stops.map((stop) => ({
+          ...stop,
+          station: { ...stop.station, ...gcj02ToWgs84(stop.station.lng, stop.station.lat) },
+        })),
+      };
+    }),
+    pathPoints: route.pathPoints.map(({ lng, lat }) => gcj02ToWgs84(lng, lat)),
+  };
+}
+
+/** 将 RouteList 中的所有坐标从 GCJ-02 转换为 WGS-84 */
+export function convertRouteListToWgs84(routes: RouteList): RouteList {
+  return routes.map(convertRouteToWgs84);
+}
+
 /** 将 Route 中的所有坐标从 WGS-84 批量转换为 GCJ-02 */
 function convertRouteCoordinates(route: Route): Route {
   return {

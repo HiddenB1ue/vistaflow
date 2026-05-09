@@ -23,8 +23,10 @@
     "@vistaflow/utils": "workspace:*",
     "axios": "^1.13.6",
     "gsap": "~3.12.7",
+    "maplibre-gl": "^5.24.0",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
+    "react-map-gl": "^8.1.1",
     "react-router-dom": "^6.30.3",
     "zustand": "^4.5.7"
   },

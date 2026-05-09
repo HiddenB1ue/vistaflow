@@ -122,6 +122,8 @@ class TrainService:
                 arrival_time=str(row["arrival_time"]) if row["arrival_time"] else None,
                 departure_time=str(row["departure_time"]) if row["departure_time"] else None,
                 stop_number=int(str(row["stop_number"])),
+                longitude=float(str(row["longitude"])) if row.get("longitude") is not None else None,
+                latitude=float(str(row["latitude"])) if row.get("latitude") is not None else None,
             )
             for row in rows
         ]

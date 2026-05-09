@@ -1,5 +1,6 @@
 import type { JourneyViewPrefs } from '@/stores/uiStore';
-import type { RouteList } from '@/types/route';
+import type { Route, RouteList, TrainSegment } from '@/types/route';
+import { isTransfer } from '@/types/route';
 import type { SearchParams } from '@/types/search';
 import { apiClient } from './api';
 import { mockRoutes } from './mock/routes.mock';
@@ -245,4 +246,96 @@ export async function fetchJourneySearchSessionView(
     request,
   );
   return data.data;
+}
+
+// ---------------------------------------------------------------------------
+// Route stops with geo — for map display
+// ---------------------------------------------------------------------------
+
+export interface RouteStopGeo {
+  name: string;
+  lng: number;
+  lat: number;
+}
+
+function collectMockStopGeos(route: Route): RouteStopGeo[] {
+  const stops: RouteStopGeo[] = [];
+  const seen = new Set<string>();
+
+  const add = (name: string, lng: number, lat: number) => {
+    if (seen.has(name)) return;
+    seen.add(name);
+    if (lng === 0 && lat === 0) return;
+    stops.push({ name, lng, lat });
+  };
+
+  for (const seg of route.segs) {
+    if (isTransfer(seg)) continue;
+    add(seg.origin.name, seg.origin.lng, seg.origin.lat);
+    for (const stop of seg.stops) {
+      add(stop.station.name, stop.station.lng, stop.station.lat);
+    }
+    add(seg.destination.name, seg.destination.lng, seg.destination.lat);
+  }
+
+  return stops;
+}
+
+async function fetchSegmentStops(
+  seg: TrainSegment,
+): Promise<Array<{ station_name: string; longitude: number | null; latitude: number | null }>> {
+  const { data } = await apiClient.get<{
+    data: {
+      train_code: string;
+      stops: Array<{
+        station_name: string;
+        stop_number: number;
+        longitude: number | null;
+        latitude: number | null;
+      }>;
+    };
+  }>(
+    `/trains/${encodeURIComponent(seg.no)}/stops`,
+    {
+      params: {
+        from_station: seg.origin.name,
+        to_station: seg.destination.name,
+      },
+    },
+  );
+  return data.data.stops;
+}
+
+export async function fetchRouteStopsGeo(route: Route): Promise<RouteStopGeo[]> {
+  if (USE_MOCK) {
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    return collectMockStopGeos(route);
+  }
+
+  const trainSegs = route.segs.filter(
+    (s): s is TrainSegment => !isTransfer(s),
+  );
+  const allStops: RouteStopGeo[] = [];
+  const seen = new Set<string>();
+
+  for (const seg of trainSegs) {
+    try {
+      const stops = await fetchSegmentStops(seg);
+      for (const stop of stops) {
+        if (seen.has(stop.station_name)) continue;
+        seen.add(stop.station_name);
+        if (stop.longitude != null && stop.latitude != null) {
+          allStops.push({
+            name: stop.station_name,
+            lng: stop.longitude,
+            lat: stop.latitude,
+          });
+        }
+      }
+    } catch {
+      // Skip if stops fetch fails for a segment
+    }
+  }
+
+  return allStops;
 }

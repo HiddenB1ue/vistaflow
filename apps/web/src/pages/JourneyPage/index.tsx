@@ -15,12 +15,14 @@ import { usePageTransition } from '@/hooks/usePageTransition';
 import {
   buildJourneyViewRequest,
   fetchJourneySearchSessionView,
+  fetchRouteStopsGeo,
 } from '@/services/routeService';
 import { useRouteStore } from '@/stores/routeStore';
 import { useSearchStore } from '@/stores/searchStore';
 import { useUiStore } from '@/stores/uiStore';
 import type { Route } from '@/types/route';
 import { RouteListPanel } from './RouteListPanel';
+import { RouteMap } from './RouteMap';
 import { getNextSelectedRoute, routeHasAvailableTickets } from './routeList.helpers';
 
 export function JourneyPage() {
@@ -136,6 +138,12 @@ export function JourneyPage() {
   };
   const sessionExpired = error instanceof Error;
 
+  const { data: stopsGeo } = useQuery({
+    queryKey: ['route-stops-geo', displaySelectedRoute?.id],
+    queryFn: () => fetchRouteStopsGeo(displaySelectedRoute!),
+    enabled: displaySelectedRoute !== null,
+  });
+
   return (
     <div className="relative min-h-screen" style={{ backgroundColor: 'var(--color-bg)' }}>
       <AuraBackground enableMouseTracking />
@@ -164,7 +172,14 @@ export function JourneyPage() {
           paddingBottom: 'var(--vf-page-bottom-space)',
         }}
       >
-        <div className="relative flex h-full w-full flex-col overflow-hidden">
+        <div className="relative flex h-full w-full gap-4 overflow-hidden">
+          {/* 左侧地图 40% — 桌面端可见 */}
+          <div className="hidden h-full w-[40%] shrink-0 lg:block">
+            <RouteMap route={displaySelectedRoute} routes={displayRoutes} stopsGeo={stopsGeo ?? []} />
+          </div>
+
+          {/* 右侧列表 60% */}
+          <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
           {sessionExpired ? (
             <ContentSection className="flex flex-1 flex-col items-center justify-center gap-6 text-sm tracking-widest text-muted">
               <div>搜索会话已过期，请重新搜索。</div>
@@ -208,6 +223,7 @@ export function JourneyPage() {
               listRef={listRef}
             />
           )}
+          </div>
         </div>
       </section>
     </div>

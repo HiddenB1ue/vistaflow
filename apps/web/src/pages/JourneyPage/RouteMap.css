@@ -1,0 +1,130 @@
+/* ====== route-map: 地图容器 ====== */
+.route-map {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  background: #030303;
+}
+
+.route-map .maplibregl-map {
+  font-family: 'Inter', 'Noto Sans SC', sans-serif;
+}
+
+/* ====== 隐藏默认 logo / attribution ====== */
+.route-map .maplibregl-ctrl-logo {
+  display: none !important;
+}
+
+.route-map .maplibregl-ctrl-attrib {
+  display: none !important;
+}
+
+/* ====== 导航控件暗色覆盖 ====== */
+.route-map .maplibregl-ctrl-group {
+  background: rgba(10, 10, 14, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  backdrop-filter: blur(10px);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+}
+
+.route-map .maplibregl-ctrl-group button {
+  border: none;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  width: 32px;
+  height: 32px;
+}
+
+.route-map .maplibregl-ctrl-group button:last-child {
+  border-bottom: none;
+}
+
+.route-map .maplibregl-ctrl-group button .maplibregl-ctrl-icon {
+  filter: invert(1) brightness(0.7);
+}
+
+.route-map .maplibregl-ctrl-group button:hover .maplibregl-ctrl-icon {
+  filter: invert(1) brightness(1);
+}
+
+/* ====== 站点标记 ====== */
+.route-map-marker {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  pointer-events: none;
+}
+
+.route-map-marker__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  border: 1.5px solid var(--marker-color, rgba(255, 255, 255, 0.5));
+  background: #0a0a0e;
+  box-shadow: 0 0 6px color-mix(in srgb, var(--marker-color, #fff) 40%, transparent);
+  flex-shrink: 0;
+}
+
+.route-map-marker__dot--origin,
+.route-map-marker__dot--destination {
+  width: 10px;
+  height: 10px;
+  background: var(--marker-color, #fff);
+  border-color: var(--marker-color, #fff);
+  box-shadow:
+    0 0 6px var(--marker-color, #fff),
+    0 0 16px color-mix(in srgb, var(--marker-color, #fff) 35%, transparent);
+}
+
+.route-map-marker__label {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 2px 8px;
+  border-radius: 6px;
+  background: rgba(10, 10, 14, 0.88);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(8px);
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 0.6rem;
+  letter-spacing: 0.1em;
+  color: rgba(255, 255, 255, 0.75);
+  white-space: nowrap;
+}
+
+/* ====== 经停站标记（比起终点更小更淡） ====== */
+.route-map-marker__dot--stop {
+  width: 5px;
+  height: 5px;
+  border-width: 1px;
+  opacity: 0.6;
+}
+
+.route-map-marker__dot--stop + .route-map-marker__label {
+  font-size: 0.5rem;
+  opacity: 0.5;
+}
+
+/* ====== 空状态 ====== */
+.route-map-empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.route-map-empty__text {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 0.75rem;
+  letter-spacing: 0.14em;
+  color: var(--color-text-secondary);
+  text-transform: uppercase;
+}
