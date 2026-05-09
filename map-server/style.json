@@ -1,0 +1,556 @@
+{
+  "version": 8,
+  "name": "VistaFlow Dark Canvas (z0-14 with buildings)",
+  "metadata": { "mapbox:type": "template" },
+  "sources": {
+    "openmaptiles": {
+      "type": "vector",
+      "url": "/data/openmaptiles.json"
+    }
+  },
+  "sprite": "https://openmaptiles.github.io/positron-gl-style/sprite",
+  "glyphs": "{fontstack}/{range}.pbf",
+  "layers": [
+    {
+      "id": "background",
+      "type": "background",
+      "paint": { "background-color": "#08080A" }
+    },
+
+    {
+      "id": "water",
+      "type": "fill",
+      "source": "openmaptiles",
+      "source-layer": "water",
+      "filter": ["==", "$type", "Polygon"],
+      "paint": { "fill-color": "#030303", "fill-antialias": false }
+    },
+
+    {
+      "id": "boundary_country",
+      "type": "line",
+      "source": "openmaptiles",
+      "source-layer": "boundary",
+      "filter": ["==", "admin_level", 2],
+      "layout": { "line-cap": "round", "line-join": "round" },
+      "paint": {
+        "line-color": "rgba(255,255,255,0.10)",
+        "line-width": { "base": 1.1, "stops": [[3, 0.8], [10, 2], [14, 3]] }
+      }
+    },
+    {
+      "id": "boundary_state_glow",
+      "type": "line",
+      "source": "openmaptiles",
+      "source-layer": "boundary",
+      "minzoom": 3,
+      "filter": ["==", "admin_level", 4],
+      "layout": { "line-cap": "round", "line-join": "round" },
+      "paint": {
+        "line-color": "rgba(90,90,96,0.12)",
+        "line-width": { "base": 1.2, "stops": [[3, 3], [6, 5], [10, 7], [14, 10]] }
+      }
+    },
+    {
+      "id": "boundary_state",
+      "type": "line",
+      "source": "openmaptiles",
+      "source-layer": "boundary",
+      "minzoom": 3,
+      "filter": ["==", "admin_level", 4],
+      "layout": { "line-cap": "round", "line-join": "round" },
+      "paint": {
+        "line-color": {
+          "stops": [[3, "rgba(100,100,105,0.4)"], [6, "rgba(100,100,105,0.6)"], [10, "rgba(100,100,105,0.7)"]]
+        },
+        "line-dasharray": [4, 3],
+        "line-width": { "base": 1.2, "stops": [[3, 0.7], [6, 1.4], [10, 2.2], [14, 3.0]] }
+      }
+    },
+    {
+      "id": "boundary_prefecture",
+      "type": "line",
+      "source": "openmaptiles",
+      "source-layer": "boundary",
+      "minzoom": 7,
+      "filter": ["==", "admin_level", 6],
+      "layout": { "line-cap": "round", "line-join": "round" },
+      "paint": {
+        "line-color": {
+          "stops": [[7, "rgba(70,70,75,0.4)"], [8, "rgba(70,70,75,0.6)"], [10, "rgba(70,70,75,0.75)"]]
+        },
+        "line-dasharray": [3, 2],
+        "line-width": { "base": 1.2, "stops": [[6, 0.5], [8, 1.0], [10, 1.8], [14, 2.4]] }
+      }
+    },
+
+    {
+      "id": "highway_minor",
+      "type": "line",
+      "source": "openmaptiles",
+      "source-layer": "transportation",
+      "minzoom": 12,
+      "filter": ["all",
+        ["==", "$type", "LineString"],
+        ["in", "class", "minor", "service", "track", "path"]
+      ],
+      "layout": { "line-cap": "round", "line-join": "round" },
+      "paint": {
+        "line-color": "#16161A",
+        "line-width": { "base": 1.4, "stops": [[12, 0.4], [14, 1.5]] }
+      }
+    },
+    {
+      "id": "highway_tertiary",
+      "type": "line",
+      "source": "openmaptiles",
+      "source-layer": "transportation",
+      "minzoom": 11,
+      "filter": ["all", ["==", "$type", "LineString"], ["==", "class", "tertiary"]],
+      "layout": { "line-cap": "round", "line-join": "round" },
+      "paint": {
+        "line-color": "#1B1B1F",
+        "line-width": { "base": 1.3, "stops": [[11, 0.5], [14, 2]] }
+      }
+    },
+    {
+      "id": "highway_secondary",
+      "type": "line",
+      "source": "openmaptiles",
+      "source-layer": "transportation",
+      "minzoom": 9,
+      "filter": ["all", ["==", "$type", "LineString"], ["==", "class", "secondary"]],
+      "layout": { "line-cap": "round", "line-join": "round" },
+      "paint": {
+        "line-color": "#1F1F24",
+        "line-width": { "base": 1.3, "stops": [[9, 0.4], [12, 1], [14, 2.5]] }
+      }
+    },
+    {
+      "id": "highway_trunk_primary",
+      "type": "line",
+      "source": "openmaptiles",
+      "source-layer": "transportation",
+      "minzoom": 7,
+      "filter": ["all", ["==", "$type", "LineString"], ["in", "class", "trunk", "primary"]],
+      "layout": { "line-cap": "round", "line-join": "round" },
+      "paint": {
+        "line-color": "#26262B",
+        "line-width": { "base": 1.3, "stops": [[7, 0.4], [10, 1.5], [14, 3.5]] }
+      }
+    },
+    {
+      "id": "highway_motorway",
+      "type": "line",
+      "source": "openmaptiles",
+      "source-layer": "transportation",
+      "minzoom": 5,
+      "filter": ["all", ["==", "$type", "LineString"], ["==", "class", "motorway"]],
+      "layout": { "line-cap": "round", "line-join": "round" },
+      "paint": {
+        "line-color": "#2C2C32",
+        "line-width": { "base": 1.4, "stops": [[5, 0.5], [10, 2.5], [14, 5]] }
+      }
+    },
+
+    {
+      "id": "railway_main",
+      "type": "line",
+      "source": "openmaptiles",
+      "source-layer": "transportation",
+      "minzoom": 4,
+      "filter": ["all", ["==", "$type", "LineString"], ["==", "class", "rail"]],
+      "layout": { "line-cap": "butt", "line-join": "round" },
+      "paint": {
+        "line-color": "#1F1F22",
+        "line-width": { "base": 1.4, "stops": [[4, 0.4], [6, 1.2], [10, 2.5], [14, 3.5]] }
+      }
+    },
+
+    {
+      "id": "building",
+      "type": "fill",
+      "source": "openmaptiles",
+      "source-layer": "building",
+      "minzoom": 13,
+      "paint": {
+        "fill-color": {
+          "stops": [[13, "#101013"], [14, "#15151A"], [16, "#1A1A20"]]
+        },
+        "fill-outline-color": "#26262C",
+        "fill-antialias": true,
+        "fill-opacity": { "stops": [[13, 0.6], [14, 0.85], [16, 1]] }
+      }
+    },
+    {
+      "id": "building_3d",
+      "type": "fill-extrusion",
+      "source": "openmaptiles",
+      "source-layer": "building",
+      "minzoom": 15,
+      "paint": {
+        "fill-extrusion-color": "#1E1E24",
+        "fill-extrusion-height": ["coalesce", ["get", "render_height"], 6],
+        "fill-extrusion-base":   ["coalesce", ["get", "render_min_height"], 0],
+        "fill-extrusion-opacity": 0.85
+      }
+    },
+
+    {
+      "id": "station_dot",
+      "type": "circle",
+      "source": "openmaptiles",
+      "source-layer": "railway_station",
+      "minzoom": 9,
+      "filter": ["==", "class", "station"],
+      "paint": {
+        "circle-color": "#E5C07B",
+        "circle-opacity": { "base": 1, "stops": [[9, 0.5], [10, 0.85]] },
+        "circle-stroke-color": "#08080A",
+        "circle-stroke-width": 1,
+        "circle-radius": { "base": 1.2, "stops": [[9, 1.5], [10, 2.5], [14, 4]] }
+      }
+    },
+    {
+      "id": "station_label",
+      "type": "symbol",
+      "source": "openmaptiles",
+      "source-layer": "railway_station",
+      "minzoom": 10,
+      "filter": ["==", "class", "station"],
+      "layout": {
+        "text-anchor": "left",
+        "text-field": "{name:latin}",
+        "text-font": ["Metropolis Regular", "Noto Sans Regular"],
+        "text-justify": "left",
+        "text-offset": [0.7, 0.1],
+        "text-size": { "stops": [[10, 10], [14, 13]] },
+        "text-letter-spacing": 0.05,
+        "text-padding": 4
+      },
+      "paint": {
+        "text-color": "#E5C07B",
+        "text-opacity": 0.9,
+        "text-halo-color": "rgba(3,3,3,0.95)",
+        "text-halo-width": 1.5
+      }
+    },
+
+    {
+      "id": "place_country",
+      "type": "symbol",
+      "source": "openmaptiles",
+      "source-layer": "place",
+      "maxzoom": 4,
+      "filter": ["all", ["==", "$type", "Point"], ["==", "class", "country"]],
+      "layout": {
+        "text-field": "{name:latin}",
+        "text-font": ["Metropolis Regular", "Noto Sans Regular"],
+        "text-size": { "base": 1.4, "stops": [[0, 10], [3, 13], [5, 15]] },
+        "text-transform": "uppercase",
+        "text-letter-spacing": 0.3,
+        "text-padding": 8
+      },
+      "paint": {
+        "text-color": "#3E3E42",
+        "text-opacity": { "stops": [[0, 1], [3, 1], [4, 0]] },
+        "text-halo-color": "rgba(3,3,3,0.9)",
+        "text-halo-width": 1.2
+      }
+    },
+
+    {
+      "id": "place_province",
+      "type": "symbol",
+      "source": "openmaptiles",
+      "source-layer": "place",
+      "minzoom": 4,
+      "maxzoom": 8,
+      "filter": [
+        "all",
+        ["==", ["geometry-type"], "Point"],
+        ["any",
+          [
+            "all",
+            ["in", ["get", "class"], ["literal", ["state", "province"]]],
+            ["!", ["in", ["coalesce", ["get", "name:latin"], ""], ["literal", ["北京", "上海", "天津", "重庆"]]]]
+          ],
+          [
+            "all",
+            ["==", ["get", "class"], "city"],
+            ["any",
+              ["==", ["get", "capital"], 2],
+              ["in", ["coalesce", ["get", "name:latin"], ""], ["literal", ["上海市", "天津市", "重庆市"]]]
+            ]
+          ]
+        ]
+      ],
+      "layout": {
+        "text-field": "{name:latin}",
+        "text-font": ["Metropolis Regular", "Noto Sans Regular"],
+        "text-size": { "base": 1, "stops": [[4, 11], [7, 12], [9, 13]] },
+        "text-letter-spacing": 0.18,
+        "text-padding": 6
+      },
+      "paint": {
+        "text-color": [
+          "interpolate", ["linear"], ["zoom"],
+          4, "#55555A",
+          5, "#7A7A80",
+          6, "#A0A0A6"
+        ],
+        "text-opacity": { "stops": [[4, 0.9], [5, 1], [6, 1], [7, 0]] },
+        "text-halo-color": "rgba(3,3,3,0.95)",
+        "text-halo-width": 1.4
+      }
+    },
+
+    {
+      "id": "place_municipality",
+      "type": "symbol",
+      "source": "openmaptiles",
+      "source-layer": "place",
+      "minzoom": 6,
+      "filter": [
+        "all",
+        ["==", ["geometry-type"], "Point"],
+        ["==", ["get", "class"], "city"],
+        ["any",
+          ["==", ["get", "capital"], 2],
+          ["in", ["coalesce", ["get", "name:latin"], ""], ["literal", ["上海市", "天津市", "重庆市"]]]
+        ]
+      ],
+      "layout": {
+        "text-field": "{name:latin}",
+        "text-font": ["Metropolis Regular", "Noto Sans Regular"],
+        "text-size": { "base": 1, "stops": [[6, 12], [7, 13], [8, 14], [10, 16], [14, 18]] },
+        "text-letter-spacing": 0.1,
+        "text-padding": 10,
+        "symbol-sort-key": 0
+      },
+      "paint": {
+        "text-color": "#BFBFC4",
+        "text-opacity": { "stops": [[6, 0], [7, 1]] },
+        "text-halo-color": "rgba(3,3,3,0.95)",
+        "text-halo-width": 1.5
+      }
+    },
+
+    {
+      "id": "place_provincial_capital",
+      "type": "symbol",
+      "source": "openmaptiles",
+      "source-layer": "place",
+      "minzoom": 6,
+      "filter": [
+        "all",
+        ["==", ["geometry-type"], "Point"],
+        ["==", ["get", "class"], "city"],
+        ["!=", ["get", "capital"], 2],
+        ["!", ["in", ["coalesce", ["get", "name:latin"], ""], ["literal", ["上海市", "天津市", "重庆市"]]]],
+        ["any", ["==", ["get", "capital"], 3], ["==", ["get", "capital"], 4]],
+        ["!", ["in", "区", ["coalesce", ["get", "name:latin"], ""]]]
+      ],
+      "layout": {
+        "text-field": "{name:latin}",
+        "text-font": ["Metropolis Regular", "Noto Sans Regular"],
+        "text-size": { "base": 1, "stops": [[6, 12], [10, 14], [14, 16]] },
+        "text-letter-spacing": 0.08,
+        "text-padding": 8,
+        "symbol-sort-key": 1
+      },
+      "paint": {
+        "text-color": "#A0A0A5",
+        "text-halo-color": "rgba(3,3,3,0.95)",
+        "text-halo-width": 1.4
+      }
+    },
+
+    {
+      "id": "place_sub_provincial",
+      "type": "symbol",
+      "source": "openmaptiles",
+      "source-layer": "place",
+      "minzoom": 7,
+      "filter": [
+        "all",
+        ["==", ["geometry-type"], "Point"],
+        ["==", ["get", "class"], "city"],
+        ["!", ["in", ["coalesce", ["get", "capital"], 0], ["literal", [2, 3, 4]]]],
+        ["<=", ["coalesce", ["get", "rank"], 99], 2],
+        ["!", ["in", "区", ["coalesce", ["get", "name:latin"], ""]]]
+      ],
+      "layout": {
+        "text-field": "{name:latin}",
+        "text-font": ["Metropolis Regular", "Noto Sans Regular"],
+        "text-size": { "base": 1, "stops": [[7, 11], [10, 13], [14, 15]] },
+        "text-letter-spacing": 0.06,
+        "text-padding": 6,
+        "symbol-sort-key": 2
+      },
+      "paint": {
+        "text-color": "#8A8A90",
+        "text-halo-color": "rgba(3,3,3,0.95)",
+        "text-halo-width": 1.3
+      }
+    },
+
+    {
+      "id": "place_prefecture",
+      "type": "symbol",
+      "source": "openmaptiles",
+      "source-layer": "place",
+      "minzoom": 8,
+      "filter": [
+        "all",
+        ["==", ["geometry-type"], "Point"],
+        ["==", ["get", "class"], "city"],
+        ["!", ["in", ["coalesce", ["get", "capital"], 0], ["literal", [2, 3, 4]]]],
+        [">", ["coalesce", ["get", "rank"], 99], 2],
+        ["<=", ["coalesce", ["get", "rank"], 99], 4],
+        ["!", ["in", "区", ["coalesce", ["get", "name:latin"], ""]]]
+      ],
+      "layout": {
+        "text-field": "{name:latin}",
+        "text-font": ["Metropolis Regular", "Noto Sans Regular"],
+        "text-size": { "base": 1, "stops": [[8, 10], [10, 12], [14, 14]] },
+        "text-letter-spacing": 0.05,
+        "text-padding": 5,
+        "symbol-sort-key": 3
+      },
+      "paint": {
+        "text-color": "#75757A",
+        "text-halo-color": "rgba(3,3,3,0.95)",
+        "text-halo-width": 1.2
+      }
+    },
+
+    {
+      "id": "place_county",
+      "type": "symbol",
+      "source": "openmaptiles",
+      "source-layer": "place",
+      "minzoom": 9,
+      "filter": [
+        "all",
+        ["==", ["geometry-type"], "Point"],
+        ["==", ["get", "class"], "city"],
+        ["!", ["in", ["coalesce", ["get", "capital"], 0], ["literal", [2, 3, 4]]]],
+        [">", ["coalesce", ["get", "rank"], 99], 4],
+        ["!", ["in", "区", ["coalesce", ["get", "name:latin"], ""]]]
+      ],
+      "layout": {
+        "text-field": "{name:latin}",
+        "text-font": ["Metropolis Regular", "Noto Sans Regular"],
+        "text-size": { "base": 1, "stops": [[9, 10], [10, 11], [14, 13]] },
+        "text-padding": 3,
+        "symbol-sort-key": 5
+      },
+      "paint": {
+        "text-color": "#606065",
+        "text-halo-color": "rgba(3,3,3,0.95)",
+        "text-halo-width": 1.1
+      }
+    },
+
+    {
+      "id": "place_town",
+      "type": "symbol",
+      "source": "openmaptiles",
+      "source-layer": "place",
+      "minzoom": 11,
+      "filter": ["all", ["==", "$type", "Point"], ["in", "class", "town", "village"]],
+      "layout": {
+        "text-field": "{name:latin}",
+        "text-font": ["Metropolis Regular", "Noto Sans Regular"],
+        "text-size": { "stops": [[11, 9], [14, 11]] },
+        "text-padding": 2,
+        "symbol-sort-key": 7
+      },
+      "paint": {
+        "text-color": "#575760",
+        "text-halo-color": "rgba(3,3,3,0.95)",
+        "text-halo-width": 1
+      }
+    },
+
+    {
+      "id": "place_district",
+      "type": "symbol",
+      "source": "openmaptiles",
+      "source-layer": "place",
+      "minzoom": 11,
+      "filter": [
+        "all",
+        ["==", ["geometry-type"], "Point"],
+        ["in", "区", ["coalesce", ["get", "name:latin"], ""]]
+      ],
+      "layout": {
+        "text-field": "{name:latin}",
+        "text-font": ["Metropolis Regular", "Noto Sans Regular"],
+        "text-size": { "stops": [[11, 9], [14, 12]] },
+        "text-padding": 3,
+        "symbol-sort-key": 6
+      },
+      "paint": {
+        "text-color": "#65656C",
+        "text-halo-color": "rgba(3,3,3,0.95)",
+        "text-halo-width": 1.1
+      }
+    },
+
+    {
+      "id": "place_neighbourhood",
+      "type": "symbol",
+      "source": "openmaptiles",
+      "source-layer": "place",
+      "minzoom": 13,
+      "filter": [
+        "all",
+        ["==", ["geometry-type"], "Point"],
+        ["in", ["get", "class"], ["literal", ["suburb", "quarter", "neighbourhood"]]],
+        ["!", ["in", "区", ["coalesce", ["get", "name:latin"], ""]]]
+      ],
+      "layout": {
+        "text-field": "{name:latin}",
+        "text-font": ["Metropolis Regular", "Noto Sans Regular"],
+        "text-size": { "stops": [[13, 9], [14, 11]] },
+        "text-transform": "uppercase",
+        "text-letter-spacing": 0.1,
+        "text-padding": 2,
+        "symbol-sort-key": 8
+      },
+      "paint": {
+        "text-color": "#4A4A52",
+        "text-halo-color": "rgba(3,3,3,0.95)",
+        "text-halo-width": 1
+      }
+    },
+
+    {
+      "id": "road_name",
+      "type": "symbol",
+      "source": "openmaptiles",
+      "source-layer": "transportation_name",
+      "minzoom": 13,
+      "filter": ["==", "$type", "LineString"],
+      "layout": {
+        "symbol-placement": "line",
+        "symbol-spacing": 350,
+        "text-field": "{name:latin}",
+        "text-font": ["Metropolis Regular", "Noto Sans Regular"],
+        "text-size": { "stops": [[13, 9], [14, 11]] },
+        "text-rotation-alignment": "map",
+        "text-pitch-alignment": "viewport",
+        "text-max-angle": 30,
+        "text-padding": 2
+      },
+      "paint": {
+        "text-color": "#5A5A60",
+        "text-halo-color": "rgba(3,3,3,0.95)",
+        "text-halo-width": 1.2
+      }
+    }
+  ],
+  "id": "vistaflow-dark"
+}

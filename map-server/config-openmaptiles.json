@@ -1,0 +1,32 @@
+{
+	"layers": {
+		"place":               { "minzoom": 0, "maxzoom": 14 },
+		"boundary":            { "minzoom": 0, "maxzoom": 14, "simplify_below": 12, "simplify_level": 0.0005, "simplify_algorithm": "visvalingam" },
+		"transportation":      { "minzoom": 4, "maxzoom": 14, "simplify_below": 13, "simplify_level": 0.0003 },
+		"transportation_name": { "minzoom": 8, "maxzoom": 14 },
+		"building":            { "minzoom": 13, "maxzoom": 14 },
+		"railway_station":     { "minzoom": 8, "maxzoom": 14 },
+		"aeroway":             { "minzoom": 9, "maxzoom": 14 },
+		"aerodrome_label":     { "minzoom": 6, "maxzoom": 14 },
+		"water":               { "minzoom": 0, "maxzoom": 14, "simplify_below": 12, "simplify_level": 0.0005, "simplify_algorithm": "visvalingam", "filter_below": 12, "filter_area": 0.5 },
+		"ocean":               { "minzoom": 0, "maxzoom": 14, "source": "coastline/water_polygons.shp", "filter_below": 12, "filter_area": 0.5, "simplify_below": 12, "simplify_level": 0.0003, "simplify_algorithm": "visvalingam", "write_to": "water" }
+	},
+	"settings": {
+		"minzoom": 0,
+		"maxzoom": 14,
+		"basezoom": 14,
+		"include_ids": false,
+		"combine_below": 14,
+		"name": "Tilemaker to OpenMapTiles schema (with buildings)",
+		"version": "3.1",
+		"description": "Tile config based on OpenMapTiles schema, extended with buildings and minor roads",
+		"compress": "gzip",
+		"filemetadata": {
+			"tilejson": "2.0.0",
+			"scheme": "xyz",
+			"type": "baselayer",
+			"format": "pbf",
+			"tiles": ["https://example.com/{z}/{x}/{y}.pbf"]
+		}
+	}
+}

@@ -1,0 +1,21 @@
+{
+  "options": {
+    "paths": {
+      "root": "",
+      "fonts": "fonts",
+      "styles": "",
+      "mbtiles": ""
+    }
+  },
+  "data": {
+    "openmaptiles": {
+      "mbtiles": "complete-china-z14.mbtiles"
+    }
+  },
+  "styles": {
+    "basic": {
+      "style": "style.json",
+      "name": "Basic + 中文预览"
+    }
+  }
+}
