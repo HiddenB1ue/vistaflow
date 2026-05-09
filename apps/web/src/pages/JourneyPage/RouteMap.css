@@ -5,109 +5,154 @@
   height: 100%;
   border-radius: 12px;
   overflow: hidden;
-  border: 1px solid rgba(255, 255, 255, 0.07);
+  border: 1px solid rgba(255, 255, 255, 0.05);
   background: #030303;
 }
 
 .route-map .maplibregl-map {
-  font-family: 'Inter', 'Noto Sans SC', sans-serif;
+  font-family: 'Space Grotesk', 'Inter', 'Noto Sans SC', sans-serif;
 }
 
 /* ====== 隐藏默认 logo / attribution ====== */
-.route-map .maplibregl-ctrl-logo {
-  display: none !important;
-}
-
+.route-map .maplibregl-ctrl-logo,
 .route-map .maplibregl-ctrl-attrib {
   display: none !important;
 }
 
-/* ====== 导航控件暗色覆盖 ====== */
+/* ====== 导航控件暗色极简覆盖 ====== */
 .route-map .maplibregl-ctrl-group {
-  background: rgba(10, 10, 14, 0.85);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 8px;
-  backdrop-filter: blur(10px);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  background: rgba(3, 3, 3, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 6px;
+  backdrop-filter: blur(12px);
+  box-shadow: none;
 }
 
 .route-map .maplibregl-ctrl-group button {
   border: none;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-  width: 32px;
-  height: 32px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  width: 28px;
+  height: 28px;
+  transition: background 0.2s;
 }
 
 .route-map .maplibregl-ctrl-group button:last-child {
   border-bottom: none;
 }
 
+.route-map .maplibregl-ctrl-group button:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
 .route-map .maplibregl-ctrl-group button .maplibregl-ctrl-icon {
-  filter: invert(1) brightness(0.7);
+  filter: invert(1) brightness(0.6);
+  transform: scale(0.8);
 }
 
 .route-map .maplibregl-ctrl-group button:hover .maplibregl-ctrl-icon {
   filter: invert(1) brightness(1);
 }
 
-/* ====== 站点标记 ====== */
+/* ====== 站点标记 HUD 风格 ====== */
 .route-map-marker {
   position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
   pointer-events: none;
+  z-index: 10;
 }
 
+/* 核心指示点 */
 .route-map-marker__dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  border: 1.5px solid var(--marker-color, rgba(255, 255, 255, 0.5));
-  background: #0a0a0e;
-  box-shadow: 0 0 6px color-mix(in srgb, var(--marker-color, #fff) 40%, transparent);
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   flex-shrink: 0;
 }
 
+/* 起终点：外圈 + 中心小点 */
 .route-map-marker__dot--origin,
 .route-map-marker__dot--destination {
-  width: 10px;
-  height: 10px;
-  background: var(--marker-color, #fff);
-  border-color: var(--marker-color, #fff);
-  box-shadow:
-    0 0 6px var(--marker-color, #fff),
-    0 0 16px color-mix(in srgb, var(--marker-color, #fff) 35%, transparent);
+  width: 14px;
+  height: 14px;
+  border: 1px solid var(--marker-color);
+  border-radius: 50%;
+  background: rgba(3, 3, 3, 0.8);
+  box-shadow: 0 0 10px color-mix(in srgb, var(--marker-color) 40%, transparent);
+}
+.route-map-marker__dot--origin::after,
+.route-map-marker__dot--destination::after {
+  content: '';
+  width: 4px;
+  height: 4px;
+  background: var(--marker-color);
+  border-radius: 50%;
+  box-shadow: 0 0 4px var(--marker-color);
 }
 
+/* 中转站：空心方块 */
+.route-map-marker__dot--transfer {
+  width: 8px;
+  height: 8px;
+  border: 1px solid var(--marker-color);
+  background: #030303;
+  transform: rotate(45deg);
+  opacity: 0.9;
+}
+
+/* 经停站：极微小的实心点 */
+.route-map-marker__dot--stop {
+  width: 4px;
+  height: 4px;
+  background: var(--marker-color);
+  border-radius: 50%;
+  opacity: 0.4;
+}
+
+/* 标签文字：去框、纯文字、锐利排版 */
 .route-map-marker__label {
   position: absolute;
-  top: calc(100% + 4px);
+  top: 100%;
   left: 50%;
-  transform: translateX(-50%);
-  padding: 2px 8px;
-  border-radius: 6px;
-  background: rgba(10, 10, 14, 0.88);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  backdrop-filter: blur(8px);
+  transform: translate3d(-50%, 6px, 0);
   font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
-  font-size: 0.6rem;
-  letter-spacing: 0.1em;
-  color: rgba(255, 255, 255, 0.75);
+  font-size: 11px;
+  letter-spacing: 0.15em;
+  font-weight: 600;
+  color: #ffffff;
+  text-transform: uppercase;
   white-space: nowrap;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  /* 更硬朗的描边式阴影，避免糊成一团 */
+  text-shadow: 
+    -1px -1px 0 #030303,  
+     1px -1px 0 #030303,
+    -1px  1px 0 #030303,
+     1px  1px 0 #030303,
+     0 2px 8px rgba(0,0,0,0.8);
 }
 
-/* ====== 经停站标记（比起终点更小更淡） ====== */
-.route-map-marker__dot--stop {
-  width: 5px;
-  height: 5px;
-  border-width: 1px;
-  opacity: 0.6;
+.route-map-marker__dot--transfer + .route-map-marker__label {
+  font-size: 9px;
+  color: rgba(255, 255, 255, 0.85);
+  letter-spacing: 0.1em;
+  transform: translate3d(-50%, 5px, 0);
 }
 
 .route-map-marker__dot--stop + .route-map-marker__label {
-  font-size: 0.5rem;
-  opacity: 0.5;
+  font-size: 9px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.5);
+  letter-spacing: 0.05em;
+  transform: translate3d(-50%, 4px, 0);
+  text-shadow: 
+    -1px -1px 0 rgba(3,3,3,0.8),  
+     1px -1px 0 rgba(3,3,3,0.8),
+    -1px  1px 0 rgba(3,3,3,0.8),
+     1px  1px 0 rgba(3,3,3,0.8);
 }
 
 /* ====== 空状态 ====== */
@@ -123,8 +168,8 @@
 
 .route-map-empty__text {
   font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
-  font-size: 0.75rem;
-  letter-spacing: 0.14em;
-  color: var(--color-text-secondary);
+  font-size: 0.65rem;
+  letter-spacing: 0.3em;
+  color: rgba(255, 255, 255, 0.3);
   text-transform: uppercase;
 }

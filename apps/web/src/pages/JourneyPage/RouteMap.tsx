@@ -28,10 +28,10 @@ const DEFAULT_CENTER = { longitude: 104.5, latitude: 35.5 };
 const DEFAULT_ZOOM = 3.5;
 
 /** 脉冲参数 */
-const PULSE_COUNT = 3;
-const PULSE_WIDTH = 0.08;
+const PULSE_COUNT = 2;
+const PULSE_WIDTH = 0.15;
 const PULSE_DURATION = 3500;
-const PULSE_SAMPLES = 28;
+const PULSE_SAMPLES = 48;
 
 interface RouteMapProps {
   route: Route | null;
@@ -148,7 +148,7 @@ function buildPulseGradient(
       peak = Math.max(peak, f * f);
     }
     const dirFade = 1 - p * 0.35;
-    const a = (0.18 + peak * 0.82) * dirFade;
+    const a = (0.05 + peak * 0.95) * dirFade;
     expr.push(p, `rgba(${r},${g},${b},${a.toFixed(3)})`);
   }
 
@@ -273,7 +273,7 @@ export function RouteMap({ route, routes, stopsGeo }: RouteMapProps) {
       type: 'line',
       source: 'route',
       paint: {
-        'line-width': 3,
+        'line-width': 2.5,
         'line-gradient': buildPulseGradient(0, rgb) as never,
       },
       layout: { 'line-cap': 'round', 'line-join': 'round' },
@@ -319,27 +319,53 @@ export function RouteMap({ route, routes, stopsGeo }: RouteMapProps) {
 
         {styleLoaded && routeGeoJSON && (
           <Source id="route" type="geojson" data={routeGeoJSON} lineMetrics>
-            {/* 静态柔光底层 */}
+            {/* 实心底层轨迹线 (增加实体感) */}
+            {!isOverview && (
+              <Layer
+                id="route-base"
+                type="line"
+                paint={{
+                  'line-color': '#ffffff',
+                  'line-width': 1.5,
+                  'line-opacity': 0.15,
+                }}
+                layout={{ 'line-cap': 'round', 'line-join': 'round' }}
+              />
+            )}
+            
+            {/* 静态大面积柔光底层 */}
             <Layer
-              id="route-glow"
+              id="route-glow-outer"
               type="line"
               paint={{
                 'line-color': colors.glow,
-                'line-width': isOverview ? 10 : 14,
+                'line-width': isOverview ? 8 : 16,
                 'line-blur': isOverview ? 8 : 12,
-                'line-opacity': isOverview ? 0.25 : 0.4,
+                'line-opacity': isOverview ? 0.15 : 0.3,
               }}
             />
-            {/* 概览模式：静态半透明线；选中模式：动态脉冲主线由 useEffect route-pulse 层管理 */}
+            {/* 核心内层高光 */}
+            <Layer
+              id="route-glow-inner"
+              type="line"
+              paint={{
+                'line-color': colors.station,
+                'line-width': isOverview ? 3 : 5,
+                'line-blur': isOverview ? 2 : 3,
+                'line-opacity': isOverview ? 0.4 : 0.8,
+              }}
+            />
+            
+            {/* 概览模式：纤细的追踪虚线 */}
             {isOverview && (
               <Layer
                 id="route-overview-line"
                 type="line"
                 paint={{
                   'line-color': colors.line,
-                  'line-width': 2,
-                  'line-opacity': 0.35,
-                  'line-dasharray': [4, 3],
+                  'line-width': 1.5,
+                  'line-opacity': 0.5,
+                  'line-dasharray': [2, 4],
                 }}
                 layout={{ 'line-cap': 'round', 'line-join': 'round' }}
               />
