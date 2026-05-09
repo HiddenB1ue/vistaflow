@@ -73,23 +73,39 @@
 }
 
 /* 起终点：外圈 + 中心小点 */
-.route-map-marker__dot--origin,
-.route-map-marker__dot--destination {
+.route-map-marker__dot--origin {
   width: 14px;
   height: 14px;
-  border: 1px solid var(--marker-color);
+  border: 1.5px solid #fff;
   border-radius: 50%;
-  background: rgba(3, 3, 3, 0.8);
-  box-shadow: 0 0 10px color-mix(in srgb, var(--marker-color) 40%, transparent);
+  background: rgba(3, 3, 3, 0.9);
+  box-shadow: 0 0 10px color-mix(in srgb, #fff 40%, transparent);
 }
-.route-map-marker__dot--origin::after,
-.route-map-marker__dot--destination::after {
+.route-map-marker__dot--origin::after {
   content: '';
   width: 4px;
   height: 4px;
-  background: var(--marker-color);
+  background: #fff;
   border-radius: 50%;
-  box-shadow: 0 0 4px var(--marker-color);
+  box-shadow: 0 0 4px #fff;
+}
+
+.route-map-marker__dot--destination {
+  width: 14px;
+  height: 14px;
+  border: 1.5px solid var(--marker-color);
+  border-radius: 2px; /* 终点变为方形，增加区分度 */
+  background: var(--marker-color);
+  box-shadow: 0 0 12px color-mix(in srgb, var(--marker-color) 60%, transparent);
+  transform: rotate(45deg);
+}
+
+.route-map-marker__dot--destination::after {
+  content: '';
+  position: absolute;
+  inset: 2px;
+  border: 1px solid #030303;
+  border-radius: 1px;
 }
 
 /* 中转站：空心方块 */
@@ -133,6 +149,15 @@
     -1px  1px 0 #030303,
      1px  1px 0 #030303,
      0 2px 8px rgba(0,0,0,0.8);
+}
+
+/* 起终点文字区分颜色 */
+.route-map-marker__dot--origin + .route-map-marker__label {
+  color: #fff;
+}
+
+.route-map-marker__dot--destination + .route-map-marker__label {
+  color: var(--marker-color);
 }
 
 .route-map-marker__dot--transfer + .route-map-marker__label {

@@ -129,7 +129,6 @@ export function RouteListPanel({
         style={{ borderBottom: '1px solid rgba(255,255,255,0.1)' }}
       >
         <SectionHeader
-          eyebrow={JOURNEY_LABELS.routeListEyebrow}
           title={JOURNEY_LABELS.routeListTitle(date)}
           subtitle={JOURNEY_LABELS.routeListSubtitle(total)}
           actions={

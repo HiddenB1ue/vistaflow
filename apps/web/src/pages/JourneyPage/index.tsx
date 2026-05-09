@@ -168,7 +168,7 @@ export function JourneyPage() {
         id="results-dashboard"
         className="vf-page-gutter fixed inset-0 z-40 flex flex-col"
         style={{
-          paddingTop: 'calc(var(--vf-topbar-clearance) - 1rem)',
+          paddingTop: 'calc(var(--vf-topbar-height) + 0.5rem)',
           paddingBottom: 'var(--vf-page-bottom-space)',
         }}
       >
