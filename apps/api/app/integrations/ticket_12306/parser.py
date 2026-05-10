@@ -147,3 +147,36 @@ def build_seat_infos(
 def segment_min_price(seats: list[SeatInfo]) -> float | None:
     candidates = [s.price for s in seats if s.available and s.price is not None]
     return min(candidates) if candidates else None
+
+
+def parse_query_rows(payload: Any) -> dict[str, Any]:
+    """Parse a 12306 ``leftTicket/queryG`` JSON payload into rows.
+
+    Returns a dict keyed by both ``train_no`` and ``station_train_code``,
+    each mapping to ``(seat_status, seat_prices)``. The 12306 response is
+    leg-scoped (date + from + to), so a single payload contains every train
+    on the requested leg; both keys are stored to support callers that look
+    up by either identifier.
+    """
+    if not isinstance(payload, dict) or not payload.get("status"):
+        return {}
+
+    data = payload.get("data")
+    if not isinstance(data, dict):
+        return {}
+
+    raw_results = data.get("result")
+    if not isinstance(raw_results, list):
+        return {}
+
+    rows: dict[str, Any] = {}
+    for raw in raw_results:
+        if not isinstance(raw, str):
+            continue
+        train_no, stc, seat_status, seat_prices = parse_result_row(raw)
+        entry = (seat_status, seat_prices)
+        if train_no and train_no not in rows:
+            rows[train_no] = entry
+        if stc and stc not in rows:
+            rows[stc] = entry
+    return rows

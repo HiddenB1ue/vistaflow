@@ -12,7 +12,7 @@ from app.integrations.ticket_12306.models import TicketSegmentData
 from app.integrations.ticket_12306.parser import (
     LEFT_TICKET_QUERY_URL,
     build_seat_infos,
-    parse_result_row,
+    parse_query_rows,
     segment_min_price,
 )
 from app.models import SeatLookupKey
@@ -149,7 +149,7 @@ class PlaywrightTicketClient(AbstractTicketClient):
             except Exception:
                 return {}
 
-            return self._parse_query_rows(payload)
+            return parse_query_rows(payload)
         finally:
             await context.close()
 
@@ -205,35 +205,21 @@ class PlaywrightTicketClient(AbstractTicketClient):
 
         return result
 
-    def _parse_query_rows(self, payload: Any) -> dict[str, Any]:
-        if not isinstance(payload, dict) or not payload.get("status"):
-            return {}
-
-        data = payload.get("data")
-        if not isinstance(data, dict):
-            return {}
-
-        raw_results = data.get("result")
-        if not isinstance(raw_results, list):
-            return {}
-
-        rows: dict[str, Any] = {}
-        for raw in raw_results:
-            if not isinstance(raw, str):
-                continue
-            train_no, stc, seat_status, seat_prices = parse_result_row(raw)
-            entry = (seat_status, seat_prices)
-            if train_no and train_no not in rows:
-                rows[train_no] = entry
-            if stc and stc not in rows:
-                rows[stc] = entry
-        return rows
-
-
 async def build_ticket_client(
     settings_provider: SystemSettingsProvider,
     browser_manager: PlaywrightBrowserManager,
+    *,
+    redis_client: Any = None,
+    cookie_manager: Any = None,
 ) -> AbstractTicketClient | None:
+    """Build the production 12306 ticket client.
+
+    Returns ``None`` when the feature flag is disabled or settings are
+    unavailable. When HTTP direct mode is enabled (``ticket_12306_http_enabled``)
+    and a cookie manager is provided, returns a :class:`FallbackTicketClient`
+    that prefers HTTP and falls back to Playwright on failure. Otherwise
+    returns the legacy :class:`PlaywrightTicketClient`.
+    """
     try:
         enabled = await settings_provider.get_bool("ticket_12306_enabled")
     except SystemSettingsDataError:
@@ -242,9 +228,38 @@ async def build_ticket_client(
     if not enabled:
         return None
 
-    return PlaywrightTicketClient(
+    playwright_client = PlaywrightTicketClient(
         browser_manager=browser_manager,
         config=TicketClientConfig(),
+    )
+
+    if cookie_manager is None or redis_client is None:
+        return playwright_client
+
+    try:
+        http_enabled = await settings_provider.get_bool("ticket_12306_http_enabled")
+    except SystemSettingsDataError:
+        return playwright_client
+
+    if not http_enabled:
+        return playwright_client
+
+    try:
+        concurrency = await settings_provider.get_int("ticket_12306_http_concurrency")
+    except SystemSettingsDataError:
+        concurrency = 8
+
+    # Lazy imports to avoid circular dependency: fallback_client imports this module.
+    from app.integrations.ticket_12306.fallback_client import FallbackTicketClient
+    from app.integrations.ticket_12306.http_client import HttpTicketClient
+
+    http_client = HttpTicketClient(
+        cookie_manager=cookie_manager,
+        max_concurrency=max(1, concurrency),
+    )
+    return FallbackTicketClient(
+        http_client=http_client,
+        playwright_client=playwright_client,
     )
 
 

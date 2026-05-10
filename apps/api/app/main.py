@@ -17,6 +17,7 @@ from app.exceptions import BusinessError
 from app.integrations.crawler.client import Live12306CrawlerClient
 from app.integrations.geo.client import DynamicGeoClient
 from app.integrations.ticket_12306.browser_manager import PlaywrightBrowserManager
+from app.integrations.ticket_12306.cookie_manager import Ticket12306CookieManager
 from app.journey_search_sessions.router import (
     router as journey_search_sessions_router,
 )
@@ -55,6 +56,11 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     )
     await redis_client.ping()
     app.state.redis_client = redis_client
+
+    app.state.ticket_cookie_manager = Ticket12306CookieManager(
+        redis_client=redis_client,
+        browser_manager=app.state.ticket_browser_manager,
+    )
 
     app.state.crawler_client = Live12306CrawlerClient(http_client=http_client)
     app.state.geo_client = DynamicGeoClient(

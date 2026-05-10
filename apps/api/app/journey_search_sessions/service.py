@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import json
+import logging
 from datetime import date, time
 from typing import Any
 from uuid import UUID
@@ -40,6 +41,14 @@ from app.route_plan_cache.repository import (
 )
 
 PLAN_EXPIRED_MESSAGE = "方案已过期，请重新搜索"
+
+# Page size used to load every candidate of a plan for the synchronous
+# pre-fetch step performed in ``create_session``. 12306 plans typically have a
+# few hundred candidates, so a single large page is significantly cheaper than
+# paginating and avoids special-casing the repository.
+_PREFETCH_PAGE_SIZE = 100_000
+
+logger = logging.getLogger(__name__)
 
 
 def _get_train_type(train_code: str) -> str:
@@ -157,17 +166,89 @@ class JourneySearchSessionService:
             totalCandidates=total_candidates,
         )
         view_request = payload.view or SearchSessionViewRequest()
+        run_date = payload.date.isoformat()
+
+        # Synchronously pre-fetch ticket prices for the entire plan so that
+        # the first view render and every subsequent paginated request hit
+        # Redis. We only run this when tickets are requested; when the user
+        # opted out, the view will mark routes ``disabled`` regardless.
+        price_map: dict[str, PriceCacheEntry] = {}
+        if view_request.include_tickets:
+            price_map = await self._prefetch_session_prices(
+                plan_ids=plan_ids,
+                base_filters=base_filters,
+                run_date=run_date,
+            )
+
         view_result = await self._build_view_result(
             plan_ids,
             base_filters,
-            payload.date.isoformat(),
+            run_date,
             view_request,
+            price_map=price_map or None,
         )
         return SearchSessionCreateResponse(
             searchId=search_id,
             searchSummary=summary,
             viewResult=view_result,
         )
+
+    async def _prefetch_session_prices(
+        self,
+        *,
+        plan_ids: list[str],
+        base_filters: RoutePlanQueryFilters,
+        run_date: str,
+    ) -> dict[str, PriceCacheEntry]:
+        """Load every candidate that matches ``base_filters`` and warm the
+        ticket cache for it.
+
+        Failures are intentionally swallowed: a degraded prefetch should not
+        block session creation. Per-page rendering will fall back to
+        ``enrich_routes_for_view`` and read whatever entries the prefetch did
+        manage to write.
+        """
+        try:
+            candidates = await self._load_all_candidates(plan_ids, base_filters)
+        except Exception as exc:  # noqa: BLE001 - log and degrade gracefully
+            logger.warning(
+                "Session price prefetch: failed to load candidates: %s", exc
+            )
+            return {}
+        if not candidates:
+            return {}
+        try:
+            return await self._ticket_service.prefetch_all_prices(
+                run_date=run_date,
+                candidates=candidates,
+            )
+        except Exception as exc:  # noqa: BLE001 - log and degrade gracefully
+            logger.warning(
+                "Session price prefetch: ticket prefetch failed: %s", exc
+            )
+            return {}
+
+    async def _load_all_candidates(
+        self,
+        plan_ids: list[str],
+        base_filters: RoutePlanQueryFilters,
+    ) -> list[CachedRouteCandidate]:
+        """Load every candidate covered by ``base_filters`` across all plans.
+
+        Uses a single very large page so we don't have to paginate; route
+        plans rarely exceed a few hundred candidates.
+        """
+        view_query = RoutePlanViewQuery(
+            filters=base_filters,
+            sort_by="duration",
+            page=1,
+            page_size=_PREFETCH_PAGE_SIZE,
+            transfer_counts=frozenset(),
+            display_train_types=frozenset(),
+            exclude_direct_train_codes_in_transfer_routes=False,
+        )
+        result = await self._route_plan_repo.query_view(plan_ids, view_query)
+        return result.candidates
 
     async def get_summary(self, search_id: str) -> SearchSessionSummaryResponse:
         context = await self._load_context(search_id)

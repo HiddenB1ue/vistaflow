@@ -10,6 +10,9 @@ SYSTEM_SETTING_KEYS = frozenset(
         "amap_min_interval_seconds",
         "amap_rate_limit_cooldown_seconds",
         "ticket_12306_enabled",
+        "ticket_12306_cache_ttl_seconds",
+        "ticket_12306_http_concurrency",
+        "ticket_12306_http_enabled",
         "geo_enrich_enabled",
         "auto_crawl_enabled",
         "price_sync_enabled",
@@ -21,6 +24,7 @@ SYSTEM_SETTING_KEYS = frozenset(
 TOGGLE_SETTING_KEYS = frozenset(
     {
         "ticket_12306_enabled",
+        "ticket_12306_http_enabled",
         "geo_enrich_enabled",
         "auto_crawl_enabled",
         "price_sync_enabled",

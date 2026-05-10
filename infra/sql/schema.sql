@@ -19,4 +19,5 @@
 \ir migrations/0013_route_plan_cache.sql
 \ir migrations/0014_route_plan_segment_fk.sql
 \ir migrations/0015_route_plan_cache_drop_expires_at.sql
+\ir migrations/0016_ticket_12306_http_settings.sql
 \ir seeds/seed_base_tables.sql

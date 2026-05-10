@@ -212,15 +212,69 @@ class Ticket12306Service:
                 matched_by=matched_by,
             )
 
-        # 8. Store fetched results in per-segment Redis cache
+        # 8. Store cache entries for EVERY train_no found in each fetched leg
+        #    response, not only the requested segments. A 12306 leg payload
+        #    contains all trains on that physical leg/date; persisting them
+        #    means a future search asking about a different train on the same
+        #    leg/date hits the cache for free.
+        leg_telecodes: dict[tuple[str, str, str], tuple[str, str]] = {}
+        for leg_key, _from_code, _to_code in legs_to_fetch:
+            leg_telecodes[leg_key] = (_from_code, _to_code)
+
+        written_keys: set[str] = set()
+        for leg_key, rows in fetched_legs.items():
+            if not rows:
+                continue
+            codes = leg_telecodes.get(leg_key)
+            if codes is None:
+                continue
+            from_code, to_code = codes
+            departure_date, _from_station, _to_station = leg_key
+            for train_no in self._extract_train_nos_from_rows(rows):
+                row = rows.get(train_no)
+                if row is None:
+                    continue
+                seat_status, seat_prices = row
+                seats = build_seat_infos(seat_status, seat_prices)
+                ticket = TicketSegmentData(
+                    seats=seats,
+                    min_price=segment_min_price(seats),
+                    matched_by="train_no",
+                )
+                redis_key = self._build_segment_cache_key(
+                    run_date=departure_date,
+                    train_no=train_no,
+                    from_code=from_code,
+                    to_code=to_code,
+                )
+                payload: dict[str, Any] = {"ok": True, "data": asdict(ticket)}
+                try:
+                    await self._redis.setex(
+                        redis_key,
+                        self._cache_ttl_seconds,
+                        json.dumps(payload, ensure_ascii=False),
+                    )
+                    written_keys.add(redis_key)
+                except Exception as exc:
+                    logger.warning(
+                        "Failed to write segment cache for %s: %s", redis_key, exc
+                    )
+
+        # 8b. Persist failure markers for requested segments whose train was
+        #     NOT in the leg response (or whose leg fetch returned nothing)
+        #     so subsequent searches honour the short failure TTL.
         for seg_key in uncached_seg_keys:
             seg = segment_keys[seg_key]
             redis_key = self._cache_key_for_segment(seg.departureDate, seg, telecodes)
-            if not redis_key:
+            if not redis_key or redis_key in written_keys:
                 continue
+            # If we successfully fetched data for this seg via the
+            # station_train_code fallback, ``fetched_data`` has it but the
+            # backfill above used the canonical train_no; write the requested
+            # train_no's key explicitly so future lookups by trainNo hit.
             ticket = fetched_data.get(seg_key)
             if ticket is None:
-                payload: dict[str, Any] = {"ok": False}
+                payload = {"ok": False}
                 ttl = self._failure_ttl_seconds
             else:
                 payload = {"ok": True, "data": asdict(ticket)}
@@ -545,7 +599,42 @@ class Ticket12306Service:
         to_code = telecodes.get(segment.destination.name)
         if not from_code or not to_code:
             return None
+        return self._build_segment_cache_key(
+            run_date=run_date,
+            train_no=segment.trainNo,
+            from_code=from_code,
+            to_code=to_code,
+        )
+
+    @staticmethod
+    def _build_segment_cache_key(
+        *,
+        run_date: str,
+        train_no: str,
+        from_code: str,
+        to_code: str,
+    ) -> str:
         return (
-            f"journey_search:ticket_segment:{run_date}:{segment.trainNo}:"
+            f"journey_search:ticket_segment:v2:{run_date}:{train_no}:"
             f"{from_code}:{to_code}"
         )
+
+    @staticmethod
+    def _extract_train_nos_from_rows(rows: dict[str, Any]) -> list[str]:
+        """Return the canonical (long-form) train_no keys from a parsed leg dict.
+
+        ``parse_query_rows`` indexes each parsed row under both ``train_no``
+        and ``station_train_code``, so the dict has up to two keys pointing at
+        the same tuple. We group by row identity and pick the longer key per
+        group as the canonical train_no, since 12306 train_no codes are always
+        longer than station_train_code labels.
+        """
+        by_row: dict[int, list[str]] = {}
+        for key, row in rows.items():
+            by_row.setdefault(id(row), []).append(key)
+        train_nos: list[str] = []
+        for keys in by_row.values():
+            if not keys:
+                continue
+            train_nos.append(max(keys, key=len))
+        return train_nos

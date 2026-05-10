@@ -234,7 +234,7 @@ class TestPrefetchAllPrices:
 
         mock_client.fetch_leg.assert_awaited_once()
         assert mock_client.fetch_leg.await_args.args[0] == "2025-01-02"
-        cache_key = "journey_search:ticket_segment:2025-01-02:T1:BJP:SHH"
+        cache_key = "journey_search:ticket_segment:v2:2025-01-02:T1:BJP:SHH"
         assert cache_key in redis._store
 
     # --- Req 1.5: Partial failure resilience ---
@@ -284,7 +284,7 @@ class TestPrefetchAllPrices:
         service = self._build_service(redis, station_repo, ticket_client=mock_client)
 
         # Pre-populate Redis cache
-        cache_key = "journey_search:ticket_segment:2025-01-01:T1:BJP:SHH"
+        cache_key = "journey_search:ticket_segment:v2:2025-01-01:T1:BJP:SHH"
         cache_payload = {
             "ok": True,
             "data": {
@@ -324,7 +324,7 @@ class TestPrefetchAllPrices:
             run_date="2025-01-01", candidates=candidates
         )
 
-        cache_key = "journey_search:ticket_segment:2025-01-01:T1:BJP:SHH"
+        cache_key = "journey_search:ticket_segment:v2:2025-01-01:T1:BJP:SHH"
         raw = redis._store.get(cache_key)
         assert raw is not None
         payload = json.loads(raw)
@@ -344,7 +344,7 @@ class TestPrefetchAllPrices:
             run_date="2025-01-01", candidates=candidates
         )
 
-        cache_key = "journey_search:ticket_segment:2025-01-01:T1:BJP:SHH"
+        cache_key = "journey_search:ticket_segment:v2:2025-01-01:T1:BJP:SHH"
         raw = redis._store.get(cache_key)
         assert raw is not None
         payload = json.loads(raw)
@@ -424,6 +424,85 @@ class TestPrefetchAllPrices:
             run_date="2025-01-01", candidates=[]
         )
         assert result == {}
+
+    # --- PR2: leg-level full backfill ---
+    async def test_leg_fetch_writes_all_trains_in_response(
+        self, redis: FakeRedis, station_repo: FakeStationRepo
+    ) -> None:
+        """A single leg fetch should persist a Redis key per train_no in the response,
+        not just for the requested segment."""
+        mock_client = AsyncMock()
+        # Leg response carries 3 trains; we only request T1 in candidates.
+        rows = _make_fetch_leg_rows("T1", "G1")
+        rows["T2_LONGFORM"] = ({"ze": "有"}, {"ze": 70.0})
+        rows["G2"] = rows["T2_LONGFORM"]
+        rows["T3_LONGFORM"] = ({"ze": "12"}, {"ze": 80.0})
+        rows["G3"] = rows["T3_LONGFORM"]
+        mock_client.fetch_leg.return_value = rows
+
+        service = self._build_service(redis, station_repo, ticket_client=mock_client)
+        candidates = [_candidate([_train_seg("T1", "G1", "北京", "上海")])]
+
+        await service.prefetch_all_prices(
+            run_date="2025-01-01", candidates=candidates
+        )
+
+        # All three trains must have v2 cache entries written.
+        for train_no in ("T1", "T2_LONGFORM", "T3_LONGFORM"):
+            key = f"journey_search:ticket_segment:v2:2025-01-01:{train_no}:BJP:SHH"
+            raw = redis._store.get(key)
+            assert raw is not None, f"missing cache for {train_no}"
+            payload = json.loads(raw)
+            assert payload["ok"] is True
+
+    async def test_leg_response_reused_for_sibling_segment(
+        self, redis: FakeRedis, station_repo: FakeStationRepo
+    ) -> None:
+        """If leg backfill from one search wrote T2's data, a later search asking only
+        about T2 on the same leg/date must hit cache (no fetch_leg call)."""
+        mock_client = AsyncMock()
+        rows = _make_fetch_leg_rows("T1", "G1")
+        rows["T2_LONGFORM"] = ({"ze": "有"}, {"ze": 70.0})
+        rows["G2"] = rows["T2_LONGFORM"]
+        mock_client.fetch_leg.return_value = rows
+
+        service = self._build_service(redis, station_repo, ticket_client=mock_client)
+        # First search asks T1; backfill should also persist T2.
+        await service.prefetch_all_prices(
+            run_date="2025-01-01",
+            candidates=[_candidate([_train_seg("T1", "G1", "北京", "上海")])],
+        )
+        assert mock_client.fetch_leg.await_count == 1
+
+        # Second search asks T2 — must be served entirely from cache.
+        result = await service.prefetch_all_prices(
+            run_date="2025-01-01",
+            candidates=[
+                _candidate(
+                    [_train_seg("T2_LONGFORM", "G2", "北京", "上海")], "c2"
+                )
+            ],
+        )
+        assert mock_client.fetch_leg.await_count == 1  # unchanged
+        key = price_map_key("T2_LONGFORM", "北京", "上海")
+        assert key in result
+        assert result[key].failed is False
+        assert result[key].min_price == 70.0
+
+    async def test_extract_train_nos_picks_long_key_per_row(self) -> None:
+        """Internal: the ``id``-grouped extractor returns the canonical long-form
+        train_no when both train_no and station_train_code keys point at the
+        same row tuple."""
+        row_a = ({"ze": "有"}, {"ze": 1.0})
+        row_b = ({"ze": "12"}, {"ze": 2.0})
+        rows = {
+            "240000T1010A": row_a,
+            "G1": row_a,
+            "240000T2010A": row_b,
+            "K9": row_b,
+        }
+        train_nos = sorted(Ticket12306Service._extract_train_nos_from_rows(rows))
+        assert train_nos == ["240000T1010A", "240000T2010A"]
 
     # --- station_train_code fallback matching ---
     async def test_matches_by_station_train_code_fallback(
