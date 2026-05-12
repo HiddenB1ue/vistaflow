@@ -234,7 +234,7 @@ class TestPrefetchAllPrices:
 
         mock_client.fetch_leg.assert_awaited_once()
         assert mock_client.fetch_leg.await_args.args[0] == "2025-01-02"
-        cache_key = "journey_search:ticket_segment:v2:2025-01-02:T1:BJP:SHH"
+        cache_key = "journey_search:ticket_segment:v3:2025-01-02:A:B"
         assert cache_key in redis._store
 
     # --- Req 1.5: Partial failure resilience ---
@@ -284,15 +284,13 @@ class TestPrefetchAllPrices:
         service = self._build_service(redis, station_repo, ticket_client=mock_client)
 
         # Pre-populate Redis cache
-        cache_key = "journey_search:ticket_segment:v2:2025-01-01:T1:BJP:SHH"
+        cache_key = "journey_search:ticket_segment:v3:2025-01-01:北京:上海"
         cache_payload = {
-            "ok": True,
-            "data": {
+            "T1": {
                 "seats": [
-                    {"seat_type": "ze", "status": "有", "price": 55.5, "available": True}
+                    ["ze", "有", 55.5, 1]
                 ],
                 "min_price": 55.5,
-                "matched_by": "train_no",
             },
         }
         redis._store[cache_key] = json.dumps(cache_payload)
@@ -324,11 +322,12 @@ class TestPrefetchAllPrices:
             run_date="2025-01-01", candidates=candidates
         )
 
-        cache_key = "journey_search:ticket_segment:v2:2025-01-01:T1:BJP:SHH"
+        cache_key = "journey_search:ticket_segment:v3:2025-01-01:北京:上海"
         raw = redis._store.get(cache_key)
         assert raw is not None
         payload = json.loads(raw)
-        assert payload["ok"] is True
+        assert payload["T1"]["seats"] == [["zy", "有", 99.0, 1], ["ze", "有", 55.5, 1]]
+        assert payload["T1"]["min_price"] == 55.5
 
     # --- Req 3.4: Cache miss + failure → failure marker written ---
     async def test_cache_miss_failure_stores_failure_marker(
@@ -344,11 +343,9 @@ class TestPrefetchAllPrices:
             run_date="2025-01-01", candidates=candidates
         )
 
-        cache_key = "journey_search:ticket_segment:v2:2025-01-01:T1:BJP:SHH"
+        cache_key = "journey_search:ticket_segment:v3:2025-01-01:北京:上海"
         raw = redis._store.get(cache_key)
-        assert raw is not None
-        payload = json.loads(raw)
-        assert payload["ok"] is False
+        assert raw == ""
 
         key = price_map_key("T1", "北京", "上海")
         assert result[key].failed is True
@@ -447,13 +444,13 @@ class TestPrefetchAllPrices:
             run_date="2025-01-01", candidates=candidates
         )
 
-        # All three trains must have v2 cache entries written.
+        # All three trains must have v3 cache entries written.
+        key = "journey_search:ticket_segment:v3:2025-01-01:北京:上海"
+        raw = redis._store.get(key)
+        assert raw is not None
+        payload = json.loads(raw)
         for train_no in ("T1", "T2_LONGFORM", "T3_LONGFORM"):
-            key = f"journey_search:ticket_segment:v2:2025-01-01:{train_no}:BJP:SHH"
-            raw = redis._store.get(key)
-            assert raw is not None, f"missing cache for {train_no}"
-            payload = json.loads(raw)
-            assert payload["ok"] is True
+            assert train_no in payload
 
     async def test_leg_response_reused_for_sibling_segment(
         self, redis: FakeRedis, station_repo: FakeStationRepo

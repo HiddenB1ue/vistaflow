@@ -11,8 +11,7 @@ import { SearchFilterDrawer } from '@/components/overlays/SearchFilterDrawer';
 import { SEARCH_LABELS } from '@/constants/labels';
 import { usePageTransition } from '@/hooks/usePageTransition';
 import { useSearchReveal } from '@/hooks/useSearchReveal';
-import { createJourneySearchSession } from '@/services/routeService';
-import { useRouteStore } from '@/stores/routeStore';
+import { useSearchProgressStore } from '@/stores/searchProgressStore';
 import { useSearchStore } from '@/stores/searchStore';
 import { useUiStore } from '@/stores/uiStore';
 import type { SearchSuggestion } from '@/types/search';
@@ -22,10 +21,9 @@ import { SearchHeroForm } from './SearchHeroForm';
 export function SearchPage() {
   const { params, setOrigin, setDestination, setDate, updateParams, setSearchId } =
     useSearchStore();
-  const setViewResult = useRouteStore((state) => state.setViewResult);
-  const setSortMode = useRouteStore((state) => state.setSortMode);
   const { logoRef, brandRef, formRef, btnRef } = useSearchReveal();
   const { navigateTo } = usePageTransition();
+  const resetProgress = useSearchProgressStore((s) => s.reset);
   const {
     isSearchFilterOpen,
     setSearchFilterOpen,
@@ -38,9 +36,8 @@ export function SearchPage() {
 
   const [originError, setOriginError] = useState<string>('');
   const [destinationError, setDestinationError] = useState<string>('');
-  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleSearch = async () => {
+  const handleSearch = () => {
     setOriginError('');
     setDestinationError('');
 
@@ -60,20 +57,10 @@ export function SearchPage() {
       return;
     }
 
-    setIsSubmitting(true);
-    try {
-      const session = await createJourneySearchSession(params);
-      resetJourneyFilterPrefs();
-      setSearchId(session.searchId);
-      setSortMode('duration');
-      setViewResult(session.searchId, session.viewResult);
-      navigateTo('/journey');
-    } catch (error) {
-      console.error('Failed to create journey search session:', error);
-      setDestinationError('生成方案失败，请稍后重试');
-    } finally {
-      setIsSubmitting(false);
-    }
+    resetJourneyFilterPrefs();
+    setSearchId(null);
+    resetProgress();
+    navigateTo('/journey');
   };
 
   return (
@@ -128,18 +115,13 @@ export function SearchPage() {
               ref={btnRef as RefObject<HTMLButtonElement | null>}
               type="button"
               onClick={handleSearch}
-              disabled={isSubmitting}
-              className={`group relative overflow-hidden rounded-full bg-starlight px-12 py-5 text-sm font-medium uppercase tracking-[0.2em] text-void transition-colors ${
-                isSubmitting ? 'cursor-default' : 'cursor-pointer'
-              }`}
+              className="group relative cursor-pointer overflow-hidden rounded-full bg-starlight px-12 py-5 text-sm font-medium uppercase tracking-[0.2em] text-void transition-colors"
             >
               <span className="relative z-10 flex items-center">
-                {isSubmitting ? 'Flowing...' : SEARCH_LABELS.submitButton}
+                {SEARCH_LABELS.submitButton}
               </span>
               <div
-                className={`time-theme-bg absolute inset-0 transition-transform duration-500 ${
-                  isSubmitting ? 'translate-y-0' : 'translate-y-full group-hover:translate-y-0'
-                }`}
+                className="time-theme-bg absolute inset-0 translate-y-full transition-transform duration-500 group-hover:translate-y-0"
               />
             </button>
           </div>

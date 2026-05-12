@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
   AuraBackground,
@@ -17,6 +17,7 @@ import {
   fetchJourneySearchSessionView,
   fetchRouteStopsGeo,
 } from '@/services/routeService';
+import { createSessionStream } from '@/services/searchStreamService';
 import { useRouteStore } from '@/stores/routeStore';
 import { useSearchStore } from '@/stores/searchStore';
 import { useUiStore } from '@/stores/uiStore';
@@ -53,6 +54,7 @@ export function JourneyPage() {
     setJourneyFilterOpen,
     setJourneyFilterPrefs,
   } = useUiStore();
+  const sseStarted = useRef(false);
 
   const backendSortMode = sortMode;
   const currentViewRequest = useMemo(
@@ -108,20 +110,40 @@ export function JourneyPage() {
     initialData,
   });
 
+  // Trigger SSE session creation when page mounts without a searchId
   useEffect(() => {
-    revealPage();
-  }, [revealPage]);
+    if (searchId || sseStarted.current) return;
+    if (!params.origin.trim() || !params.destination.trim()) {
+      navigate('/', { replace: true });
+      return;
+    }
+    sseStarted.current = true;
+
+    createSessionStream(params)
+      .then((session) => {
+        const { setSearchId } = useSearchStore.getState();
+        setSearchId(session.searchId);
+        setSortMode('duration');
+        setViewResult(session.searchId, session.viewResult);
+        revealPage();
+      })
+      .catch((err) => {
+        console.error('SSE session creation failed:', err);
+        // Error state is already set in searchProgressStore by the stream service
+      });
+  }, [searchId, params, navigate, setSortMode, setViewResult, revealPage]);
+
+  // When searchId already exists (e.g. revisiting), reveal immediately
+  useEffect(() => {
+    if (searchId) {
+      revealPage();
+    }
+  }, [searchId, revealPage]);
 
   useEffect(() => {
     if (!searchId || !data) return;
     setViewResult(searchId, data);
   }, [data, searchId, setViewResult]);
-
-  useEffect(() => {
-    if (!searchId) {
-      navigate('/', { replace: true });
-    }
-  }, [navigate, searchId]);
 
   const displayRoutes = useMemo(
     () =>

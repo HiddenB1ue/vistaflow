@@ -5,10 +5,14 @@ import { Outlet } from 'react-router-dom';
 import { ErrorBoundary } from '@vistaflow/ui';
 import { TRANSITION_LABELS } from '@/constants/labels';
 import { usePageTransition } from '@/hooks/usePageTransition';
+import { useSearchProgressStore } from '@/stores/searchProgressStore';
+import { SearchProgressOverlay } from './SearchProgressOverlay';
 
 export function AppLayout() {
   const curtainRef = useRef<HTMLDivElement>(null);
   const { setCurtainRef } = usePageTransition();
+  const progressPhase = useSearchProgressStore((s) => s.phase);
+  const showProgress = progressPhase !== 'idle' && progressPhase !== 'complete';
 
   useEffect(() => {
     const el = curtainRef.current;
@@ -19,20 +23,31 @@ export function AppLayout() {
   return (
     <div className="relative min-h-screen" style={{ backgroundColor: 'var(--color-bg)' }}>
       <div ref={curtainRef} className="transition-overlay" style={{ display: 'none' }}>
-        <div className="loading-text">{TRANSITION_LABELS.loading}</div>
-        <div
-          className="loading-bar-container hidden"
-          style={{
-            width: '12rem',
-            height: '1px',
-            background: 'rgba(255,255,255,0.1)',
-            marginTop: '1.5rem',
-            position: 'relative',
-            overflow: 'hidden',
-          }}
-        >
-          <div className="loading-bar absolute left-0 top-0 h-full time-theme-bg" style={{ width: '33.333%' }} />
-        </div>
+        {showProgress ? (
+          <>
+            <div className="loading-text">{TRANSITION_LABELS.loading}</div>
+            <div style={{ marginTop: '2rem' }}>
+              <SearchProgressOverlay />
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="loading-text">{TRANSITION_LABELS.loading}</div>
+            <div
+              className="loading-bar-container hidden"
+              style={{
+                width: '12rem',
+                height: '1px',
+                background: 'rgba(255,255,255,0.1)',
+                marginTop: '1.5rem',
+                position: 'relative',
+                overflow: 'hidden',
+              }}
+            >
+              <div className="loading-bar absolute left-0 top-0 h-full time-theme-bg" style={{ width: '33.333%' }} />
+            </div>
+          </>
+        )}
       </div>
       <ErrorBoundary>
         <Outlet />

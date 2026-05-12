@@ -8,7 +8,11 @@ from typing import Any
 from uuid import UUID
 
 from app.exceptions import BusinessError, NotFoundError
-from app.integrations.ticket_12306.service import SEAT_LABELS, Ticket12306Service
+from app.integrations.ticket_12306.service import (
+    SEAT_LABELS,
+    ProgressCallback,
+    Ticket12306Service,
+)
 from app.journey_search_sessions.schemas import (
     CachedRouteCandidate,
     CachedTrainSegment,
@@ -129,20 +133,35 @@ class JourneySearchSessionService:
     async def create_session(
         self,
         payload: SearchSessionCreateRequest,
+        on_progress: ProgressCallback | None = None,
     ) -> SearchSessionCreateResponse:
         from_station = payload.from_station.strip()
         to_station = payload.to_station.strip()
         transfer_counts = self._requested_transfer_counts(payload)
 
-        plans = [
-            await self._ensure_plan(
+        plans: list[dict[str, Any]] = []
+        for transfer_count in transfer_counts:
+            if on_progress:
+                await self._emit(on_progress, {
+                    "type": "phase",
+                    "phase": "planning",
+                    "transferCount": transfer_count,
+                })
+            plan = await self._ensure_plan(
                 from_station=from_station,
                 to_station=to_station,
                 search_date=payload.date,
                 transfer_count=transfer_count,
             )
-            for transfer_count in transfer_counts
-        ]
+            plans.append(plan)
+            candidate_count = plan.get("total_candidates", 0)
+            if on_progress:
+                await self._emit(on_progress, {
+                    "type": "plan_ready",
+                    "transferCount": transfer_count,
+                    "candidateCount": candidate_count,
+                })
+
         plan_ids = [str(plan["plan_id"]) for plan in plans]
         base_filters = self._query_filters_from_payload(payload)
         search_id = _encode_search_context(
@@ -165,6 +184,13 @@ class JourneySearchSessionService:
             date=payload.date.isoformat(),
             totalCandidates=total_candidates,
         )
+
+        if on_progress:
+            await self._emit(on_progress, {
+                "type": "candidates_counted",
+                "totalCandidates": total_candidates,
+            })
+
         view_request = payload.view or SearchSessionViewRequest()
         run_date = payload.date.isoformat()
 
@@ -178,7 +204,14 @@ class JourneySearchSessionService:
                 plan_ids=plan_ids,
                 base_filters=base_filters,
                 run_date=run_date,
+                on_progress=on_progress,
             )
+
+        if on_progress:
+            await self._emit(on_progress, {
+                "type": "phase",
+                "phase": "building_view",
+            })
 
         view_result = await self._build_view_result(
             plan_ids,
@@ -193,12 +226,22 @@ class JourneySearchSessionService:
             viewResult=view_result,
         )
 
+    @staticmethod
+    async def _emit(
+        callback: ProgressCallback,
+        event: dict[str, Any],
+    ) -> None:
+        result = callback(event)
+        if result is not None:
+            await result
+
     async def _prefetch_session_prices(
         self,
         *,
         plan_ids: list[str],
         base_filters: RoutePlanQueryFilters,
         run_date: str,
+        on_progress: ProgressCallback | None = None,
     ) -> dict[str, PriceCacheEntry]:
         """Load every candidate that matches ``base_filters`` and warm the
         ticket cache for it.
@@ -221,6 +264,7 @@ class JourneySearchSessionService:
             return await self._ticket_service.prefetch_all_prices(
                 run_date=run_date,
                 candidates=candidates,
+                on_progress=on_progress,
             )
         except Exception as exc:  # noqa: BLE001 - log and degrade gracefully
             logger.warning(
@@ -274,11 +318,25 @@ class JourneySearchSessionService:
     ) -> SearchSessionViewResultResponse:
         context = await self._load_context(search_id)
         base_filters = self._query_filters_from_context(context)
+        plan_ids = context["planIds"]
+        run_date = str(context["date"])
+
+        # Prefetch all prices so every sort mode uses the fast price_map path
+        # instead of per-item Redis reads via enrich_routes_for_view.
+        price_map: dict[str, PriceCacheEntry] | None = None
+        if payload.include_tickets:
+            price_map = await self._prefetch_session_prices(
+                plan_ids=plan_ids,
+                base_filters=base_filters,
+                run_date=run_date,
+            )
+
         return await self._build_view_result(
-            context["planIds"],
+            plan_ids,
             base_filters,
-            str(context["date"]),
+            run_date,
             payload,
+            price_map=price_map,
         )
 
     async def delete_session(self, search_id: str) -> SearchSessionDeleteResponse:
@@ -569,6 +627,18 @@ class JourneySearchSessionService:
             price_map = {}
 
         applied_view = self._build_applied_view(payload)
+
+        # Price sort requires in-memory sorting since price data isn't in DB
+        if payload.sort_by == "price" and price_map:
+            return await self._build_price_sorted_view(
+                plan_ids=plan_ids,
+                filters=filters,
+                run_date=run_date,
+                payload=payload,
+                price_map=price_map,
+                applied_view=applied_view,
+            )
+
         query_result = await self._route_plan_repo.query_view(
             plan_ids,
             RoutePlanViewQuery(
@@ -601,6 +671,74 @@ class JourneySearchSessionService:
             view=applied_view,
             facets=self._facets_to_response(query_result.facets),
         )
+
+    async def _build_price_sorted_view(
+        self,
+        *,
+        plan_ids: list[str],
+        filters: RoutePlanQueryFilters,
+        run_date: str,
+        payload: SearchSessionViewRequest,
+        price_map: dict[str, PriceCacheEntry],
+        applied_view: SearchSessionViewResponse,
+    ) -> SearchSessionViewResultResponse:
+        """Load all candidates, sort by total min price in memory, paginate."""
+        # Fetch ALL matching candidates (page=1 with a very large page_size)
+        query_result = await self._route_plan_repo.query_view(
+            plan_ids,
+            RoutePlanViewQuery(
+                filters=filters,
+                sort_by="duration",  # fallback DB sort, we'll re-sort in memory
+                page=1,
+                page_size=10000,
+                transfer_counts=frozenset(applied_view.transferCounts),
+                display_train_types=frozenset(applied_view.displayTrainTypes),
+                exclude_direct_train_codes_in_transfer_routes=(
+                    payload.exclude_direct_train_codes_in_transfer_routes
+                ),
+            ),
+        )
+        all_items = [
+            self._apply_prices_from_map(self._to_route_response(c), price_map)
+            for c in query_result.candidates
+        ]
+
+        # Sort by total min price across all train segments
+        all_items.sort(key=lambda route: self._route_total_price(route))
+
+        # Paginate
+        total = len(all_items)
+        offset = (payload.page - 1) * payload.page_size
+        page_items = all_items[offset : offset + payload.page_size]
+
+        # Facets from the full query
+        return SearchSessionViewResultResponse.build(
+            items=page_items,
+            total=total,
+            view=applied_view,
+            facets=self._facets_to_response(query_result.facets),
+        )
+
+    @staticmethod
+    def _route_total_price(route: RouteResponse) -> tuple[int, float]:
+        """Sort key: (has_price_flag, total_min_price).
+
+        Routes without any price come last (flag=1).
+        Routes with price sort ascending by sum of segment min prices (flag=0).
+        """
+        total = 0.0
+        has_any_price = False
+        for seg in route.segs:
+            if not isinstance(seg, RouteTrainSegmentResponse):
+                continue
+            if seg.seats:
+                prices = [s.price for s in seg.seats if s.price is not None]
+                if prices:
+                    total += min(prices)
+                    has_any_price = True
+        if not has_any_price:
+            return (1, 0.0)
+        return (0, total)
 
     def _to_route_response(self, candidate: CachedRouteCandidate) -> RouteResponse:
         return RouteResponse(

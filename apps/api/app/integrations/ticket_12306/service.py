@@ -3,8 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from collections.abc import Iterable
-from dataclasses import asdict
+from collections.abc import Awaitable, Callable, Iterable
 from typing import Any, Literal
 
 from redis.asyncio import Redis
@@ -24,10 +23,14 @@ from app.journey_search_sessions.schemas import (
     SeatInfoEntry,
     price_map_key,
 )
-from app.models import SeatInfo, SeatLookupKey
+from app.models import SeatInfo
 from app.railway.repository import StationRepository
 
 logger = logging.getLogger(__name__)
+
+ProgressCallback = Callable[[dict[str, Any]], Awaitable[None] | None]
+SegmentLookupKey = tuple[str, str, str, str]
+LegLookupKey = tuple[str, str, str]
 
 SEAT_LABELS: dict[str, str] = {
     "swz": "商务座",
@@ -64,6 +67,7 @@ class Ticket12306Service:
         run_date: str,
         candidates: list[CachedRouteCandidate],
         max_concurrency: int = 2,
+        on_progress: ProgressCallback | None = None,
     ) -> dict[str, PriceCacheEntry]:
         """Prefetch ticket prices for all unique legs across all candidates.
 
@@ -91,72 +95,94 @@ class Ticket12306Service:
         telecodes = await self._station_repo.get_telecodes_by_names(station_names)
 
         # 3. Build segment lookup info and check per-segment Redis cache
-        segment_keys: dict[tuple[str, str, str, str], CachedTrainSegment] = {}
+        segment_keys: dict[SegmentLookupKey, CachedTrainSegment] = {}
         for seg in all_segments:
-            key = (seg.departureDate, seg.trainNo, seg.origin.name, seg.destination.name)
+            key = self._segment_lookup_key(seg)
             if key not in segment_keys:
                 segment_keys[key] = seg
 
         # Load cached rows for all segments
-        cached_data: dict[tuple[str, str, str, str], TicketSegmentData] = {}
-        cache_key_map: dict[str, tuple[str, str, str, str]] = {}
-        for seg_key, _seg in segment_keys.items():
-            redis_key = self._cache_key_for_segment(seg.departureDate, seg, telecodes)
+        cached_data: dict[SegmentLookupKey, TicketSegmentData] = {}
+        legs_segments: dict[LegLookupKey, list[SegmentLookupKey]] = {}
+        for seg_key in segment_keys:
+            departure_date, _train_no, from_station, to_station = seg_key
+            leg = (departure_date, from_station, to_station)
+            legs_segments.setdefault(leg, []).append(seg_key)
+
+        resolved_legs: set[LegLookupKey] = set()
+        cache_key_map: dict[str, LegLookupKey] = {}
+        for leg_key in legs_segments:
+            redis_key = self._cache_key_for_leg_key(leg_key, telecodes)
             if redis_key:
-                cache_key_map[redis_key] = seg_key
+                cache_key_map[redis_key] = leg_key
 
         if cache_key_map:
             values = await self._redis.mget(list(cache_key_map.keys()))
             for redis_key, raw in zip(cache_key_map.keys(), values, strict=False):
                 if raw is None:
                     continue
+                leg_key = cache_key_map[redis_key]
+                if self._is_failure_cache_value(raw):
+                    resolved_legs.add(leg_key)
+                    continue
                 try:
                     payload = json.loads(raw)
                 except (json.JSONDecodeError, TypeError):
                     continue
-                if not payload.get("ok"):
+                if not isinstance(payload, dict):
                     continue
-                seg_key = cache_key_map[redis_key]
-                cached_data[seg_key] = TicketSegmentData(
-                    seats=[SeatInfo(**seat) for seat in payload["data"]["seats"]],
-                    min_price=payload["data"]["min_price"],
-                    matched_by=payload["data"]["matched_by"],
-                )
+                resolved_legs.add(leg_key)
+                for seg_key in legs_segments[leg_key]:
+                    segment = segment_keys[seg_key]
+                    ticket = self._ticket_from_leg_payload(payload, segment)
+                    if ticket is not None:
+                        cached_data[seg_key] = ticket
 
         # 4. Determine which segments are uncached
+        uncached_leg_keys = {leg for leg in legs_segments if leg not in resolved_legs}
         uncached_seg_keys = {
-            seg_key for seg_key in segment_keys if seg_key not in cached_data
+            seg_key
+            for leg in uncached_leg_keys
+            for seg_key in legs_segments.get(leg, [])
         }
 
-        # 5. Group uncached segments by unique dated leg
-        #    and collect which segment keys belong to each leg
-        legs_segments: dict[tuple[str, str, str], list[tuple[str, str, str, str]]] = {}
-        for seg_key in uncached_seg_keys:
-            departure_date, _train_no, from_station, to_station = seg_key
-            leg = (departure_date, from_station, to_station)
-            legs_segments.setdefault(leg, []).append(seg_key)
-
         # Build the list of legs to fetch with their telecodes
-        legs_to_fetch: list[tuple[tuple[str, str, str], str, str]] = []
-        for leg_key in legs_segments:
+        legs_to_fetch: list[tuple[LegLookupKey, str, str]] = []
+        for leg_key in uncached_leg_keys:
             _departure_date, from_station, to_station = leg_key
             from_code = telecodes.get(from_station)
             to_code = telecodes.get(to_station)
             if from_code and to_code:
                 legs_to_fetch.append((leg_key, from_code, to_code))
 
+        # 5b. Emit pricing progress start
+        total_legs = len(legs_segments)
+        cached_legs = len(resolved_legs)
+        legs_to_fetch_count = len(legs_to_fetch)
+        if on_progress:
+            maybe = on_progress({
+                "type": "pricing_started",
+                "totalLegs": total_legs,
+                "cachedLegs": cached_legs,
+                "legsToFetch": legs_to_fetch_count,
+            })
+            if maybe is not None:
+                await maybe
+
         # 6. Fetch uncached legs concurrently
-        fetched_legs: dict[tuple[str, str, str], dict[str, Any]] = {}
+        fetched_legs: dict[LegLookupKey, dict[str, Any]] = {}
         if legs_to_fetch:
             semaphore = asyncio.Semaphore(max_concurrency)
+            completed_count = 0
 
             async def fetch_one_leg(
-                leg_key: tuple[str, str, str], from_code: str, to_code: str
-            ) -> tuple[tuple[str, str, str], dict[str, Any]]:
+                leg_key: LegLookupKey, from_code: str, to_code: str
+            ) -> tuple[LegLookupKey, dict[str, Any]]:
+                nonlocal completed_count
                 async with semaphore:
                     try:
                         departure_date, from_station, to_station = leg_key
-                        return leg_key, await self._ticket_client.fetch_leg(  # type: ignore[union-attr]
+                        result = leg_key, await self._ticket_client.fetch_leg(  # type: ignore[union-attr]
                             departure_date,
                             from_station,
                             to_station,
@@ -172,7 +198,17 @@ class Ticket12306Service:
                             leg_key[1],
                             exc,
                         )
-                        return leg_key, {}
+                        result = leg_key, {}
+                    completed_count += 1
+                    if on_progress:
+                        maybe = on_progress({
+                            "type": "leg_fetched",
+                            "completed": completed_count,
+                            "total": legs_to_fetch_count,
+                        })
+                        if maybe is not None:
+                            await maybe
+                    return result
 
             results = await asyncio.gather(
                 *(
@@ -184,7 +220,7 @@ class Ticket12306Service:
                 fetched_legs[leg_key] = rows
 
         # 7. Extract ticket data for each uncached segment from fetched legs
-        fetched_data: dict[tuple[str, str, str, str], TicketSegmentData] = {}
+        fetched_data: dict[SegmentLookupKey, TicketSegmentData] = {}
         for seg_key in uncached_seg_keys:
             departure_date, train_no, from_station, to_station = seg_key
             leg = (departure_date, from_station, to_station)
@@ -192,101 +228,26 @@ class Ticket12306Service:
             if not rows:
                 continue
 
-            # Match by train_no first, then by station_train_code
-            row = rows.get(train_no)
-            matched_by = "train_no"
-            if row is None:
-                seg = segment_keys[seg_key]
-                stc = seg.no
-                row = rows.get(stc)
-                matched_by = "station_train_code"
-
-            if row is None:
-                continue
-
-            seat_status, seat_prices = row
-            seats = build_seat_infos(seat_status, seat_prices)
-            fetched_data[seg_key] = TicketSegmentData(
-                seats=seats,
-                min_price=segment_min_price(seats),
-                matched_by=matched_by,
+            ticket = self._ticket_from_rows(
+                rows,
+                train_no=train_no,
+                station_train_code=segment_keys[seg_key].no,
             )
+            if ticket is not None:
+                fetched_data[seg_key] = ticket
 
         # 8. Store cache entries for EVERY train_no found in each fetched leg
         #    response, not only the requested segments. A 12306 leg payload
         #    contains all trains on that physical leg/date; persisting them
         #    means a future search asking about a different train on the same
         #    leg/date hits the cache for free.
-        leg_telecodes: dict[tuple[str, str, str], tuple[str, str]] = {}
+        leg_telecodes: dict[LegLookupKey, tuple[str, str]] = {}
         for leg_key, _from_code, _to_code in legs_to_fetch:
             leg_telecodes[leg_key] = (_from_code, _to_code)
-
-        written_keys: set[str] = set()
-        for leg_key, rows in fetched_legs.items():
-            if not rows:
-                continue
-            codes = leg_telecodes.get(leg_key)
-            if codes is None:
-                continue
-            from_code, to_code = codes
-            departure_date, _from_station, _to_station = leg_key
-            for train_no in self._extract_train_nos_from_rows(rows):
-                row = rows.get(train_no)
-                if row is None:
-                    continue
-                seat_status, seat_prices = row
-                seats = build_seat_infos(seat_status, seat_prices)
-                ticket = TicketSegmentData(
-                    seats=seats,
-                    min_price=segment_min_price(seats),
-                    matched_by="train_no",
-                )
-                redis_key = self._build_segment_cache_key(
-                    run_date=departure_date,
-                    train_no=train_no,
-                    from_code=from_code,
-                    to_code=to_code,
-                )
-                payload: dict[str, Any] = {"ok": True, "data": asdict(ticket)}
-                try:
-                    await self._redis.setex(
-                        redis_key,
-                        self._cache_ttl_seconds,
-                        json.dumps(payload, ensure_ascii=False),
-                    )
-                    written_keys.add(redis_key)
-                except Exception as exc:
-                    logger.warning(
-                        "Failed to write segment cache for %s: %s", redis_key, exc
-                    )
-
-        # 8b. Persist failure markers for requested segments whose train was
-        #     NOT in the leg response (or whose leg fetch returned nothing)
-        #     so subsequent searches honour the short failure TTL.
-        for seg_key in uncached_seg_keys:
-            seg = segment_keys[seg_key]
-            redis_key = self._cache_key_for_segment(seg.departureDate, seg, telecodes)
-            if not redis_key or redis_key in written_keys:
-                continue
-            # If we successfully fetched data for this seg via the
-            # station_train_code fallback, ``fetched_data`` has it but the
-            # backfill above used the canonical train_no; write the requested
-            # train_no's key explicitly so future lookups by trainNo hit.
-            ticket = fetched_data.get(seg_key)
-            if ticket is None:
-                payload = {"ok": False}
-                ttl = self._failure_ttl_seconds
-            else:
-                payload = {"ok": True, "data": asdict(ticket)}
-                ttl = self._cache_ttl_seconds
-            try:
-                await self._redis.setex(
-                    redis_key, ttl, json.dumps(payload, ensure_ascii=False)
-                )
-            except Exception as exc:
-                logger.warning(
-                    "Failed to write segment cache for %s: %s", redis_key, exc
-                )
+        await self._store_fetched_leg_caches(
+            fetched_legs=fetched_legs,
+            leg_telecodes=leg_telecodes,
+        )
 
         # 9. Build and return the complete price map
         all_data = dict(cached_data)
@@ -338,7 +299,7 @@ class Ticket12306Service:
             | {segment.destination.name for segment in segments}
         )
 
-        cached_rows = await self._load_cached_rows(
+        cached_rows, resolved_cache_legs = await self._load_cached_rows(
             run_date=run_date,
             segments=segments,
             telecodes=telecodes,
@@ -353,6 +314,12 @@ class Ticket12306Service:
                 segment.destination.name,
             )
             not in cached_rows
+            and (
+                segment.departureDate,
+                segment.origin.name,
+                segment.destination.name,
+            )
+            not in resolved_cache_legs
         ]
         missing_segments = {
             (
@@ -375,16 +342,14 @@ class Ticket12306Service:
                 ): segment.no
                 for segment in missing_route_segments
             }
-            fetched = await self._fetch_tickets_by_segment_date(
+            fetched, fetched_legs, leg_telecodes = await self._fetch_tickets_by_segment_date(
                 segments=missing_segments,
                 telecodes=telecodes,
                 train_codes=train_codes,
             )
-            await self._store_segment_cache(
-                run_date=run_date,
-                segments=missing_route_segments,
-                telecodes=telecodes,
-                fetched=fetched,
+            await self._store_fetched_leg_caches(
+                fetched_legs=fetched_legs,
+                leg_telecodes=leg_telecodes,
             )
 
         ticket_map = dict(cached_rows)
@@ -397,27 +362,47 @@ class Ticket12306Service:
         segments: set[tuple[str, str, str, str]],
         telecodes: dict[str, str],
         train_codes: dict[tuple[str, str, str, str], str],
-    ) -> dict[tuple[str, str, str, str], TicketSegmentData]:
-        fetched: dict[tuple[str, str, str, str], TicketSegmentData] = {}
-        by_date: dict[str, set[SeatLookupKey]] = {}
-        code_by_date: dict[str, dict[SeatLookupKey, str]] = {}
+    ) -> tuple[
+        dict[SegmentLookupKey, TicketSegmentData],
+        dict[LegLookupKey, dict[str, Any]],
+        dict[LegLookupKey, tuple[str, str]],
+    ]:
+        fetched: dict[SegmentLookupKey, TicketSegmentData] = {}
+        by_leg: dict[LegLookupKey, list[SegmentLookupKey]] = {}
         for departure_date, train_no, from_station, to_station in segments:
-            key = (train_no, from_station, to_station)
-            by_date.setdefault(departure_date, set()).add(key)
-            code_by_date.setdefault(departure_date, {})[key] = train_codes[
+            leg = (departure_date, from_station, to_station)
+            by_leg.setdefault(leg, []).append(
                 (departure_date, train_no, from_station, to_station)
-            ]
-
-        for departure_date, date_segments in by_date.items():
-            date_fetched = await self._ticket_client.fetch_tickets(  # type: ignore[union-attr]
-                run_date=departure_date,
-                segments=date_segments,
-                telecodes=telecodes,
-                train_codes=code_by_date[departure_date],
             )
-            for (train_no, from_station, to_station), ticket in date_fetched.items():
-                fetched[(departure_date, train_no, from_station, to_station)] = ticket
-        return fetched
+
+        fetched_legs: dict[LegLookupKey, dict[str, Any]] = {}
+        leg_telecodes: dict[LegLookupKey, tuple[str, str]] = {}
+        for leg_key, leg_segments in by_leg.items():
+            departure_date, from_station, to_station = leg_key
+            from_code = telecodes.get(from_station)
+            to_code = telecodes.get(to_station)
+            if not from_code or not to_code:
+                fetched_legs[leg_key] = {}
+                continue
+            leg_telecodes[leg_key] = (from_code, to_code)
+            rows = await self._ticket_client.fetch_leg(  # type: ignore[union-attr]
+                departure_date,
+                from_station,
+                to_station,
+                from_code,
+                to_code,
+            )
+            fetched_legs[leg_key] = rows
+            for seg_key in leg_segments:
+                _departure_date, train_no, _from_station, _to_station = seg_key
+                ticket = self._ticket_from_rows(
+                    rows,
+                    train_no=train_no,
+                    station_train_code=train_codes[seg_key],
+                )
+                if ticket is not None:
+                    fetched[seg_key] = ticket
+        return fetched, fetched_legs, leg_telecodes
 
     def _collect_train_segments(
         self, routes: Iterable[RouteResponse]
@@ -435,70 +420,54 @@ class Ticket12306Service:
         run_date: str,
         segments: list[RouteTrainSegmentResponse],
         telecodes: dict[str, str],
-    ) -> dict[tuple[str, str, str, str], TicketSegmentData]:
-        result: dict[tuple[str, str, str, str], TicketSegmentData] = {}
-        cache_keys = {
-            self._cache_key_for_segment(segment.departureDate, segment, telecodes): segment
-            for segment in segments
-        }
-        valid_keys = {key: segment for key, segment in cache_keys.items() if key}
-        if not valid_keys:
-            return result
+    ) -> tuple[dict[SegmentLookupKey, TicketSegmentData], set[LegLookupKey]]:
+        result: dict[SegmentLookupKey, TicketSegmentData] = {}
+        resolved_legs: set[LegLookupKey] = set()
+        legs_segments: dict[LegLookupKey, list[RouteTrainSegmentResponse]] = {}
+        for segment in segments:
+            leg_key = (
+                segment.departureDate,
+                segment.origin.name,
+                segment.destination.name,
+            )
+            legs_segments.setdefault(leg_key, []).append(segment)
 
-        values = await self._redis.mget(list(valid_keys.keys()))
-        for cache_key, raw in zip(valid_keys.keys(), values, strict=False):
+        cache_key_map: dict[str, LegLookupKey] = {}
+        for leg_key in legs_segments:
+            cache_key = self._cache_key_for_leg_key(leg_key, telecodes)
+            if cache_key:
+                cache_key_map[cache_key] = leg_key
+        if not cache_key_map:
+            return result, resolved_legs
+
+        values = await self._redis.mget(list(cache_key_map.keys()))
+        for cache_key, raw in zip(cache_key_map.keys(), values, strict=False):
             if raw is None:
                 continue
-            payload = json.loads(raw)
-            if not payload.get("ok"):
+            leg_key = cache_key_map[cache_key]
+            if self._is_failure_cache_value(raw):
+                resolved_legs.add(leg_key)
                 continue
-            segment = valid_keys[cache_key]
-            lookup_key = (
-                segment.departureDate,
-                segment.trainNo,
-                segment.origin.name,
-                segment.destination.name,
-            )
-            result[lookup_key] = TicketSegmentData(
-                seats=[SeatInfo(**seat) for seat in payload["data"]["seats"]],
-                min_price=payload["data"]["min_price"],
-                matched_by=payload["data"]["matched_by"],
-            )
-        return result
-
-    async def _store_segment_cache(
-        self,
-        *,
-        run_date: str,
-        segments: list[RouteTrainSegmentResponse],
-        telecodes: dict[str, str],
-        fetched: dict[tuple[str, str, str, str], TicketSegmentData],
-    ) -> None:
-        for segment in segments:
-            cache_key = self._cache_key_for_segment(segment.departureDate, segment, telecodes)
-            if not cache_key:
+            try:
+                payload = json.loads(raw)
+            except (json.JSONDecodeError, TypeError):
                 continue
-            lookup_key = (
-                segment.departureDate,
-                segment.trainNo,
-                segment.origin.name,
-                segment.destination.name,
-            )
-            ticket = fetched.get(lookup_key)
-            if ticket is None:
-                payload = {"ok": False}
-                ttl = self._failure_ttl_seconds
-            else:
-                payload = {"ok": True, "data": asdict(ticket)}
-                ttl = self._cache_ttl_seconds
-            await self._redis.setex(cache_key, ttl, json.dumps(payload, ensure_ascii=False))
+            if not isinstance(payload, dict):
+                continue
+            resolved_legs.add(leg_key)
+            for segment in legs_segments[leg_key]:
+                ticket = self._ticket_from_leg_payload(payload, segment)
+                if ticket is None:
+                    continue
+                result[self._segment_lookup_key(segment)] = ticket
+        return result, resolved_legs
 
     def _merge_route_tickets(
         self,
         route: RouteResponse,
         ticket_map: dict[tuple[str, str, str, str], TicketSegmentData],
     ) -> RouteResponse:
-        next_segs = []
+        next_segs: list[RouteTrainSegmentResponse | RouteTransferSegmentResponse] = []
         statuses: list[str] = []
         for segment in route.segs:
             if not isinstance(segment, RouteTrainSegmentResponse):
@@ -589,34 +558,185 @@ class Ticket12306Service:
         }
         return order.get(seat_type.strip().lower(), len(order))
 
-    def _cache_key_for_segment(
-        self,
-        run_date: str,
+    @staticmethod
+    def _segment_lookup_key(
         segment: CachedTrainSegment | RouteTrainSegmentResponse,
+    ) -> SegmentLookupKey:
+        return (
+            segment.departureDate,
+            segment.trainNo,
+            segment.origin.name,
+            segment.destination.name,
+        )
+
+    def _cache_key_for_leg_key(
+        self,
+        leg_key: LegLookupKey,
         telecodes: dict[str, str],
     ) -> str | None:
-        from_code = telecodes.get(segment.origin.name)
-        to_code = telecodes.get(segment.destination.name)
+        run_date, from_station, to_station = leg_key
+        from_code = telecodes.get(from_station)
+        to_code = telecodes.get(to_station)
         if not from_code or not to_code:
             return None
-        return self._build_segment_cache_key(
+        return self._build_leg_cache_key(
             run_date=run_date,
-            train_no=segment.trainNo,
-            from_code=from_code,
-            to_code=to_code,
+            from_station=from_station,
+            to_station=to_station,
         )
 
     @staticmethod
-    def _build_segment_cache_key(
+    def _build_leg_cache_key(
         *,
         run_date: str,
-        train_no: str,
-        from_code: str,
-        to_code: str,
+        from_station: str,
+        to_station: str,
     ) -> str:
         return (
-            f"journey_search:ticket_segment:v2:{run_date}:{train_no}:"
-            f"{from_code}:{to_code}"
+            f"journey_search:ticket_segment:v3:{run_date}:"
+            f"{from_station}:{to_station}"
+        )
+
+    @staticmethod
+    def _is_failure_cache_value(raw: Any) -> bool:
+        return bool(raw == "" or raw == b"")
+
+    @staticmethod
+    def _ticket_from_rows(
+        rows: dict[str, Any],
+        *,
+        train_no: str,
+        station_train_code: str,
+    ) -> TicketSegmentData | None:
+        row = rows.get(train_no)
+        matched_by = "train_no"
+        if row is None:
+            row = rows.get(station_train_code)
+            matched_by = "station_train_code"
+        if row is None:
+            return None
+        seat_status, seat_prices = row
+        seats = build_seat_infos(seat_status, seat_prices)
+        return TicketSegmentData(
+            seats=seats,
+            min_price=segment_min_price(seats),
+            matched_by=matched_by,
+        )
+
+    def _ticket_from_leg_payload(
+        self,
+        payload: dict[str, Any],
+        segment: CachedTrainSegment | RouteTrainSegmentResponse,
+    ) -> TicketSegmentData | None:
+        entry = payload.get(segment.trainNo)
+        matched_by = "train_no"
+        if entry is None:
+            entry = payload.get(segment.no)
+            matched_by = "station_train_code"
+        if not isinstance(entry, dict):
+            return None
+        ticket = self._decode_ticket_cache_entry(entry)
+        if ticket is None:
+            return None
+        return TicketSegmentData(
+            seats=ticket.seats,
+            min_price=ticket.min_price,
+            matched_by=matched_by,
+        )
+
+    async def _store_fetched_leg_caches(
+        self,
+        *,
+        fetched_legs: dict[LegLookupKey, dict[str, Any]],
+        leg_telecodes: dict[LegLookupKey, tuple[str, str]],
+    ) -> None:
+        for leg_key, rows in fetched_legs.items():
+            codes = leg_telecodes.get(leg_key)
+            if codes is None:
+                continue
+            departure_date, _from_station, _to_station = leg_key
+            redis_key = self._build_leg_cache_key(
+                run_date=departure_date,
+                from_station=_from_station,
+                to_station=_to_station,
+            )
+            if not rows:
+                try:
+                    await self._redis.setex(
+                        redis_key,
+                        self._failure_ttl_seconds,
+                        "",
+                    )
+                except Exception as exc:
+                    logger.warning(
+                        "Failed to write leg cache for %s: %s", redis_key, exc
+                    )
+                continue
+
+            payload: dict[str, Any] = {}
+            for train_no in self._extract_train_nos_from_rows(rows):
+                ticket = self._ticket_from_rows(
+                    rows,
+                    train_no=train_no,
+                    station_train_code=train_no,
+                )
+                if ticket is not None:
+                    payload[train_no] = self._encode_ticket_cache_entry(ticket)
+            try:
+                await self._redis.setex(
+                    redis_key,
+                    self._cache_ttl_seconds,
+                    json.dumps(payload, ensure_ascii=False),
+                )
+            except Exception as exc:
+                logger.warning(
+                    "Failed to write leg cache for %s: %s", redis_key, exc
+                )
+
+    @staticmethod
+    def _encode_ticket_cache_entry(ticket: TicketSegmentData) -> dict[str, Any]:
+        return {
+            "seats": [
+                [
+                    seat.seat_type,
+                    seat.status,
+                    seat.price,
+                    1 if seat.available else 0,
+                ]
+                for seat in ticket.seats
+            ],
+            "min_price": ticket.min_price,
+        }
+
+    @staticmethod
+    def _decode_ticket_cache_entry(entry: dict[str, Any]) -> TicketSegmentData | None:
+        seats_raw = entry.get("seats")
+        if not isinstance(seats_raw, list):
+            return None
+        seats: list[SeatInfo] = []
+        for item in seats_raw:
+            if not isinstance(item, list | tuple) or len(item) != 4:
+                return None
+            seat_type, status, price, available = item
+            if not isinstance(seat_type, str) or not isinstance(status, str):
+                return None
+            if price is not None and not isinstance(price, int | float):
+                return None
+            seats.append(
+                SeatInfo(
+                    seat_type=seat_type,
+                    status=status,
+                    price=float(price) if price is not None else None,
+                    available=bool(available),
+                )
+            )
+        min_price = entry.get("min_price")
+        if min_price is not None and not isinstance(min_price, int | float):
+            return None
+        return TicketSegmentData(
+            seats=seats,
+            min_price=float(min_price) if min_price is not None else None,
+            matched_by="",
         )
 
     @staticmethod
