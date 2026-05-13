@@ -21,6 +21,12 @@ class Settings(BaseSettings):
     task_worker_stale_timeout_seconds: float = 60.0
     task_worker_concurrency: int = 5
 
+    proxy_provider_type: str = "none"
+    proxy_api_url: str = ""
+    proxy_ttl_seconds: float = 60.0
+    proxy_pool_min_size: int = 3
+    proxy_pool_max_size: int = 10
+
     model_config = SettingsConfigDict(
         env_file=".env.development",
         env_file_encoding="utf-8",

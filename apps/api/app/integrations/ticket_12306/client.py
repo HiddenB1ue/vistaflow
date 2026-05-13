@@ -210,15 +210,19 @@ async def build_ticket_client(
     browser_manager: PlaywrightBrowserManager,
     *,
     redis_client: Any = None,
-    cookie_manager: Any = None,
+    cookie_pool: Any = None,
+    proxy_pool: Any = None,
 ) -> AbstractTicketClient | None:
     """Build the production 12306 ticket client.
 
     Returns ``None`` when the feature flag is disabled or settings are
-    unavailable. When HTTP direct mode is enabled (``ticket_12306_http_enabled``)
-    and a cookie manager is provided, returns a :class:`FallbackTicketClient`
-    that prefers HTTP and falls back to Playwright on failure. Otherwise
-    returns the legacy :class:`PlaywrightTicketClient`.
+    unavailable.  When HTTP direct mode is enabled (``ticket_12306_http_enabled``)
+    and a pre-created :class:`CookiePool` is provided, returns a
+    :class:`FallbackTicketClient` that prefers HTTP and falls back to Playwright
+    on failure.  Otherwise returns the legacy :class:`PlaywrightTicketClient`.
+
+    An optional :class:`ProxyPool` can be supplied; when present, the HTTP
+    client routes requests through rotating proxies to avoid IP rate-limiting.
     """
     try:
         enabled = await settings_provider.get_bool("ticket_12306_enabled")
@@ -233,7 +237,7 @@ async def build_ticket_client(
         config=TicketClientConfig(),
     )
 
-    if cookie_manager is None or redis_client is None:
+    if cookie_pool is None:
         return playwright_client
 
     try:
@@ -254,7 +258,8 @@ async def build_ticket_client(
     from app.integrations.ticket_12306.http_client import HttpTicketClient
 
     http_client = HttpTicketClient(
-        cookie_manager=cookie_manager,
+        cookie_pool=cookie_pool,
+        proxy_pool=proxy_pool,
         max_concurrency=max(1, concurrency),
     )
     return FallbackTicketClient(

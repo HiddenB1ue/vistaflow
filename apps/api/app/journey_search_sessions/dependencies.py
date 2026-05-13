@@ -7,7 +7,6 @@ from redis.asyncio import Redis
 
 from app.integrations.ticket_12306.browser_manager import PlaywrightBrowserManager
 from app.integrations.ticket_12306.client import build_ticket_client
-from app.integrations.ticket_12306.cookie_manager import Ticket12306CookieManager
 from app.integrations.ticket_12306.service import Ticket12306Service
 from app.journey_search_sessions.service import JourneySearchSessionService
 from app.journeys.dependencies import JourneyServiceDep
@@ -26,12 +25,12 @@ async def get_ticket_service(
     pool: DbPool,
 ) -> Ticket12306Service:
     browser_manager: PlaywrightBrowserManager = request.app.state.ticket_browser_manager
-    cookie_manager: Ticket12306CookieManager = request.app.state.ticket_cookie_manager
     ticket_client = await build_ticket_client(
         settings_provider=request.app.state.system_settings_provider,
         browser_manager=browser_manager,
         redis_client=redis_client,
-        cookie_manager=cookie_manager,
+        cookie_pool=getattr(request.app.state, "cookie_pool", None),
+        proxy_pool=getattr(request.app.state, "proxy_pool", None),
     )
     return Ticket12306Service(
         redis_client=redis_client,

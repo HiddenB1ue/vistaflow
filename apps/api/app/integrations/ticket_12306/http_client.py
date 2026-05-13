@@ -3,12 +3,14 @@ from __future__ import annotations
 import asyncio
 import logging
 import random
+import time
 from typing import Any
 
 import httpx
 
 from app.integrations.ticket_12306.client import AbstractTicketClient
-from app.integrations.ticket_12306.cookie_manager import Ticket12306CookieManager
+from app.integrations.ticket_12306.cookie_manager import CookieBundle
+from app.integrations.ticket_12306.cookie_pool import CookiePool
 from app.integrations.ticket_12306.models import TicketSegmentData
 from app.integrations.ticket_12306.parser import (
     BASE_HEADERS,
@@ -17,9 +19,19 @@ from app.integrations.ticket_12306.parser import (
     parse_query_rows,
     segment_min_price,
 )
+from app.integrations.ticket_12306.proxy_pool import ProxyEntry, ProxyPool
 from app.models import SeatLookupKey
 
 logger = logging.getLogger(__name__)
+
+# Backoff seconds for consecutive redirect retries (index 0 = first retry).
+_REDIRECT_BACKOFF_SECONDS = (2.0, 5.0, 10.0)
+_MAX_REDIRECT_RETRIES = len(_REDIRECT_BACKOFF_SECONDS)
+
+# After seeing a redirect, all requests pause for this duration before hitting
+# the 12306 endpoint again.  This prevents other concurrent requests from also
+# burning through the rate-limit window.
+_IP_COOLDOWN_SECONDS = 3.0
 
 
 class TicketHttpFailure(Exception):
@@ -29,7 +41,7 @@ class TicketHttpFailure(Exception):
 class HttpTicketClient(AbstractTicketClient):
     """12306 ticket client that talks to ``leftTicket/queryG`` over HTTP.
 
-    Uses cookies from :class:`Ticket12306CookieManager`. On failure signals
+    Uses cookies from a :class:`CookiePool`. On failure signals
     such as ``status=false``, redirects, or 5xx responses, performs a single
     in-place retry after refreshing cookies. If retry still fails, raises
     :class:`TicketHttpFailure` so the fallback layer can switch to Playwright.
@@ -38,19 +50,24 @@ class HttpTicketClient(AbstractTicketClient):
     def __init__(
         self,
         *,
-        cookie_manager: Ticket12306CookieManager,
+        cookie_pool: CookiePool,
+        proxy_pool: ProxyPool | None = None,
         max_concurrency: int = 8,
         request_timeout_seconds: float = 10.0,
         jitter_min_seconds: float = 0.05,
         jitter_max_seconds: float = 0.15,
         transport: httpx.AsyncBaseTransport | None = None,
     ) -> None:
-        self._cookie_manager = cookie_manager
+        self._cookie_pool = cookie_pool
+        self._proxy_pool = proxy_pool
         self._semaphore = asyncio.Semaphore(max(1, max_concurrency))
         self._request_timeout_seconds = request_timeout_seconds
         self._jitter_min_seconds = jitter_min_seconds
         self._jitter_max_seconds = jitter_max_seconds
         self._transport = transport
+        # Shared IP-level cooldown: monotonic timestamp of last redirect.
+        # Only used when no proxy pool is configured (direct connection).
+        self._last_redirect_ts: float = 0.0
 
     async def fetch_leg(
         self,
@@ -129,6 +146,18 @@ class HttpTicketClient(AbstractTicketClient):
             )
         return result
 
+    async def _respect_ip_cooldown(self) -> None:
+        """Wait if a recent redirect suggests the IP is rate-limited."""
+        elapsed = time.monotonic() - self._last_redirect_ts
+        if elapsed < _IP_COOLDOWN_SECONDS:
+            await asyncio.sleep(_IP_COOLDOWN_SECONDS - elapsed)
+
+    async def _acquire_proxy(self) -> ProxyEntry | None:
+        """Get a proxy from the pool, or None if not configured."""
+        if self._proxy_pool is None:
+            return None
+        return await self._proxy_pool.get()
+
     async def _do_fetch_leg(
         self,
         *,
@@ -136,8 +165,20 @@ class HttpTicketClient(AbstractTicketClient):
         from_telecode: str,
         to_telecode: str,
         allow_retry: bool,
+        bundle: CookieBundle | None = None,
+        redirect_attempt: int = 0,
+        proxy: ProxyEntry | None = ...,  # type: ignore[assignment]
     ) -> dict[str, Any]:
-        bundle = await self._cookie_manager.get()
+        if bundle is None:
+            bundle = await self._cookie_pool.get()
+        # Sentinel ... means "auto-acquire"; None means "no proxy this call".
+        if proxy is ...:
+            proxy = await self._acquire_proxy()
+
+        # When no proxy, honour global IP cooldown.
+        if proxy is None:
+            await self._respect_ip_cooldown()
+
         params = {
             "leftTicketDTO.train_date": run_date,
             "leftTicketDTO.from_station": from_telecode,
@@ -153,13 +194,17 @@ class HttpTicketClient(AbstractTicketClient):
             "cookies": bundle.cookies,
             "headers": headers,
         }
-        if self._transport is not None:
+        if proxy is not None:
+            client_kwargs["proxy"] = proxy.url
+        elif self._transport is not None:
             client_kwargs["transport"] = self._transport
 
         try:
             async with httpx.AsyncClient(**client_kwargs) as client:
                 response = await client.get(LEFT_TICKET_QUERY_URL, params=params)
         except httpx.HTTPError as exc:
+            if proxy is not None and self._proxy_pool is not None:
+                self._proxy_pool.mark_failure(proxy)
             if allow_retry:
                 logger.info(
                     "HTTP ticket transient error %s→%s on %s: %s; retrying once",
@@ -174,20 +219,29 @@ class HttpTicketClient(AbstractTicketClient):
                     from_telecode=from_telecode,
                     to_telecode=to_telecode,
                     allow_retry=False,
+                    bundle=bundle,
+                    proxy=...,  # type: ignore[arg-type]
                 )
             raise TicketHttpFailure(f"network error: {exc}") from exc
 
-        # Redirects to login/init pages indicate cookie expiration / risk control.
+        # ---- Redirect: likely IP-level rate limiting, NOT cookie death ----
         if 300 <= response.status_code < 400:
-            return await self._handle_invalid_session(
-                reason=f"redirect {response.status_code}",
+            if proxy is not None and self._proxy_pool is not None:
+                self._proxy_pool.mark_failure(proxy)
+            else:
+                self._last_redirect_ts = time.monotonic()
+            return await self._handle_redirect(
+                bundle=bundle,
+                status_code=response.status_code,
                 run_date=run_date,
                 from_telecode=from_telecode,
                 to_telecode=to_telecode,
-                allow_retry=allow_retry,
+                redirect_attempt=redirect_attempt,
             )
 
         if response.status_code >= 500:
+            if proxy is not None and self._proxy_pool is not None:
+                self._proxy_pool.mark_failure(proxy)
             if allow_retry:
                 logger.info(
                     "HTTP ticket %s→%s on %s returned %s; retrying once",
@@ -202,16 +256,23 @@ class HttpTicketClient(AbstractTicketClient):
                     from_telecode=from_telecode,
                     to_telecode=to_telecode,
                     allow_retry=False,
+                    bundle=bundle,
+                    proxy=...,  # type: ignore[arg-type]
                 )
             raise TicketHttpFailure(f"upstream {response.status_code}")
 
         if response.status_code != 200:
             raise TicketHttpFailure(f"unexpected status {response.status_code}")
 
+        # Success path: mark proxy healthy.
+        if proxy is not None and self._proxy_pool is not None:
+            self._proxy_pool.mark_success(proxy)
+
         try:
             payload = response.json()
         except ValueError as exc:
-            return await self._handle_invalid_session(
+            return await self._handle_cookie_invalid(
+                bundle=bundle,
                 reason=f"non-json body: {exc}",
                 run_date=run_date,
                 from_telecode=from_telecode,
@@ -226,7 +287,8 @@ class HttpTicketClient(AbstractTicketClient):
         # Empty result with status=true is normal for empty legs; only treat
         # explicit failure flags or empty-result-with-flag as risk control.
         if not isinstance(payload, dict) or not payload.get("status"):
-            return await self._handle_invalid_session(
+            return await self._handle_cookie_invalid(
+                bundle=bundle,
                 reason="status=false",
                 run_date=run_date,
                 from_telecode=from_telecode,
@@ -235,19 +297,65 @@ class HttpTicketClient(AbstractTicketClient):
             )
         return rows
 
-    async def _handle_invalid_session(
+    # ---- Redirect handling: IP rate-limit, keep cookie, backoff ----
+
+    async def _handle_redirect(
         self,
         *,
+        bundle: CookieBundle,
+        status_code: int,
+        run_date: str,
+        from_telecode: str,
+        to_telecode: str,
+        redirect_attempt: int,
+    ) -> dict[str, Any]:
+        """Handle 3xx redirect with backoff.  Does NOT invalidate cookies."""
+        if redirect_attempt < _MAX_REDIRECT_RETRIES:
+            delay = _REDIRECT_BACKOFF_SECONDS[redirect_attempt]
+            logger.info(
+                "HTTP ticket %s→%s on %s got %s (IP rate limit); "
+                "backoff %.0fs then retry (#%d/%d)",
+                from_telecode,
+                to_telecode,
+                run_date,
+                status_code,
+                delay,
+                redirect_attempt + 1,
+                _MAX_REDIRECT_RETRIES,
+            )
+            await asyncio.sleep(delay)
+            return await self._do_fetch_leg(
+                run_date=run_date,
+                from_telecode=from_telecode,
+                to_telecode=to_telecode,
+                allow_retry=False,
+                bundle=bundle,
+                redirect_attempt=redirect_attempt + 1,
+            )
+        # Exhausted redirect retries – invalidate cookie as last resort.
+        await self._cookie_pool.mark_invalid(bundle)
+        raise TicketHttpFailure(
+            f"redirect {status_code} persisted after {_MAX_REDIRECT_RETRIES} retries"
+        )
+
+    # ---- Cookie-invalid handling: status=false / non-JSON ----
+
+    async def _handle_cookie_invalid(
+        self,
+        *,
+        bundle: CookieBundle,
         reason: str,
         run_date: str,
         from_telecode: str,
         to_telecode: str,
         allow_retry: bool,
     ) -> dict[str, Any]:
-        await self._cookie_manager.mark_invalid()
+        """Handle genuine cookie/session invalidation."""
+        await self._cookie_pool.mark_invalid(bundle)
         if allow_retry:
             logger.info(
-                "HTTP ticket %s→%s on %s flagged (%s); refreshing cookies and retrying",
+                "HTTP ticket %s→%s on %s flagged (%s); "
+                "switching cookie slot and retrying",
                 from_telecode,
                 to_telecode,
                 run_date,
@@ -259,6 +367,7 @@ class HttpTicketClient(AbstractTicketClient):
                 from_telecode=from_telecode,
                 to_telecode=to_telecode,
                 allow_retry=False,
+                bundle=None,
             )
         raise TicketHttpFailure(f"session invalid: {reason}")
 

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+import logging
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
@@ -17,7 +19,11 @@ from app.exceptions import BusinessError
 from app.integrations.crawler.client import Live12306CrawlerClient
 from app.integrations.geo.client import DynamicGeoClient
 from app.integrations.ticket_12306.browser_manager import PlaywrightBrowserManager
-from app.integrations.ticket_12306.cookie_manager import Ticket12306CookieManager
+from app.integrations.ticket_12306.cookie_pool import CookiePool
+from app.integrations.ticket_12306.proxy_pool import (
+    ProxyPool,
+    ZhandayeProxyProvider,
+)
 from app.journey_search_sessions.router import (
     router as journey_search_sessions_router,
 )
@@ -57,10 +63,17 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     await redis_client.ping()
     app.state.redis_client = redis_client
 
-    app.state.ticket_cookie_manager = Ticket12306CookieManager(
+    cookie_pool = CookiePool(
         redis_client=redis_client,
         browser_manager=app.state.ticket_browser_manager,
     )
+    app.state.cookie_pool = cookie_pool
+
+    proxy_pool = _build_proxy_pool(settings)
+    app.state.proxy_pool = proxy_pool
+    if proxy_pool is not None:
+        loaded = await proxy_pool.warmup()
+        logger.info("Proxy pool warmed up: %d proxies loaded", loaded)
 
     app.state.crawler_client = Live12306CrawlerClient(http_client=http_client)
     app.state.geo_client = DynamicGeoClient(
@@ -68,12 +81,66 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         http_client=http_client,
     )
 
+    refresh_task = asyncio.create_task(
+        _cookie_pool_refresh_loop(cookie_pool)
+    )
+
     yield
 
+    refresh_task.cancel()
+    if proxy_pool is not None:
+        await proxy_pool.close()
     await app.state.db_pool.close()
     await app.state.ticket_browser_manager.close()
     await http_client.aclose()
     await redis_client.aclose()
+
+
+_COOKIE_POOL_REFRESH_INTERVAL_SECONDS = 20 * 60  # 20 minutes
+
+
+logger = logging.getLogger(__name__)
+
+
+def _build_proxy_pool(settings: object) -> ProxyPool | None:
+    """Create a ProxyPool based on env configuration, or None if disabled."""
+    provider_type = getattr(settings, "proxy_provider_type", "none")
+    if provider_type == "none" or not provider_type:
+        return None
+
+    if provider_type == "zhandaye":
+        api_url = getattr(settings, "proxy_api_url", "")
+        if not api_url:
+            logger.warning("proxy_provider_type=zhandaye but PROXY_API_URL is empty")
+            return None
+        ttl = getattr(settings, "proxy_ttl_seconds", 60.0)
+        provider = ZhandayeProxyProvider(api_url=api_url, proxy_ttl_seconds=ttl)
+    else:
+        logger.warning("Unknown proxy_provider_type: %s", provider_type)
+        return None
+
+    min_size = getattr(settings, "proxy_pool_min_size", 3)
+    max_size = getattr(settings, "proxy_pool_max_size", 10)
+    return ProxyPool(provider=provider, min_pool_size=min_size, max_pool_size=max_size)
+
+
+async def _cookie_pool_refresh_loop(pool: CookiePool) -> None:
+    """Periodically warm up empty cookie pool slots."""
+    # Initial warmup on startup
+    try:
+        refreshed = await pool.refresh_pool()
+        logger.info("Cookie pool initial warmup: %d slots refreshed", refreshed)
+    except Exception as exc:
+        logger.warning("Cookie pool initial warmup failed: %s", exc)
+
+    while True:
+        await asyncio.sleep(_COOKIE_POOL_REFRESH_INTERVAL_SECONDS)
+        try:
+            await pool.refresh_pool()
+        except asyncio.CancelledError:
+            break
+        except Exception as exc:
+            logger.warning("Cookie pool refresh failed: %s", exc)
 
 
 def create_app() -> FastAPI:

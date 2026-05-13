@@ -32,6 +32,7 @@ class CookieBundle:
     cookies: dict[str, str]
     user_agent: str
     refreshed_at: float
+    slot_id: int = -1
 
 
 class Ticket12306CookieManager:
