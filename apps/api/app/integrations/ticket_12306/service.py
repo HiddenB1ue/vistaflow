@@ -31,6 +31,7 @@ logger = logging.getLogger(__name__)
 ProgressCallback = Callable[[dict[str, Any]], Awaitable[None] | None]
 SegmentLookupKey = tuple[str, str, str, str]
 LegLookupKey = tuple[str, str, str]
+OnLegCompleteCallback = Callable[[dict[str, PriceCacheEntry]], Awaitable[None] | None]
 
 SEAT_LABELS: dict[str, str] = {
     "swz": "商务座",
@@ -68,6 +69,7 @@ class Ticket12306Service:
         candidates: list[CachedRouteCandidate],
         max_concurrency: int = 2,
         on_progress: ProgressCallback | None = None,
+        on_leg_complete: OnLegCompleteCallback | None = None,
     ) -> dict[str, PriceCacheEntry]:
         """Prefetch ticket prices for all unique legs across all candidates.
 
@@ -137,6 +139,16 @@ class Ticket12306Service:
                     ticket = self._ticket_from_leg_payload(payload, segment)
                     if ticket is not None:
                         cached_data[seg_key] = ticket
+        # 3b. Invoke on_leg_complete for cached legs
+        if on_leg_complete and cached_data:
+            cached_leg_prices: dict[str, PriceCacheEntry] = {}
+            for cached_sk, ticket in cached_data.items():
+                pmk = price_map_key(cached_sk[1], cached_sk[2], cached_sk[3])
+                cached_leg_prices[pmk] = self._ticket_to_price_entry(ticket)
+            if cached_leg_prices:
+                maybe = on_leg_complete(cached_leg_prices)
+                if maybe is not None:
+                    await maybe
 
         # 4. Determine which segments are uncached
         uncached_leg_keys = {leg for leg in legs_segments if leg not in resolved_legs}
@@ -208,6 +220,45 @@ class Ticket12306Service:
                         })
                         if maybe is not None:
                             await maybe
+                    # Invoke per-leg callback with price entries
+                    if on_leg_complete:
+                        _lk, leg_rows = result
+                        leg_price_batch: dict[str, PriceCacheEntry] = {}
+                        for sk in legs_segments.get(_lk, []):
+                            seg = segment_keys[sk]
+                            if not leg_rows:
+                                _d, tn, fs, ts = sk
+                                key = price_map_key(tn, fs, ts)
+                                leg_price_batch[key] = PriceCacheEntry(failed=True)
+                            else:
+                                ticket = self._ticket_from_rows(
+                                    leg_rows,
+                                    train_no=seg.trainNo if hasattr(seg, "trainNo") else sk[1],
+                                    station_train_code=seg.no if hasattr(seg, "no") else "",
+                                )
+                                _d, tn, fs, ts = sk
+                                mk = price_map_key(tn, fs, ts)
+                                if ticket is not None:
+                                    leg_price_batch[mk] = PriceCacheEntry(
+                                        min_price=ticket.min_price,
+                                        seats=[
+                                            SeatInfoEntry(
+                                                seat_type=s.seat_type,
+                                                status=s.status,
+                                                price=s.price,
+                                                available=s.available,
+                                            )
+                                            for s in ticket.seats
+                                        ],
+                                        matched_by=ticket.matched_by,
+                                        failed=False,
+                                    )
+                                else:
+                                    leg_price_batch[mk] = PriceCacheEntry(failed=True)
+                        if leg_price_batch:
+                            cb_result = on_leg_complete(leg_price_batch)
+                            if cb_result is not None:
+                                await cb_result
                     return result
 
             results = await asyncio.gather(
@@ -277,6 +328,33 @@ class Ticket12306Service:
                 price_map[map_key] = PriceCacheEntry(failed=True)
 
         return price_map
+
+    async def enrich_routes_cache_only(
+        self,
+        *,
+        run_date: str,
+        routes: list[RouteResponse],
+    ) -> list[RouteResponse]:
+        """Read cached prices from Redis; mark uncached segments as loading."""
+        if not routes:
+            return routes
+
+        segments = self._collect_train_segments(routes)
+        if not segments:
+            return routes
+
+        telecodes = await self._station_repo.get_telecodes_by_names(
+            {segment.origin.name for segment in segments}
+            | {segment.destination.name for segment in segments}
+        )
+
+        cached_rows, _resolved_legs = await self._load_cached_rows(
+            run_date=run_date,
+            segments=segments,
+            telecodes=telecodes,
+        )
+
+        return [self._merge_route_tickets_cache_only(route, cached_rows) for route in routes]
 
     async def enrich_routes_for_view(
         self,
@@ -504,6 +582,49 @@ class Ticket12306Service:
         route_status = self._derive_route_status(statuses)
         return route.model_copy(update={"segs": next_segs, "ticketStatus": route_status})
 
+    def _merge_route_tickets_cache_only(
+        self,
+        route: RouteResponse,
+        ticket_map: dict[tuple[str, str, str, str], TicketSegmentData],
+    ) -> RouteResponse:
+        """Like _merge_route_tickets but marks uncached segments as loading."""
+        next_segs: list[RouteTrainSegmentResponse | RouteTransferSegmentResponse] = []
+        statuses: list[str] = []
+        for segment in route.segs:
+            if not isinstance(segment, RouteTrainSegmentResponse):
+                next_segs.append(segment)
+                continue
+
+            lookup_key = (
+                segment.departureDate,
+                segment.trainNo,
+                segment.origin.name,
+                segment.destination.name,
+            )
+            ticket = ticket_map.get(lookup_key)
+            if ticket is None:
+                next_segs.append(
+                    segment.model_copy(
+                        update={"ticketStatus": "loading", "seats": []}
+                    )
+                )
+                statuses.append("loading")
+                continue
+
+            seats = self._build_route_seats(ticket)
+            next_segs.append(
+                segment.model_copy(
+                    update={
+                        "ticketStatus": "ready",
+                        "seats": seats,
+                    }
+                )
+            )
+            statuses.append("ready")
+
+        route_status = self._derive_route_status(statuses)
+        return route.model_copy(update={"segs": next_segs, "ticketStatus": route_status})
+
     def _mark_route_disabled(self, route: RouteResponse) -> RouteResponse:
         next_segs = [
             segment.model_copy(update={"ticketStatus": "disabled", "seats": []})
@@ -515,13 +636,17 @@ class Ticket12306Service:
 
     def _derive_route_status(
         self, statuses: list[str]
-    ) -> Literal["ready", "partial", "unavailable", "disabled"]:
+    ) -> Literal["ready", "partial", "unavailable", "disabled", "loading"]:
         if not statuses:
             return "disabled"
         unique_statuses = set(statuses)
         if unique_statuses == {"ready"}:
             return "ready"
+        if unique_statuses == {"loading"}:
+            return "loading"
         if "ready" in unique_statuses:
+            return "partial"
+        if "loading" in unique_statuses:
             return "partial"
         if unique_statuses == {"disabled"}:
             return "disabled"
@@ -644,6 +769,21 @@ class Ticket12306Service:
             matched_by=matched_by,
         )
 
+    def _ticket_to_price_entry(self, ticket: TicketSegmentData) -> PriceCacheEntry:
+        return PriceCacheEntry(
+            min_price=ticket.min_price,
+            seats=[
+                SeatInfoEntry(
+                    seat_type=s.seat_type,
+                    status=s.status,
+                    price=s.price,
+                    available=s.available,
+                )
+                for s in ticket.seats
+            ],
+            matched_by=ticket.matched_by,
+            failed=False,
+        )
     async def _store_fetched_leg_caches(
         self,
         *,

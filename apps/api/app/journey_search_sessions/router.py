@@ -43,9 +43,9 @@ async def create_search_session_stream(
 ) -> StreamingResponse:
     """SSE endpoint that streams progress events during session creation.
 
-    Each event is a JSON object on a ``data:`` line, terminated by ``\n\n``.
+    Each event is a JSON object on a ``data:`` line, terminated by ``\\n\\n``.
     Event types: ``phase``, ``plan_ready``, ``candidates_counted``,
-    ``pricing_started``, ``leg_fetched``, ``complete``, ``error``.
+    ``complete``, ``error``.
     """
 
     async def event_generator() -> AsyncIterator[str]:
@@ -122,3 +122,61 @@ async def delete_search_session(
     service: JourneySearchSessionServiceDep,
 ) -> APIResponse[SearchSessionDeleteResponse]:
     return APIResponse.ok(await service.delete_session(search_id.strip()))
+
+
+@router.post("/{search_id}/prices/stream")
+async def stream_prices(
+    search_id: str,
+    service: JourneySearchSessionServiceDep,
+) -> StreamingResponse:
+    """SSE endpoint that streams ticket price results as they are fetched.
+
+    Event types: ``pricing_started``, ``leg_priced``, ``pricing_complete``, ``error``.
+    """
+
+    async def event_generator() -> AsyncIterator[str]:
+        queue: asyncio.Queue[dict[str, Any] | None] = asyncio.Queue()
+
+        def on_progress(event: dict[str, Any]) -> None:
+            queue.put_nowait(event)
+
+        def on_leg_complete(prices: dict[str, Any]) -> None:
+            # Serialize PriceCacheEntry objects to dicts for JSON
+            serialized = {}
+            for k, v in prices.items():
+                serialized[k] = v.model_dump(mode="json") if hasattr(v, "model_dump") else v
+            queue.put_nowait({"type": "leg_priced", "prices": serialized})
+
+        async def run_pricing() -> None:
+            try:
+                await service.stream_prices(
+                    search_id.strip(),
+                    on_leg_complete=on_leg_complete,
+                    on_progress=on_progress,
+                )
+                queue.put_nowait({"type": "pricing_complete"})
+            except Exception as exc:
+                logger.warning("Price stream failed for %s: %s", search_id, exc)
+                queue.put_nowait({"type": "error", "message": str(exc)})
+            finally:
+                queue.put_nowait(None)
+
+        task = asyncio.create_task(run_pricing())
+        try:
+            while True:
+                event = await queue.get()
+                if event is None:
+                    break
+                yield f"data: {json.dumps(event, ensure_ascii=False, default=str)}\n\n"
+        finally:
+            if not task.done():
+                task.cancel()
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        },
+    )

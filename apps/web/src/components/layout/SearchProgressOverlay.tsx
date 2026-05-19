@@ -9,15 +9,13 @@ function transferCountLabel(count: number): string {
 }
 
 export function SearchProgressOverlay() {
-  const { phase, plansReady, totalCandidates, totalLegs, cachedLegs, legsToFetch, fetchedLegs, errorMessage, currentTransferCount } =
+  const { phase, plansReady, totalCandidates, errorMessage, currentTransferCount } =
     useSearchProgressStore();
   const params = useSearchStore((s) => s.params);
 
   if (phase === 'idle') {
     return null;
   }
-
-  const legsToFetchCount = legsToFetch ?? 0;
 
   return (
     <div className="flex flex-col items-center gap-6 text-center">
@@ -51,47 +49,6 @@ export function SearchProgressOverlay() {
         {totalCandidates !== null && (
           <div className="mt-1 text-xs text-muted/50">
             共 {totalCandidates} 条候选方案
-          </div>
-        )}
-
-        {/* Pricing phase */}
-        {(phase === 'pricing' || (phase === 'building_view' && totalLegs !== null)) && (
-          <div className="flex flex-col gap-2">
-            <div className="flex items-center gap-2">
-              {phase === 'pricing' ? (
-                <span className="inline-block h-3 w-3 animate-pulse rounded-full time-theme-bg" />
-              ) : (
-                <span className="time-theme-text text-xs">✓</span>
-              )}
-              <span>
-                {phase === 'pricing'
-                  ? `正在查询票价 ${fetchedLegs} / ${legsToFetchCount} 区段...`
-                  : `票价查询完成`}
-              </span>
-            </div>
-            {cachedLegs !== null && cachedLegs > 0 && (
-              <div className="ml-5 text-xs text-muted/40">
-                {cachedLegs} 个区段已缓存
-              </div>
-            )}
-            {/* Progress bar */}
-            {phase === 'pricing' && legsToFetchCount > 0 && (
-              <div
-                className="ml-5 overflow-hidden rounded-full"
-                style={{
-                  width: '10rem',
-                  height: '2px',
-                  background: 'rgba(255,255,255,0.08)',
-                }}
-              >
-                <div
-                  className="time-theme-bg h-full rounded-full transition-all duration-300 ease-out"
-                  style={{
-                    width: `${Math.round((fetchedLegs / legsToFetchCount) * 100)}%`,
-                  }}
-                />
-              </div>
-            )}
           </div>
         )}
 

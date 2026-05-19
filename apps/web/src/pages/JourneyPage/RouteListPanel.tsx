@@ -24,6 +24,9 @@ interface RouteListPanelProps {
   appliedView: JourneyViewResult['appliedView'] | null;
   availableFacets: JourneyAvailableFacets;
   showOnlyAvailableTickets: boolean;
+  isPriceStreaming?: boolean;
+  priceFetchedLegs?: number;
+  priceTotalLegs?: number;
   onSelect: (route: Route) => void;
   onSortModeChange: (value: JourneyDisplaySortMode) => void;
   onPageSizeChange: (pageSize: number) => void;
@@ -37,16 +40,18 @@ type ToolbarMenu = 'display-size' | null;
 
 interface ToolbarButtonProps {
   active?: boolean;
+  disabled?: boolean;
   label: string;
   onClick: () => void;
 }
 
-function ToolbarButton({ active = false, label, onClick }: ToolbarButtonProps) {
+function ToolbarButton({ active = false, disabled = false, label, onClick }: ToolbarButtonProps) {
   return (
     <button
       type="button"
-      className={`route-toolbar-button${active ? ' route-toolbar-button--active' : ''}`}
+      className={`route-toolbar-button${active ? ' route-toolbar-button--active' : ''}${disabled ? ' route-toolbar-button--disabled' : ''}`}
       onClick={onClick}
+      disabled={disabled}
     >
       {label}
     </button>
@@ -69,6 +74,9 @@ export function RouteListPanel({
   appliedView,
   availableFacets,
   showOnlyAvailableTickets,
+  isPriceStreaming = false,
+  priceFetchedLegs = 0,
+  priceTotalLegs = 0,
   onSelect,
   onSortModeChange,
   onPageSizeChange,
@@ -126,7 +134,7 @@ export function RouteListPanel({
     <PanelCard className="h-full overflow-hidden border-none bg-transparent p-0 shadow-none">
       <div
         className="sticky-header sticky-header--controls shrink-0 px-2 pt-2"
-        style={{ borderBottom: '1px solid rgba(255,255,255,0.1)' }}
+        style={{ borderBottom: isPriceStreaming ? 'none' : '1px solid rgba(255,255,255,0.1)' }}
       >
         <SectionHeader
           title={JOURNEY_LABELS.routeListTitle(date)}
@@ -169,14 +177,18 @@ export function RouteListPanel({
           <div className="route-toolbar__scroll">
             <div className="route-toolbar__content">
               <div className="route-pill-group" role="tablist" aria-label="排序方式">
-                {SORT_OPTIONS.map((option) => (
-                  <ToolbarButton
-                    key={option.value}
-                    active={sortMode === option.value}
-                    label={option.label}
-                    onClick={() => onSortModeChange(option.value)}
-                  />
-                ))}
+                {SORT_OPTIONS.map((option) => {
+                  const disabled = isPriceStreaming && option.value === 'price';
+                  return (
+                    <ToolbarButton
+                      key={option.value}
+                      active={sortMode === option.value}
+                      label={option.label}
+                      disabled={disabled}
+                      onClick={() => !disabled && onSortModeChange(option.value)}
+                    />
+                  );
+                })}
               </div>
 
               <div className="route-pill-group" role="group" aria-label="换乘次数">
@@ -229,6 +241,23 @@ export function RouteListPanel({
             </div>
           </div>
         </div>
+
+        {isPriceStreaming && (
+          <div className="px-4 pb-2">
+            <div className="flex items-center gap-3 text-xs tracking-wider text-muted">
+              <div className="h-0.5 flex-1 overflow-hidden rounded-full bg-white/5">
+                <div
+                  className="h-full rounded-full transition-all duration-500 ease-out"
+                  style={{
+                    width: priceTotalLegs > 0 ? `${(priceFetchedLegs / priceTotalLegs) * 100}%` : '0%',
+                    background: 'linear-gradient(90deg, var(--color-time-theme, rgba(255,255,255,0.6)), var(--color-time-theme, rgba(255,255,255,0.4)))',
+                  }}
+                />
+              </div>
+              <span className="shrink-0 tabular-nums">票价加载中 {priceFetchedLegs}/{priceTotalLegs}</span>
+            </div>
+          </div>
+        )}
       </div>
 
       <div

@@ -3,7 +3,6 @@ import { create } from 'zustand';
 export type SearchPhase =
   | 'idle'
   | 'planning'
-  | 'pricing'
   | 'building_view'
   | 'complete'
   | 'error';
@@ -21,14 +20,6 @@ export interface SearchProgress {
   plansReady: PlanReadyEntry[];
   /** Total candidates across all plans */
   totalCandidates: number | null;
-  /** Total unique legs (cached + uncached) */
-  totalLegs: number | null;
-  /** Legs already cached in Redis */
-  cachedLegs: number | null;
-  /** Legs that need to be fetched from 12306 */
-  legsToFetch: number | null;
-  /** How many legs have been fetched so far */
-  fetchedLegs: number;
   /** Error message if phase === 'error' */
   errorMessage: string | null;
 }
@@ -49,10 +40,6 @@ const initialProgress: SearchProgress = {
   currentTransferCount: null,
   plansReady: [],
   totalCandidates: null,
-  totalLegs: null,
-  cachedLegs: null,
-  legsToFetch: null,
-  fetchedLegs: 0,
   errorMessage: null,
 };
 
@@ -103,22 +90,6 @@ export const useSearchProgressStore = create<SearchProgressState>()((set) => ({
       case 'candidates_counted':
         set({
           totalCandidates: event.totalCandidates as number,
-        });
-        break;
-
-      case 'pricing_started':
-        set({
-          phase: 'pricing',
-          totalLegs: event.totalLegs as number,
-          cachedLegs: event.cachedLegs as number,
-          legsToFetch: event.legsToFetch as number,
-          fetchedLegs: 0,
-        });
-        break;
-
-      case 'leg_fetched':
-        set({
-          fetchedLegs: event.completed as number,
         });
         break;
 

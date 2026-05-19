@@ -110,6 +110,9 @@ def service() -> JourneySearchSessionService:
         side_effect=lambda *, run_date, routes: routes
     )
     ticket_service.prefetch_all_prices = AsyncMock(return_value={})
+    ticket_service.enrich_routes_cache_only = AsyncMock(
+        side_effect=lambda *, run_date, routes: routes
+    )
 
     route_plan_repo = MagicMock()
     plans: dict[int, dict[str, object]] = {}
@@ -674,27 +677,21 @@ async def test_delete_search_context_does_not_delete_shared_route_plans(
 
 
 # ---------------------------------------------------------------------------
-# PR3: synchronous price prefetch on create_session
+# PR3: progressive price loading — create_session skips pricing
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_create_session_runs_synchronous_price_prefetch(
+async def test_create_session_skips_price_prefetch(
     service: JourneySearchSessionService,
 ) -> None:
-    """create_session must call ``prefetch_all_prices`` once with every
-    candidate before rendering the first view, not via per-page enrichment."""
-    from app.journey_search_sessions.schemas import PriceCacheEntry
-
+    """create_session no longer calls prefetch_all_prices. Pricing is now
+    handled asynchronously via the separate prices/stream endpoint."""
     ticket_service = cast(Any, service._ticket_service)
-    # Return a non-empty map so _build_view_result takes the apply-from-map
-    # branch instead of falling through to enrich_routes_for_view.
-    ticket_service.prefetch_all_prices = AsyncMock(
-        return_value={"warm:key": PriceCacheEntry(failed=True)}
-    )
+    ticket_service.prefetch_all_prices.reset_mock()
     ticket_service.enrich_routes_for_view.reset_mock()
 
-    await service.create_session(
+    response = await service.create_session(
         SearchSessionCreateRequest(
             from_station="Beijing South",
             to_station="Shanghai Hongqiao",
@@ -704,16 +701,13 @@ async def test_create_session_runs_synchronous_price_prefetch(
         )
     )
 
-    ticket_service.prefetch_all_prices.assert_awaited_once()
-    call_kwargs = ticket_service.prefetch_all_prices.await_args.kwargs
-    assert call_kwargs["run_date"] == "2026-04-15"
-    # Both the direct and the transfer candidates must be passed to prefetch
-    # so the caller can warm Redis for every leg.
-    candidate_ids = {c.id for c in call_kwargs["candidates"]}
-    assert candidate_ids == {"direct-1", "transfer-1"}
-    # Per-page enrichment must NOT run when prefetch already produced a
-    # (possibly empty) price_map; it would be a redundant network round-trip.
+    # prefetch is no longer called during create_session
+    ticket_service.prefetch_all_prices.assert_not_awaited()
+    # per-page enrichment is also not called
     ticket_service.enrich_routes_for_view.assert_not_awaited()
+    # Routes should have loading ticket status
+    for item in response.viewResult.items:
+        assert item.ticketStatus == "loading"
 
 
 @pytest.mark.asyncio
@@ -736,29 +730,3 @@ async def test_create_session_skips_prefetch_when_tickets_disabled(
     )
 
     ticket_service.prefetch_all_prices.assert_not_awaited()
-
-
-@pytest.mark.asyncio
-async def test_create_session_degrades_gracefully_when_prefetch_raises(
-    service: JourneySearchSessionService,
-) -> None:
-    """Prefetch failures must not break session creation; the per-page
-    enrichment path should still produce a usable view."""
-    ticket_service = cast(Any, service._ticket_service)
-    ticket_service.prefetch_all_prices = AsyncMock(side_effect=RuntimeError("boom"))
-    ticket_service.enrich_routes_for_view.reset_mock()
-
-    response = await service.create_session(
-        SearchSessionCreateRequest(
-            from_station="Beijing South",
-            to_station="Shanghai Hongqiao",
-            date=date(2026, 4, 15),
-            transfer_count=0,
-            include_fewer_transfers=False,
-        )
-    )
-
-    assert response.viewResult.total == 1
-    # When prefetch fails the price_map is empty, so _build_view_result falls
-    # back to the per-page enrichment path.
-    ticket_service.enrich_routes_for_view.assert_awaited_once()

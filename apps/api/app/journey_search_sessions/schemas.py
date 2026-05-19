@@ -8,8 +8,8 @@ from pydantic import BaseModel, Field
 
 from app.journeys.schemas import JourneySearchRequest
 
-TicketStatus = Literal["ready", "partial", "unavailable", "disabled"]
-SegmentTicketStatus = Literal["ready", "unavailable", "disabled"]
+TicketStatus = Literal["ready", "partial", "unavailable", "disabled", "loading"]
+SegmentTicketStatus = Literal["ready", "unavailable", "disabled", "loading"]
 JourneySortMode = Literal["duration", "departure", "price"]
 
 

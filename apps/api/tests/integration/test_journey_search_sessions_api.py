@@ -158,3 +158,98 @@ def test_delete_search_session(client_with_session_service: TestClient) -> None:
 
     assert response.status_code == 200
     assert response.json()["data"]["deleted"] is True
+
+
+
+
+def test_price_stream_returns_sse_events(
+    mock_search_session_service: MagicMock,
+) -> None:
+    """POST /{search_id}/prices/stream returns SSE events."""
+    import json as _json
+
+    async def fake_stream_prices(
+        search_id: str,
+        *,
+        on_leg_complete: object = None,
+        on_progress: object = None,
+    ) -> None:
+        if on_progress:
+            on_progress({
+                "type": "pricing_started",
+                "totalLegs": 2,
+                "cachedLegs": 1,
+                "legsToFetch": 1,
+            })
+        if on_leg_complete:
+            on_leg_complete({
+                "T1:A:B": {
+                    "min_price": 55.5,
+                    "seats": [],
+                    "matched_by": "train_no",
+                    "failed": False,
+                },
+            })
+
+    mock_search_session_service.stream_prices = AsyncMock(
+        side_effect=fake_stream_prices
+    )
+
+    app.dependency_overrides[get_journey_search_session_service] = (
+        lambda: mock_search_session_service
+    )
+    try:
+        with TestClient(app) as client:
+            response = client.post(
+                "/api/v1/journey-search-sessions/session-1/prices/stream",
+            )
+
+        assert response.status_code == 200
+        assert "text/event-stream" in response.headers["content-type"]
+
+        body = response.text
+        events = []
+        for line in body.strip().split("\n"):
+            line = line.strip()
+            if line.startswith("data:"):
+                events.append(_json.loads(line[5:].strip()))
+
+        event_types = [e["type"] for e in events]
+        assert "pricing_started" in event_types
+        assert "leg_priced" in event_types
+        assert "pricing_complete" in event_types
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_price_stream_handles_invalid_session(
+    mock_search_session_service: MagicMock,
+) -> None:
+    """Price stream returns error event for invalid session."""
+    import json as _json
+
+    mock_search_session_service.stream_prices = AsyncMock(
+        side_effect=ValueError("Session not found")
+    )
+
+    app.dependency_overrides[get_journey_search_session_service] = (
+        lambda: mock_search_session_service
+    )
+    try:
+        with TestClient(app) as client:
+            response = client.post(
+                "/api/v1/journey-search-sessions/invalid-id/prices/stream",
+            )
+
+        assert response.status_code == 200
+        body = response.text
+        events = []
+        for line in body.strip().split("\n"):
+            line = line.strip()
+            if line.startswith("data:"):
+                events.append(_json.loads(line[5:].strip()))
+
+        event_types = [e["type"] for e in events]
+        assert "error" in event_types
+    finally:
+        app.dependency_overrides.clear()

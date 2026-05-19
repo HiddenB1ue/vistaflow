@@ -194,19 +194,8 @@ class JourneySearchSessionService:
         view_request = payload.view or SearchSessionViewRequest()
         run_date = payload.date.isoformat()
 
-        # Synchronously pre-fetch ticket prices for the entire plan so that
-        # the first view render and every subsequent paginated request hit
-        # Redis. We only run this when tickets are requested; when the user
-        # opted out, the view will mark routes ``disabled`` regardless.
-        price_map: dict[str, PriceCacheEntry] = {}
-        if view_request.include_tickets:
-            price_map = await self._prefetch_session_prices(
-                plan_ids=plan_ids,
-                base_filters=base_filters,
-                run_date=run_date,
-                on_progress=on_progress,
-            )
-
+        # Pricing is now handled asynchronously via the prices/stream endpoint.
+        # create_session returns immediately with ticketStatus="loading".
         if on_progress:
             await self._emit(on_progress, {
                 "type": "phase",
@@ -218,7 +207,8 @@ class JourneySearchSessionService:
             base_filters,
             run_date,
             view_request,
-            price_map=price_map or None,
+            price_map=None,
+            skip_pricing=True,
         )
         return SearchSessionCreateResponse(
             searchId=search_id,
@@ -321,28 +311,44 @@ class JourneySearchSessionService:
         plan_ids = context["planIds"]
         run_date = str(context["date"])
 
-        # Prefetch all prices so every sort mode uses the fast price_map path
-        # instead of per-item Redis reads via enrich_routes_for_view.
-        price_map: dict[str, PriceCacheEntry] | None = None
-        if payload.include_tickets:
-            price_map = await self._prefetch_session_prices(
-                plan_ids=plan_ids,
-                base_filters=base_filters,
-                run_date=run_date,
-            )
-
+        # Pricing is handled asynchronously by the prices/stream endpoint.
+        # get_view reads whatever has been cached in Redis by the stream.
+        # Uncached segments will be returned with ticketStatus="loading".
         return await self._build_view_result(
             plan_ids,
             base_filters,
             run_date,
             payload,
-            price_map=price_map,
+            price_map=None,
         )
 
     async def delete_session(self, search_id: str) -> SearchSessionDeleteResponse:
         _decode_search_context(search_id)
         return SearchSessionDeleteResponse(deleted=True)
 
+    async def stream_prices(
+        self,
+        search_id: str,
+        on_leg_complete: ProgressCallback,
+        on_progress: ProgressCallback | None = None,
+    ) -> None:
+        """Load candidates for a session and fetch prices, invoking callbacks per leg."""
+
+        context = await self._load_context(search_id)
+        plan_ids = context["planIds"]
+        base_filters = self._query_filters_from_context(context)
+        run_date = str(context["date"])
+
+        candidates = await self._load_all_candidates(plan_ids, base_filters)
+        if not candidates:
+            return
+
+        await self._ticket_service.prefetch_all_prices(
+            run_date=run_date,
+            candidates=candidates,
+            on_progress=on_progress,
+            on_leg_complete=on_leg_complete,
+        )
     async def _ensure_plan(
         self,
         *,
@@ -622,6 +628,7 @@ class JourneySearchSessionService:
         run_date: str,
         payload: SearchSessionViewRequest,
         price_map: dict[str, PriceCacheEntry] | None = None,
+        skip_pricing: bool = False,
     ) -> SearchSessionViewResultResponse:
         if price_map is None:
             price_map = {}
@@ -657,10 +664,12 @@ class JourneySearchSessionService:
 
         if not payload.include_tickets:
             items = [self._mark_route_disabled(route) for route in items]
+        elif skip_pricing:
+            items = [self._mark_route_loading(route) for route in items]
         elif price_map:
             items = [self._apply_prices_from_map(route, price_map) for route in items]
         else:
-            items = await self._ticket_service.enrich_routes_for_view(
+            items = await self._ticket_service.enrich_routes_cache_only(
                 run_date=run_date,
                 routes=items,
             )
@@ -801,7 +810,7 @@ class JourneySearchSessionService:
         route: RouteResponse,
         price_map: dict[str, PriceCacheEntry],
     ) -> RouteResponse:
-        next_segs = []
+        next_segs: list[RouteTrainSegmentResponse | RouteTransferSegmentResponse] = []
         statuses: list[str] = []
         for segment in route.segs:
             if not isinstance(segment, RouteTrainSegmentResponse):
@@ -853,13 +862,26 @@ class JourneySearchSessionService:
         ]
         return route.model_copy(update={"segs": next_segs, "ticketStatus": "disabled"})
 
+    def _mark_route_loading(self, route: RouteResponse) -> RouteResponse:
+        next_segs = [
+            segment.model_copy(update={"ticketStatus": "loading", "seats": []})
+            if isinstance(segment, RouteTrainSegmentResponse)
+            else segment
+            for segment in route.segs
+        ]
+        return route.model_copy(update={"segs": next_segs, "ticketStatus": "loading"})
+
     def _derive_route_status(self, statuses: list[str]) -> str:
         if not statuses:
             return "disabled"
         unique_statuses = set(statuses)
         if unique_statuses == {"ready"}:
             return "ready"
+        if unique_statuses == {"loading"}:
+            return "loading"
         if "ready" in unique_statuses:
+            return "partial"
+        if "loading" in unique_statuses:
             return "partial"
         if unique_statuses == {"disabled"}:
             return "disabled"

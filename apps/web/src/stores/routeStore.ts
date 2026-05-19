@@ -4,8 +4,79 @@ import type {
   JourneyDisplaySortMode,
   JourneyViewResult,
 } from '@/services/routeService';
-import type { Route, RouteList } from '@/types/route';
+import type { Route, RouteList, SeatClass, TrainSegment } from '@/types/route';
+import { isTransfer } from '@/types/route';
 import { sortRoutesForDisplay } from '@/pages/JourneyPage/routeList.helpers';
+import type { PriceCacheEntry } from '@/stores/priceStore';
+
+const SEAT_LABELS: Record<string, string> = {
+  swz: '商务座',
+  tz: '特等座',
+  zy: '一等座',
+  ze: '二等座',
+  gr: '高级软卧',
+  rw: '软卧',
+  yw: '硬卧',
+  yz: '硬座',
+  wz: '无座',
+  gg: '其他',
+};
+
+function priceMapKey(trainNo: string, fromStation: string, toStation: string): string {
+  return `${trainNo}:${fromStation}:${toStation}`;
+}
+
+function buildSeats(entry: PriceCacheEntry): SeatClass[] {
+  return entry.seats.map((s) => ({
+    type: s.seat_type,
+    label: SEAT_LABELS[s.seat_type.toLowerCase()] ?? s.seat_type.toUpperCase(),
+    price: s.price,
+    available: s.available,
+    availabilityText: s.status || undefined,
+  }));
+}
+
+function applyPricesToRoute(
+  route: Route,
+  priceMap: Record<string, PriceCacheEntry>,
+): Route {
+  const updatedSegs = route.segs.map((seg) => {
+    if (isTransfer(seg)) return seg;
+    const trainSeg = seg as TrainSegment;
+    const key = priceMapKey(trainSeg.trainNo, trainSeg.origin.name, trainSeg.destination.name);
+    const entry = priceMap[key];
+    if (!entry) return trainSeg; // no update, keep current state
+    if (entry.failed) {
+      return { ...trainSeg, ticketStatus: 'unavailable' as const, seats: [] };
+    }
+    return {
+      ...trainSeg,
+      ticketStatus: 'ready' as const,
+      seats: buildSeats(entry),
+    };
+  });
+
+  // Derive route-level ticketStatus from segments
+  const segStatuses = updatedSegs
+    .filter((s) => !isTransfer(s))
+    .map((s) => (s as TrainSegment).ticketStatus ?? 'loading');
+
+  let routeStatus: Route['ticketStatus'];
+  const unique = new Set(segStatuses);
+  if (unique.size === 1 && unique.has('ready')) {
+    routeStatus = 'ready';
+  } else if (unique.size === 1 && unique.has('loading')) {
+    routeStatus = 'loading';
+  } else if (unique.has('ready') || unique.has('loading')) {
+    routeStatus = 'partial';
+  } else if (unique.size === 1 && unique.has('disabled')) {
+    routeStatus = 'disabled';
+  } else {
+    routeStatus = 'unavailable';
+  }
+
+  return { ...route, segs: updatedSegs, ticketStatus: routeStatus };
+}
 
 interface RouteState {
   routes: RouteList;
@@ -23,6 +94,7 @@ interface RouteState {
   setPage: (page: number) => void;
   setPageSize: (pageSize: number) => void;
   setSortMode: (sortMode: JourneyDisplaySortMode) => void;
+  updateRoutesPrices: (priceMap: Record<string, PriceCacheEntry>) => void;
 }
 
 const defaultAvailableFacets: JourneyAvailableFacets = {
@@ -90,5 +162,17 @@ export const useRouteStore = create<RouteState>()((set) => ({
         selectedRoute: matchedSelectedRoute ?? sortedRoutes[0] ?? null,
       };
     }),
+  updateRoutesPrices: (priceMap) =>
+    set((state) => {
+      const updatedRoutes = state.routes.map((route) =>
+        applyPricesToRoute(route, priceMap),
+      );
+      const updatedSelected = state.selectedRoute
+        ? updatedRoutes.find((r) => r.id === state.selectedRoute?.id) ?? null
+        : null;
+      return {
+        routes: updatedRoutes,
+        selectedRoute: updatedSelected,
+      };
+    }),
 }));
-

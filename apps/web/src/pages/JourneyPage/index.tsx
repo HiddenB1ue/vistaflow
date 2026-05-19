@@ -17,7 +17,9 @@ import {
   fetchJourneySearchSessionView,
   fetchRouteStopsGeo,
 } from '@/services/routeService';
+import { startPriceStream } from '@/services/priceStreamService';
 import { createSessionStream } from '@/services/searchStreamService';
+import { usePriceStore } from '@/stores/priceStore';
 import { useRouteStore } from '@/stores/routeStore';
 import { useSearchStore } from '@/stores/searchStore';
 import { useUiStore } from '@/stores/uiStore';
@@ -54,6 +56,9 @@ export function JourneyPage() {
     setJourneyFilterOpen,
     setJourneyFilterPrefs,
   } = useUiStore();
+  const isPriceStreaming = usePriceStore((s) => s.isStreaming);
+  const priceFetchedLegs = usePriceStore((s) => s.fetchedLegs);
+  const priceTotalLegs = usePriceStore((s) => s.totalLegs);
   const sseStarted = useRef(false);
 
   const backendSortMode = sortMode;
@@ -145,6 +150,45 @@ export function JourneyPage() {
     setViewResult(searchId, data);
   }, [data, searchId, setViewResult]);
 
+  // Start price stream when searchId becomes available
+  useEffect(() => {
+    if (!searchId) return;
+
+    const { reset, startStream, mergePrices, endStream } = usePriceStore.getState();
+    reset();
+
+    const abort = startPriceStream(searchId, {
+      onStarted: (totalLegs) => {
+        startStream(totalLegs);
+      },
+      onPriceBatch: (prices) => {
+        mergePrices(prices);
+        useRouteStore.getState().updateRoutesPrices(
+          usePriceStore.getState().priceMap,
+        );
+      },
+      onLegFetched: (completed) => {
+        usePriceStore.setState({ fetchedLegs: completed });
+      },
+      onComplete: () => {
+        endStream();
+        // Final sync: apply all accumulated prices
+        useRouteStore.getState().updateRoutesPrices(
+          usePriceStore.getState().priceMap,
+        );
+      },
+      onError: (msg) => {
+        console.error('Price stream error:', msg);
+        endStream();
+      },
+    });
+
+    return () => {
+      abort();
+      reset();
+    };
+  }, [searchId]);
+
   const displayRoutes = useMemo(
     () =>
       journeyFilterPrefs.showOnlyAvailableTickets
@@ -228,6 +272,9 @@ export function JourneyPage() {
               appliedView={appliedView}
               availableFacets={availableFacets}
               showOnlyAvailableTickets={journeyFilterPrefs.showOnlyAvailableTickets}
+              isPriceStreaming={isPriceStreaming}
+              priceFetchedLegs={priceFetchedLegs}
+              priceTotalLegs={priceTotalLegs}
               onSelect={handleSelect}
               onSortModeChange={setSortMode}
               onPageSizeChange={setPageSize}

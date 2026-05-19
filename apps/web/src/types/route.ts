@@ -34,7 +34,7 @@ export interface TrainSegment {
   stops: TrainStop[];
   stopsCount?: number;
   seats: SeatClass[];
-  ticketStatus?: 'ready' | 'unavailable' | 'disabled';
+  ticketStatus?: 'ready' | 'unavailable' | 'disabled' | 'loading';
 }
 
 interface TransferSegment {
@@ -60,7 +60,7 @@ export interface Route {
   durationMinutes: number;
   segs: RouteSegment[];
   pathPoints: Array<{ lng: number; lat: number }>;
-  ticketStatus?: 'ready' | 'partial' | 'unavailable' | 'disabled';
+  ticketStatus?: 'ready' | 'partial' | 'unavailable' | 'disabled' | 'loading';
 }
 
 export type RouteList = Route[];

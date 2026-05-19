@@ -34,6 +34,7 @@ export function RouteCard({ route, isActive, onClick }: RouteCardProps) {
   const referencePrice = getRouteReferencePrice(route);
   const displayPrice = getRoutePriceLabel(route);
   const collapsedSummary = getCollapsedRouteSummary(route);
+  const isLoadingPrice = route.ticketStatus === 'loading';
 
   return (
     <div data-card className={`ticket-card cursor-pointer${isActive ? ' active' : ''}`} onClick={() => onClick(route)}>
@@ -76,11 +77,17 @@ export function RouteCard({ route, isActive, onClick }: RouteCardProps) {
           </div>
         </div>
         <div className="shrink-0 text-right">
-          <div className="font-display text-2xl font-light tracking-wider text-starlight md:text-3xl">{displayPrice}</div>
-          {referencePrice !== null && (
-            <div className="mt-1 text-xs font-medium uppercase tracking-widest text-muted/80">
-              {JOURNEY_LABELS.referencePrice}
-            </div>
+          {isLoadingPrice ? (
+            <div className="h-8 w-20 animate-pulse rounded bg-white/5" />
+          ) : (
+            <>
+              <div className="font-display text-2xl font-light tracking-wider text-starlight md:text-3xl">{displayPrice}</div>
+              {referencePrice !== null && (
+                <div className="mt-1 text-xs font-medium uppercase tracking-widest text-muted/80">
+                  {JOURNEY_LABELS.referencePrice}
+                </div>
+              )}
+            </>
           )}
         </div>
       </div>
