@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
   AuraBackground,
@@ -198,10 +198,14 @@ export function JourneyPage() {
   );
   const displaySelectedRoute =
     displayRoutes.find((route) => route.id === selectedRoute?.id) ?? null;
-  const listRef = useCardReveal([displayRoutes]);
-  const handleSelect = (route: Route) => {
-    selectRoute(getNextSelectedRoute(selectedRoute, route));
-  };
+  const routeIds = useMemo(() => displayRoutes.map((r) => r.id).join(','), [displayRoutes]);
+  const listRef = useCardReveal([routeIds]);
+  const handleSelect = useCallback(
+    (route: Route) => {
+      selectRoute(getNextSelectedRoute(useRouteStore.getState().selectedRoute, route));
+    },
+    [selectRoute],
+  );
   const sessionExpired = error instanceof Error;
 
   const { data: stopsGeo } = useQuery({

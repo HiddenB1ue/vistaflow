@@ -40,12 +40,14 @@ function applyPricesToRoute(
   route: Route,
   priceMap: Record<string, PriceCacheEntry>,
 ): Route {
+  let changed = false;
   const updatedSegs = route.segs.map((seg) => {
     if (isTransfer(seg)) return seg;
     const trainSeg = seg as TrainSegment;
     const key = priceMapKey(trainSeg.trainNo, trainSeg.origin.name, trainSeg.destination.name);
     const entry = priceMap[key];
     if (!entry) return trainSeg; // no update, keep current state
+    changed = true;
     if (entry.failed) {
       return { ...trainSeg, ticketStatus: 'unavailable' as const, seats: [] };
     }
@@ -55,6 +57,9 @@ function applyPricesToRoute(
       seats: buildSeats(entry),
     };
   });
+
+  // No matching price entry for any segment — return original reference
+  if (!changed) return route;
 
   // Derive route-level ticketStatus from segments
   const segStatuses = updatedSegs
@@ -167,6 +172,9 @@ export const useRouteStore = create<RouteState>()((set) => ({
       const updatedRoutes = state.routes.map((route) =>
         applyPricesToRoute(route, priceMap),
       );
+      // Skip update when no route reference actually changed
+      const hasChanges = updatedRoutes.some((r, i) => r !== state.routes[i]);
+      if (!hasChanges) return state;
       const updatedSelected = state.selectedRoute
         ? updatedRoutes.find((r) => r.id === state.selectedRoute?.id) ?? null
         : null;

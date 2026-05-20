@@ -1,5 +1,6 @@
 
 import './RouteCard.css';
+import { memo } from 'react';
 import type { Route } from '@/types/route';
 import { isTransfer } from '@/types/route';
 import { JOURNEY_LABELS } from '@/constants/labels';
@@ -30,7 +31,7 @@ function getRoutePriceLabel(route: Route): string {
   return JOURNEY_LABELS.soldOut;
 }
 
-export function RouteCard({ route, isActive, onClick }: RouteCardProps) {
+export const RouteCard = memo(function RouteCard({ route, isActive, onClick }: RouteCardProps) {
   const referencePrice = getRouteReferencePrice(route);
   const displayPrice = getRoutePriceLabel(route);
   const collapsedSummary = getCollapsedRouteSummary(route);
@@ -125,4 +126,4 @@ export function RouteCard({ route, isActive, onClick }: RouteCardProps) {
       </div>
     </div>
   );
-}
+});

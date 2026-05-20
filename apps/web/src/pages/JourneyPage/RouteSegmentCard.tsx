@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { memo, useState } from 'react';
 import type { TrainSegment, TrainStop } from '@/types/route';
 import { JOURNEY_LABELS } from '@/constants/labels';
 import { formatPrice } from '@vistaflow/utils';
@@ -26,7 +26,7 @@ function getSeatPriceLabel(seat: TrainSegment['seats'][number]): string {
   return seat.price === null ? '--' : formatPrice(seat.price);
 }
 
-export function RouteSegmentCard({ segment }: RouteSegmentCardProps) {
+export const RouteSegmentCard = memo(function RouteSegmentCard({ segment }: RouteSegmentCardProps) {
   const [stopsExpanded, setStopsExpanded] = useState(false);
   const [stops, setStops] = useState<TrainStop[]>(segment.stops);
   const [isLoadingStops, setIsLoadingStops] = useState(false);
@@ -186,4 +186,4 @@ export function RouteSegmentCard({ segment }: RouteSegmentCardProps) {
       </div>
     </div>
   );
-}
+});
