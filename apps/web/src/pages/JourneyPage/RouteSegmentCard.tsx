@@ -145,18 +145,9 @@ export const RouteSegmentCard = memo(function RouteSegmentCard({ segment }: Rout
         </div>
       )}
 
+      {!isLoadingPrice && (
       <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2">
-        {isLoadingPrice ? (
-          <>
-            {[1, 2, 3, 4].map((i) => (
-              <div
-                key={i}
-                className="h-10 animate-pulse rounded-lg"
-                style={{ border: '1px solid rgba(255,255,255,0.05)', background: 'rgba(255,255,255,0.03)' }}
-              />
-            ))}
-          </>
-        ) : segment.ticketStatus === 'ready' && segment.seats.length === 0 ? (
+        {segment.ticketStatus === 'ready' && segment.seats.length === 0 ? (
           <div
             className="flex justify-between rounded-lg p-3 text-sm font-light"
             style={{ border: '1px solid rgba(255,255,255,0.05)', background: 'rgba(0,0,0,0.2)' }}
@@ -184,6 +175,7 @@ export const RouteSegmentCard = memo(function RouteSegmentCard({ segment }: Rout
           ))
         )}
       </div>
+      )}
     </div>
   );
 });
