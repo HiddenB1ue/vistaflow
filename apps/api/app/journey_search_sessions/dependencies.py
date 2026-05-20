@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from typing import Annotated
+import logging
+from typing import Annotated, Protocol
 
 from fastapi import Depends, Request
 from redis.asyncio import Redis
@@ -13,6 +14,15 @@ from app.journeys.dependencies import JourneyServiceDep
 from app.railway.dependencies import DbPool
 from app.railway.repository import StationRepository
 from app.route_plan_cache.repository import RoutePlanRepository
+from app.system.settings_provider import SystemSettingsDataError
+
+logger = logging.getLogger(__name__)
+
+DEFAULT_TICKET_12306_CACHE_TTL_SECONDS = 600
+
+
+class _IntSettingsProvider(Protocol):
+    async def get_int(self, key: str) -> int: ...
 
 
 def get_redis_client(request: Request) -> Redis:
@@ -25,17 +35,29 @@ async def get_ticket_service(
     pool: DbPool,
 ) -> Ticket12306Service:
     browser_manager: PlaywrightBrowserManager = request.app.state.ticket_browser_manager
+    settings_provider = request.app.state.system_settings_provider
     ticket_client = await build_ticket_client(
-        settings_provider=request.app.state.system_settings_provider,
+        settings_provider=settings_provider,
         browser_manager=browser_manager,
         redis_client=redis_client,
         cookie_pool=getattr(request.app.state, "cookie_pool", None),
     )
+    cache_ttl_seconds = await _get_ticket_cache_ttl_seconds(settings_provider)
     return Ticket12306Service(
         redis_client=redis_client,
         station_repo=StationRepository(pool),
         ticket_client=ticket_client,
+        cache_ttl_seconds=cache_ttl_seconds,
     )
+
+
+async def _get_ticket_cache_ttl_seconds(settings_provider: _IntSettingsProvider) -> int:
+    try:
+        ttl_seconds = await settings_provider.get_int("ticket_12306_cache_ttl_seconds")
+    except SystemSettingsDataError as exc:
+        logger.warning("Failed to read ticket_12306_cache_ttl_seconds: %s", exc)
+        return DEFAULT_TICKET_12306_CACHE_TTL_SECONDS
+    return max(1, ttl_seconds)
 
 
 def get_journey_search_session_service(
