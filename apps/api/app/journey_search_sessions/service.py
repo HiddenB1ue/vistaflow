@@ -635,14 +635,16 @@ class JourneySearchSessionService:
 
         applied_view = self._build_applied_view(payload)
 
-        # Price sort requires in-memory sorting since price data isn't in DB
-        if payload.sort_by == "price" and price_map:
+        # Price sort requires in-memory sorting since price data isn't in DB.
+        # Public view requests read server-side cached prices from Redis; internal
+        # callers can still pass a price_map directly.
+        if payload.sort_by == "price" and payload.include_tickets and not skip_pricing:
             return await self._build_price_sorted_view(
                 plan_ids=plan_ids,
                 filters=filters,
                 run_date=run_date,
                 payload=payload,
-                price_map=price_map,
+                price_map=price_map or None,
                 applied_view=applied_view,
             )
 
@@ -688,7 +690,7 @@ class JourneySearchSessionService:
         filters: RoutePlanQueryFilters,
         run_date: str,
         payload: SearchSessionViewRequest,
-        price_map: dict[str, PriceCacheEntry],
+        price_map: dict[str, PriceCacheEntry] | None,
         applied_view: SearchSessionViewResponse,
     ) -> SearchSessionViewResultResponse:
         """Load all candidates, sort by total min price in memory, paginate."""
@@ -699,7 +701,7 @@ class JourneySearchSessionService:
                 filters=filters,
                 sort_by="duration",  # fallback DB sort, we'll re-sort in memory
                 page=1,
-                page_size=10000,
+                page_size=_PREFETCH_PAGE_SIZE,
                 transfer_counts=frozenset(applied_view.transferCounts),
                 display_train_types=frozenset(applied_view.displayTrainTypes),
                 exclude_direct_train_codes_in_transfer_routes=(
@@ -707,10 +709,17 @@ class JourneySearchSessionService:
                 ),
             ),
         )
-        all_items = [
-            self._apply_prices_from_map(self._to_route_response(c), price_map)
-            for c in query_result.candidates
-        ]
+        all_items = [self._to_route_response(c) for c in query_result.candidates]
+        if price_map is not None:
+            all_items = [
+                self._apply_prices_from_map(route, price_map)
+                for route in all_items
+            ]
+        else:
+            all_items = await self._ticket_service.enrich_routes_cache_only(
+                run_date=run_date,
+                routes=all_items,
+            )
 
         # Sort by total min price across all train segments
         all_items.sort(key=lambda route: self._route_total_price(route))
@@ -729,25 +738,39 @@ class JourneySearchSessionService:
         )
 
     @staticmethod
-    def _route_total_price(route: RouteResponse) -> tuple[int, float]:
+    def _route_total_price(route: RouteResponse) -> tuple[int, float, int, int, str]:
         """Sort key: (has_price_flag, total_min_price).
 
         Routes without any price come last (flag=1).
         Routes with price sort ascending by sum of segment min prices (flag=0).
         """
         total = 0.0
-        has_any_price = False
+        train_segment_count = 0
+        transfer_count = 0
         for seg in route.segs:
+            if isinstance(seg, RouteTransferSegmentResponse):
+                transfer_count += 1
+                continue
             if not isinstance(seg, RouteTrainSegmentResponse):
                 continue
-            if seg.seats:
-                prices = [s.price for s in seg.seats if s.price is not None]
-                if prices:
-                    total += min(prices)
-                    has_any_price = True
-        if not has_any_price:
-            return (1, 0.0)
-        return (0, total)
+            train_segment_count += 1
+            prices = [
+                seat.price
+                for seat in seg.seats
+                if seat.available and seat.price is not None
+            ]
+            if not prices:
+                return (
+                    1,
+                    0.0,
+                    transfer_count,
+                    route.durationMinutes,
+                    route.departureTime,
+                )
+            total += min(prices)
+        if train_segment_count == 0:
+            return (1, 0.0, transfer_count, route.durationMinutes, route.departureTime)
+        return (0, total, transfer_count, route.durationMinutes, route.departureTime)
 
     def _to_route_response(self, candidate: CachedRouteCandidate) -> RouteResponse:
         return RouteResponse(

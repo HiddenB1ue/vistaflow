@@ -11,6 +11,8 @@ from app.exceptions import BusinessError, NotFoundError
 from app.journey_search_sessions.schemas import (
     CachedRouteCandidate,
     CachedTrainSegment,
+    RouteSeatResponse,
+    RouteTrainSegmentResponse,
     SearchSessionCreateRequest,
     SearchSessionViewRequest,
 )
@@ -346,6 +348,49 @@ def _date_offset_days(value: str) -> int:
     return (date.fromisoformat(value) - date(2026, 4, 15)).days
 
 
+def _route_with_segment_prices(
+    route: Any,
+    prices: dict[tuple[str, str, str], float],
+) -> Any:
+    next_segs = []
+    statuses: list[str] = []
+    for segment in route.segs:
+        if not isinstance(segment, RouteTrainSegmentResponse):
+            next_segs.append(segment)
+            continue
+        price = prices.get(
+            (
+                segment.trainNo,
+                segment.origin.name,
+                segment.destination.name,
+            )
+        )
+        if price is None:
+            next_segs.append(
+                segment.model_copy(update={"ticketStatus": "loading", "seats": []})
+            )
+            statuses.append("loading")
+            continue
+        next_segs.append(
+            segment.model_copy(
+                update={
+                    "ticketStatus": "ready",
+                    "seats": [
+                        RouteSeatResponse(
+                            type="ze",
+                            label="二等座",
+                            price=price,
+                            available=True,
+                        )
+                    ],
+                }
+            )
+        )
+        statuses.append("ready")
+    ticket_status = "ready" if statuses and all(s == "ready" for s in statuses) else "partial"
+    return route.model_copy(update={"segs": next_segs, "ticketStatus": ticket_status})
+
+
 @pytest.mark.asyncio
 async def test_create_session_generates_route_plan_cache_and_returns_first_view(
     service: JourneySearchSessionService,
@@ -485,6 +530,91 @@ async def test_view_switch_does_not_trigger_research(
     assert departure_view.items[0].id == "direct-1"
     journey_service = cast(Any, service._journey_service)
     assert journey_service.search.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_price_view_sorts_all_candidates_by_cached_total_price(
+    service: JourneySearchSessionService,
+) -> None:
+    create_response = await service.create_session(
+        SearchSessionCreateRequest(
+            from_station="Beijing South",
+            to_station="Shanghai Hongqiao",
+            date=date(2026, 4, 15),
+            transfer_count=1,
+            include_fewer_transfers=True,
+        )
+    )
+
+    ticket_service = cast(Any, service._ticket_service)
+
+    async def enrich_from_cache(*, run_date: str, routes: list[Any]) -> list[Any]:
+        return [
+            _route_with_segment_prices(
+                route,
+                {
+                    ("240000G1010A", "Beijing South", "Shanghai Hongqiao"): 300.0,
+                    ("240000G1010A", "Beijing South", "Jinan West"): 80.0,
+                    ("240000D1100B", "Jinan West", "Shanghai Hongqiao"): 90.0,
+                },
+            )
+            for route in routes
+        ]
+
+    ticket_service.enrich_routes_cache_only.side_effect = enrich_from_cache
+
+    price_view = await service.get_view(
+        create_response.searchId,
+        SearchSessionViewRequest(sort_by="price", page=1, page_size=1),
+    )
+
+    assert price_view.total == 2
+    assert price_view.totalPages == 2
+    assert [item.id for item in price_view.items] == ["transfer-1"]
+    ticket_service.enrich_routes_cache_only.assert_awaited()
+    route_plan_repo = cast(Any, service._route_plan_repo)
+    price_query = route_plan_repo.query_view.await_args_list[-1].args[1]
+    assert price_query.sort_by == "duration"
+    assert price_query.page == 1
+    assert price_query.page_size >= 2
+
+
+@pytest.mark.asyncio
+async def test_price_view_pushes_routes_with_partial_cached_price_last(
+    service: JourneySearchSessionService,
+) -> None:
+    create_response = await service.create_session(
+        SearchSessionCreateRequest(
+            from_station="Beijing South",
+            to_station="Shanghai Hongqiao",
+            date=date(2026, 4, 15),
+            transfer_count=1,
+            include_fewer_transfers=True,
+        )
+    )
+
+    ticket_service = cast(Any, service._ticket_service)
+
+    async def enrich_from_cache(*, run_date: str, routes: list[Any]) -> list[Any]:
+        return [
+            _route_with_segment_prices(
+                route,
+                {
+                    ("240000G1010A", "Beijing South", "Shanghai Hongqiao"): 300.0,
+                    ("240000G1010A", "Beijing South", "Jinan West"): 10.0,
+                },
+            )
+            for route in routes
+        ]
+
+    ticket_service.enrich_routes_cache_only.side_effect = enrich_from_cache
+
+    price_view = await service.get_view(
+        create_response.searchId,
+        SearchSessionViewRequest(sort_by="price"),
+    )
+
+    assert [item.id for item in price_view.items] == ["direct-1", "transfer-1"]
 
 
 @pytest.mark.asyncio
