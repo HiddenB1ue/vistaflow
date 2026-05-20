@@ -78,7 +78,9 @@ export const RouteCard = memo(function RouteCard({ route, isActive, onClick }: R
           </div>
         </div>
         <div className="shrink-0 text-right">
-          {!isLoadingPrice && (
+          {isLoadingPrice ? (
+            <div className="h-8 w-20 animate-pulse rounded bg-white/5" />
+          ) : (
             <>
               <div className="font-display text-2xl font-light tracking-wider text-starlight md:text-3xl">{displayPrice}</div>
               {referencePrice !== null && (
