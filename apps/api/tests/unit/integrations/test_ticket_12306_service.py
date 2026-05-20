@@ -149,6 +149,8 @@ class TestPrefetchAllPrices:
             ticket_client=ticket_client,
             cache_ttl_seconds=60,
             failure_ttl_seconds=10,
+            retry_initial_delay_seconds=0.0,
+            retry_max_delay_seconds=0.0,
         )
 
     # --- Req 1.4: ticket_client is None → return empty dict ---
@@ -237,11 +239,12 @@ class TestPrefetchAllPrices:
         cache_key = "journey_search:ticket_segment:v3:2025-01-02:A:B"
         assert cache_key in redis._store
 
-    # --- Req 1.5: Partial failure resilience ---
-    async def test_partial_failure_does_not_raise(
+    # --- Req 1.5: Transient failure resilience ---
+    async def test_transient_leg_failure_retries_until_success(
         self, redis: FakeRedis, station_repo: FakeStationRepo
     ) -> None:
         mock_client = AsyncMock()
+        attempts: dict[str, int] = {}
 
         # Use side_effect function to control which leg fails based on args
         async def _fetch_leg(
@@ -251,9 +254,12 @@ class TestPrefetchAllPrices:
             from_code: str,
             to_code: str,
         ) -> dict[str, Any]:
+            attempts[to_station] = attempts.get(to_station, 0) + 1
             if to_code == "SHH":
                 return _make_fetch_leg_rows("T1", "G1")
-            raise Exception("network error")
+            if attempts[to_station] == 1:
+                raise Exception("network error")
+            return _make_fetch_leg_rows("T2", "G2")
 
         mock_client.fetch_leg.side_effect = _fetch_leg
 
@@ -271,10 +277,11 @@ class TestPrefetchAllPrices:
         assert key1 in result
         assert result[key1].failed is False
 
-        # Second segment should be marked as failed
+        # Second segment should succeed after one retry
         key2 = price_map_key("T2", "北京", "南京")
         assert key2 in result
-        assert result[key2].failed is True
+        assert result[key2].failed is False
+        assert attempts[seg2.destination.name] == 2
 
     # --- Req 3.1, 3.2: Cache hit → no HTTP call ---
     async def test_cache_hit_skips_fetch(
@@ -329,12 +336,15 @@ class TestPrefetchAllPrices:
         assert payload["T1"]["seats"] == [["zy", "有", 99.0, 1], ["ze", "有", 55.5, 1]]
         assert payload["T1"]["min_price"] == 55.5
 
-    # --- Req 3.4: Cache miss + failure → failure marker written ---
-    async def test_cache_miss_failure_stores_failure_marker(
+    # --- Req 3.4: Cache miss + transient failure → retry then cache result ---
+    async def test_cache_miss_transient_failure_retries_and_stores_result(
         self, redis: FakeRedis, station_repo: FakeStationRepo
     ) -> None:
         mock_client = AsyncMock()
-        mock_client.fetch_leg.side_effect = Exception("timeout")
+        mock_client.fetch_leg.side_effect = [
+            Exception("timeout"),
+            _make_fetch_leg_rows("T1", "G1"),
+        ]
 
         service = self._build_service(redis, station_repo, ticket_client=mock_client)
         candidates = [_candidate([_train_seg("T1", "G1", "北京", "上海")])]
@@ -345,10 +355,12 @@ class TestPrefetchAllPrices:
 
         cache_key = "journey_search:ticket_segment:v3:2025-01-01:北京:上海"
         raw = redis._store.get(cache_key)
-        assert raw == ""
+        assert raw is not None
+        assert raw != ""
 
         key = price_map_key("T1", "北京", "上海")
-        assert result[key].failed is True
+        assert result[key].failed is False
+        assert mock_client.fetch_leg.await_count == 2
 
     async def test_browser_init_error_bubbles_up(
         self, redis: FakeRedis, station_repo: FakeStationRepo
@@ -549,6 +561,8 @@ class TestOnLegCompleteCallback:
             ticket_client=ticket_client,
             cache_ttl_seconds=60,
             failure_ttl_seconds=10,
+            retry_initial_delay_seconds=0.0,
+            retry_max_delay_seconds=0.0,
         )
 
     async def test_callback_invoked_for_fetched_leg(

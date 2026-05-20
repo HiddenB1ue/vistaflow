@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import random
 from collections.abc import Awaitable, Callable, Iterable
 from typing import Any, Literal
 
@@ -55,12 +56,19 @@ class Ticket12306Service:
         ticket_client: AbstractTicketClient | None,
         cache_ttl_seconds: int = 600,
         failure_ttl_seconds: int = 10,
+        retry_initial_delay_seconds: float = 1.0,
+        retry_max_delay_seconds: float = 60.0,
     ) -> None:
         self._redis = redis_client
         self._station_repo = station_repo
         self._ticket_client = ticket_client
         self._cache_ttl_seconds = cache_ttl_seconds
         self._failure_ttl_seconds = failure_ttl_seconds
+        self._retry_initial_delay_seconds = max(0.0, retry_initial_delay_seconds)
+        self._retry_max_delay_seconds = max(
+            self._retry_initial_delay_seconds,
+            retry_max_delay_seconds,
+        )
 
     async def prefetch_all_prices(
         self,
@@ -192,25 +200,14 @@ class Ticket12306Service:
             ) -> tuple[LegLookupKey, dict[str, Any]]:
                 nonlocal completed_count
                 async with semaphore:
-                    try:
-                        departure_date, from_station, to_station = leg_key
-                        result = leg_key, await self._ticket_client.fetch_leg(  # type: ignore[union-attr]
-                            departure_date,
-                            from_station,
-                            to_station,
-                            from_code,
-                            to_code,
-                        )
-                    except PlaywrightUnavailableError:
-                        raise
-                    except Exception as exc:
-                        logger.warning(
-                            "Prefetch failed for leg %s→%s: %s",
-                            leg_key[0],
-                            leg_key[1],
-                            exc,
-                        )
-                        result = leg_key, {}
+                    departure_date, from_station, to_station = leg_key
+                    result = leg_key, await self._fetch_leg_until_success(
+                        departure_date,
+                        from_station,
+                        to_station,
+                        from_code,
+                        to_code,
+                    )
                     completed_count += 1
                     if on_progress:
                         maybe = on_progress({
@@ -463,7 +460,7 @@ class Ticket12306Service:
                 fetched_legs[leg_key] = {}
                 continue
             leg_telecodes[leg_key] = (from_code, to_code)
-            rows = await self._ticket_client.fetch_leg(  # type: ignore[union-attr]
+            rows = await self._fetch_leg_until_success(
                 departure_date,
                 from_station,
                 to_station,
@@ -481,6 +478,49 @@ class Ticket12306Service:
                 if ticket is not None:
                     fetched[seg_key] = ticket
         return fetched, fetched_legs, leg_telecodes
+
+    async def _fetch_leg_until_success(
+        self,
+        run_date: str,
+        from_station: str,
+        to_station: str,
+        from_telecode: str,
+        to_telecode: str,
+    ) -> dict[str, Any]:
+        """Fetch one 12306 leg, retrying transient failures with backoff."""
+        delay = self._retry_initial_delay_seconds
+        attempt = 1
+        while True:
+            try:
+                return await self._ticket_client.fetch_leg(  # type: ignore[union-attr]
+                    run_date,
+                    from_station,
+                    to_station,
+                    from_telecode,
+                    to_telecode,
+                )
+            except PlaywrightUnavailableError:
+                raise
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                logger.warning(
+                    "Ticket fetch failed for leg %s->%s on %s (attempt %d); "
+                    "retrying after %.1fs: %s",
+                    from_station,
+                    to_station,
+                    run_date,
+                    attempt,
+                    delay,
+                    exc,
+                )
+                if delay > 0:
+                    await asyncio.sleep(delay + random.uniform(0.0, delay * 0.1))
+                attempt += 1
+                delay = min(
+                    self._retry_max_delay_seconds,
+                    delay * 2 if delay > 0 else 0.0,
+                )
 
     def _collect_train_segments(
         self, routes: Iterable[RouteResponse]
