@@ -11,7 +11,7 @@ interface RouteSegmentCardProps {
 
 function getSeatAvailabilityLabel(segment: TrainSegment, seat: TrainSegment['seats'][number]): string {
   if (segment.ticketStatus === 'unavailable') {
-    return JOURNEY_LABELS.ticketsUnavailable;
+    return JOURNEY_LABELS.ticketsUnavailableDetail;
   }
   if (segment.ticketStatus === 'disabled') {
     return JOURNEY_LABELS.ticketsNotQueried;
