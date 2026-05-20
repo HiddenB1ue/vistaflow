@@ -19,7 +19,6 @@ from app.integrations.ticket_12306.parser import (
     parse_query_rows,
     segment_min_price,
 )
-from app.integrations.ticket_12306.proxy_pool import ProxyEntry, ProxyPool
 from app.models import SeatLookupKey
 
 logger = logging.getLogger(__name__)
@@ -51,7 +50,6 @@ class HttpTicketClient(AbstractTicketClient):
         self,
         *,
         cookie_pool: CookiePool,
-        proxy_pool: ProxyPool | None = None,
         max_concurrency: int = 8,
         request_timeout_seconds: float = 10.0,
         jitter_min_seconds: float = 0.05,
@@ -59,14 +57,12 @@ class HttpTicketClient(AbstractTicketClient):
         transport: httpx.AsyncBaseTransport | None = None,
     ) -> None:
         self._cookie_pool = cookie_pool
-        self._proxy_pool = proxy_pool
         self._semaphore = asyncio.Semaphore(max(1, max_concurrency))
         self._request_timeout_seconds = request_timeout_seconds
         self._jitter_min_seconds = jitter_min_seconds
         self._jitter_max_seconds = jitter_max_seconds
         self._transport = transport
         # Shared IP-level cooldown: monotonic timestamp of last redirect.
-        # Only used when no proxy pool is configured (direct connection).
         self._last_redirect_ts: float = 0.0
 
     async def fetch_leg(
@@ -152,12 +148,6 @@ class HttpTicketClient(AbstractTicketClient):
         if elapsed < _IP_COOLDOWN_SECONDS:
             await asyncio.sleep(_IP_COOLDOWN_SECONDS - elapsed)
 
-    async def _acquire_proxy(self) -> ProxyEntry | None:
-        """Get a proxy from the pool, or None if not configured."""
-        if self._proxy_pool is None:
-            return None
-        return await self._proxy_pool.get()
-
     async def _do_fetch_leg(
         self,
         *,
@@ -167,17 +157,11 @@ class HttpTicketClient(AbstractTicketClient):
         allow_retry: bool,
         bundle: CookieBundle | None = None,
         redirect_attempt: int = 0,
-        proxy: ProxyEntry | None = ...,  # type: ignore[assignment]
     ) -> dict[str, Any]:
         if bundle is None:
             bundle = await self._cookie_pool.get()
-        # Sentinel ... means "auto-acquire"; None means "no proxy this call".
-        if proxy is ...:
-            proxy = await self._acquire_proxy()
 
-        # When no proxy, honour global IP cooldown.
-        if proxy is None:
-            await self._respect_ip_cooldown()
+        await self._respect_ip_cooldown()
 
         params = {
             "leftTicketDTO.train_date": run_date,
@@ -194,17 +178,13 @@ class HttpTicketClient(AbstractTicketClient):
             "cookies": bundle.cookies,
             "headers": headers,
         }
-        if proxy is not None:
-            client_kwargs["proxy"] = proxy.url
-        elif self._transport is not None:
+        if self._transport is not None:
             client_kwargs["transport"] = self._transport
 
         try:
             async with httpx.AsyncClient(**client_kwargs) as client:
                 response = await client.get(LEFT_TICKET_QUERY_URL, params=params)
         except httpx.HTTPError as exc:
-            if proxy is not None and self._proxy_pool is not None:
-                self._proxy_pool.mark_failure(proxy)
             if allow_retry:
                 logger.info(
                     "HTTP ticket transient error %s→%s on %s: %s; retrying once",
@@ -220,16 +200,12 @@ class HttpTicketClient(AbstractTicketClient):
                     to_telecode=to_telecode,
                     allow_retry=False,
                     bundle=bundle,
-                    proxy=...,  # type: ignore[arg-type]
                 )
             raise TicketHttpFailure(f"network error: {exc}") from exc
 
         # ---- Redirect: likely IP-level rate limiting, NOT cookie death ----
         if 300 <= response.status_code < 400:
-            if proxy is not None and self._proxy_pool is not None:
-                self._proxy_pool.mark_failure(proxy)
-            else:
-                self._last_redirect_ts = time.monotonic()
+            self._last_redirect_ts = time.monotonic()
             return await self._handle_redirect(
                 bundle=bundle,
                 status_code=response.status_code,
@@ -240,8 +216,6 @@ class HttpTicketClient(AbstractTicketClient):
             )
 
         if response.status_code >= 500:
-            if proxy is not None and self._proxy_pool is not None:
-                self._proxy_pool.mark_failure(proxy)
             if allow_retry:
                 logger.info(
                     "HTTP ticket %s→%s on %s returned %s; retrying once",
@@ -257,16 +231,11 @@ class HttpTicketClient(AbstractTicketClient):
                     to_telecode=to_telecode,
                     allow_retry=False,
                     bundle=bundle,
-                    proxy=...,  # type: ignore[arg-type]
                 )
             raise TicketHttpFailure(f"upstream {response.status_code}")
 
         if response.status_code != 200:
             raise TicketHttpFailure(f"unexpected status {response.status_code}")
-
-        # Success path: mark proxy healthy.
-        if proxy is not None and self._proxy_pool is not None:
-            self._proxy_pool.mark_success(proxy)
 
         try:
             payload = response.json()

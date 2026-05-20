@@ -30,7 +30,6 @@ async def get_ticket_service(
         browser_manager=browser_manager,
         redis_client=redis_client,
         cookie_pool=getattr(request.app.state, "cookie_pool", None),
-        proxy_pool=getattr(request.app.state, "proxy_pool", None),
     )
     return Ticket12306Service(
         redis_client=redis_client,

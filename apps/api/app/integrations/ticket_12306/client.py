@@ -211,7 +211,6 @@ async def build_ticket_client(
     *,
     redis_client: Any = None,
     cookie_pool: Any = None,
-    proxy_pool: Any = None,
 ) -> AbstractTicketClient | None:
     """Build the production 12306 ticket client.
 
@@ -220,9 +219,6 @@ async def build_ticket_client(
     and a pre-created :class:`CookiePool` is provided, returns a
     :class:`FallbackTicketClient` that prefers HTTP and falls back to Playwright
     on failure.  Otherwise returns the legacy :class:`PlaywrightTicketClient`.
-
-    An optional :class:`ProxyPool` can be supplied; when present, the HTTP
-    client routes requests through rotating proxies to avoid IP rate-limiting.
     """
     try:
         enabled = await settings_provider.get_bool("ticket_12306_enabled")
@@ -259,7 +255,6 @@ async def build_ticket_client(
 
     http_client = HttpTicketClient(
         cookie_pool=cookie_pool,
-        proxy_pool=proxy_pool,
         max_concurrency=max(1, concurrency),
     )
     return FallbackTicketClient(

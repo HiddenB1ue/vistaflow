@@ -19,14 +19,14 @@ export const MOCK_LOGS: LogRecord[] = [
     id: 'log-03',
     timestamp: '11:47:03',
     severity: 'ERROR',
-    message: '[ProxyClient] Token 校验失败，401 Unauthorized · 任务 Price-Matrix-BJ-SH 已终止，已加入重试队列（1/3）',
+    message: '[TicketClient] HTTP request failed, job Price-Matrix-BJ-SH queued for retry (1/3)',
     highlightedTerms: ['Price-Matrix-BJ-SH'],
   },
   {
     id: 'log-04',
     timestamp: '11:47:00',
     severity: 'INFO',
-    message: '[TaskEngine] 任务 Price-Matrix-BJ-SH 开始执行，代理 endpoint: proxy.vistaflow.app:8080',
+    message: '[TaskEngine] Job Price-Matrix-BJ-SH started using direct 12306 HTTP',
     highlightedTerms: ['Price-Matrix-BJ-SH'],
   },
   {

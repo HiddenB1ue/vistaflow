@@ -19,7 +19,6 @@ import redis.asyncio as aioredis
 from app.integrations.ticket_12306.browser_manager import PlaywrightBrowserManager
 from app.integrations.ticket_12306.cookie_pool import CookiePool
 from app.integrations.ticket_12306.http_client import HttpTicketClient, TicketHttpFailure
-from app.integrations.ticket_12306.proxy_pool import ProxyPool, ZhandayeProxyProvider
 
 logging.basicConfig(
     level=logging.INFO,
@@ -33,16 +32,6 @@ REDIS_URL = "redis://localhost:6379/2"
 RUN_DATE = "2026-05-20"
 FROM_STATION = "北京"
 TO_STATION = "上海"
-
-# 站大爷 proxy API (set to empty string to disable proxy pool)
-PROXY_API_URL = (
-    # Disabled: free proxies don't support HTTPS CONNECT for 12306.
-    # "http://www.zdopen.com/FreeProxy/Get/"
-    # "?app_id=202605121326094118&akey=cca983869f76b021&dalu=1&return_type=3&count=10"
-    ""
-)
-PROXY_TTL_SECONDS = 60.0
-
 
 async def get_legs_from_db(
     pool: asyncpg.Pool,
@@ -182,25 +171,9 @@ async def main() -> None:
     for s in status:
         logger.info("  slot %d: valid=%s", s["slot_id"], s["valid"])
 
-    # 4b. Create ProxyPool (if configured)
-    proxy_pool = None
-    if PROXY_API_URL:
-        provider = ZhandayeProxyProvider(
-            api_url=PROXY_API_URL,
-            proxy_ttl_seconds=PROXY_TTL_SECONDS,
-        )
-        proxy_pool = ProxyPool(provider=provider, min_pool_size=3, max_pool_size=10)
-        loaded = await proxy_pool.warmup()
-        logger.info("Proxy pool warmed: %d proxies loaded", loaded)
-        for ps in proxy_pool.status():
-            logger.info("  proxy: %s healthy=%s", ps["url"], ps["healthy"])
-    else:
-        logger.info("Proxy pool disabled (no PROXY_API_URL)")
-
     # 5. Fetch each leg via HttpTicketClient
     http_client = HttpTicketClient(
         cookie_pool=cookie_pool,
-        proxy_pool=proxy_pool,
         max_concurrency=3,
         jitter_min_seconds=0.2,
         jitter_max_seconds=0.5,
@@ -267,18 +240,7 @@ async def main() -> None:
     for s in pool_status:
         logger.info("  slot %d: valid=%s", s["slot_id"], s["valid"])
 
-    if proxy_pool is not None:
-        logger.info("Proxy pool status:")
-        for ps in proxy_pool.status():
-            logger.info(
-                "  %s healthy=%s reqs=%d ok=%d fail=%d",
-                ps["url"], ps["healthy"], ps["requests"],
-                ps["successes"], ps["failures"],
-            )
-
     # Cleanup
-    if proxy_pool is not None:
-        await proxy_pool.close()
     await browser_manager.close()
     await db_pool.close()
     await redis_client.aclose()
