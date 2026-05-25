@@ -8,6 +8,8 @@ import {
 } from '@/services/routeService';
 import { createSessionStream } from '@/services/searchStreamService';
 import { useSearchStore } from '@/stores/searchStore';
+import { usePriceStore } from '@/stores/priceStore';
+import { useRouteStore } from '@/stores/routeStore';
 import type { Route } from '@/types/route';
 import type { SearchParams } from '@/types/search';
 
@@ -128,6 +130,10 @@ export function useJourneySessionView({
   useEffect(() => {
     if (!searchId || !query.data) return;
     setViewResult(searchId, query.data);
+    const priceMap = usePriceStore.getState().priceMap;
+    if (Object.keys(priceMap).length > 0) {
+      useRouteStore.getState().updateRoutesPrices(priceMap);
+    }
   }, [query.data, searchId, setViewResult]);
 
   return query;

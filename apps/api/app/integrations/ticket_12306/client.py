@@ -174,10 +174,10 @@ class ScraplingTicketClient(AbstractTicketClient):
         page = await session.get(
             LEFT_TICKET_QUERY_URL,
             params={
-                **BASE_QUERY_PARAMS,
                 "leftTicketDTO.train_date": leg.run_date,
                 "leftTicketDTO.from_station": leg.from_telecode,
                 "leftTicketDTO.to_station": leg.to_telecode,
+                **BASE_QUERY_PARAMS,
             },
             headers=headers,
             follow_redirects=False,
