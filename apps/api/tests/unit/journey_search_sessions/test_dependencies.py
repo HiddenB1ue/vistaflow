@@ -18,7 +18,6 @@ async def test_get_ticket_service_uses_configured_cache_ttl() -> None:
     request = SimpleNamespace(
         app=SimpleNamespace(
             state=SimpleNamespace(
-                ticket_browser_manager=MagicMock(),
                 system_settings_provider=settings_provider,
             )
         )
@@ -45,7 +44,6 @@ async def test_get_ticket_service_falls_back_when_cache_ttl_setting_is_invalid()
     request = SimpleNamespace(
         app=SimpleNamespace(
             state=SimpleNamespace(
-                ticket_browser_manager=MagicMock(),
                 system_settings_provider=settings_provider,
             )
         )

@@ -44,3 +44,6 @@ _archive/
 
 .agents/
 .specify/
+
+.codegraph/
+.cursor/

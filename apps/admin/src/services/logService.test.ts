@@ -1,21 +1,55 @@
-import { describe, it, expect } from 'vitest';
+import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
+import { apiClient } from './api';
 import { fetchLogs } from './logService';
+import type { LogRecord } from '@/types/log';
+
+vi.mock('./api', () => ({
+  apiClient: {
+    get: vi.fn(),
+  },
+}));
+
+const sampleLog: LogRecord = {
+  id: '1',
+  timestamp: '2026-01-01T00:00:00Z',
+  severity: 'INFO',
+  message: 'System started',
+  highlightedTerms: [],
+};
 
 describe('logService', () => {
-  it('fetchLogs returns mock data in mock mode', async () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('fetchLogs forwards filters to the API', async () => {
+    (apiClient.get as Mock).mockResolvedValueOnce({
+      data: {
+        data: {
+          items: [sampleLog],
+          page: 1,
+          pageSize: 20,
+          total: 1,
+          totalPages: 1,
+        },
+      },
+    });
+
     const logs = await fetchLogs({
       page: 1,
       pageSize: 20,
-      keyword: '',
-      severity: 'all',
+      keyword: ' system ',
+      severity: 'INFO',
     });
-    expect(Array.isArray(logs.items)).toBe(true);
-    expect(logs.items.length).toBeGreaterThan(0);
-    for (const log of logs.items) {
-      expect(log).toHaveProperty('id');
-      expect(log).toHaveProperty('timestamp');
-      expect(log).toHaveProperty('severity');
-      expect(log).toHaveProperty('message');
-    }
+
+    expect(apiClient.get).toHaveBeenCalledWith('/admin/system/logs', {
+      params: {
+        page: 1,
+        pageSize: 20,
+        keyword: 'system',
+        severity: 'INFO',
+      },
+    });
+    expect(logs.items).toEqual([sampleLog]);
   });
 });

@@ -7,7 +7,7 @@
     ".": "./src/index.ts"
   },
   "scripts": {
-    "generate": "openapi-typescript ../api/openapi.json -o generated/api.d.ts"
+    "generate": "cd ../../apps/api && uv run python scripts/export_openapi.py && cd ../../packages/api-types && openapi-typescript ../../apps/api/openapi.json -o generated/api.d.ts"
   },
   "devDependencies": {
     "openapi-typescript": "^7.0.0"

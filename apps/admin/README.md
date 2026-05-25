@@ -24,7 +24,7 @@ apps/admin/
 │   │   ├── LogView.tsx      # 日志页
 │   │   └── LoginView.tsx    # 登录页
 │   ├── components/          # 通用组件、布局和弹层
-│   ├── services/            # API 请求、mock 服务与运行时封装
+│   ├── services/            # API 请求与服务封装
 │   ├── stores/              # Zustand 状态管理
 │   ├── contexts/            # React 上下文，例如认证上下文
 │   ├── hooks/               # 自定义 hooks
@@ -72,13 +72,11 @@ pnpm preview
 管理端当前使用的环境变量：
 
 - `VITE_API_BASE_URL`：后端接口基础地址，默认会读取 `/api/v1`
-- `VITE_USE_MOCK`：是否启用 mock 数据，默认不是 `false` 时会走 mock
 
 推荐本地配置示例：
 
 ```env
 VITE_API_BASE_URL=http://localhost:8000/api/v1
-VITE_USE_MOCK=false
 ```
 
 ## Authentication

@@ -2,10 +2,6 @@ import { TASK_FEEDBACK_LABELS } from '@/constants/labels';
 import type { Task, TaskCreateRequest, TaskRun, TaskRunLog, TaskTypeDefinition, TaskUpdateRequest } from '@/types/task';
 import type { PaginatedResponse, TaskListQuery } from '@/types/pagination';
 import * as taskApiService from './taskApiService';
-import * as taskMockService from './mock/taskMockService';
-
-const USE_MOCK = import.meta.env.VITE_USE_MOCK !== 'false';
-const taskServiceImpl = USE_MOCK ? taskMockService : taskApiService;
 
 export function extractApiErrorMessage(error: unknown): string {
   const responseData =
@@ -33,35 +29,35 @@ export function extractApiErrorMessage(error: unknown): string {
 }
 
 export async function fetchTasks(query: TaskListQuery): Promise<PaginatedResponse<Task>> {
-  return taskServiceImpl.fetchTasks(query);
+  return taskApiService.fetchTasks(query);
 }
 
 export async function fetchTask(taskId: number): Promise<Task> {
-  return taskServiceImpl.fetchTask(taskId);
+  return taskApiService.fetchTask(taskId);
 }
 
 export async function fetchTaskTypes(): Promise<TaskTypeDefinition[]> {
-  return taskServiceImpl.fetchTaskTypes();
+  return taskApiService.fetchTaskTypes();
 }
 
 export async function createTask(payload: TaskCreateRequest): Promise<Task> {
-  return taskServiceImpl.createTask(payload);
+  return taskApiService.createTask(payload);
 }
 
 export async function updateTask(taskId: number, payload: TaskUpdateRequest): Promise<Task> {
-  return taskServiceImpl.updateTask(taskId, payload);
+  return taskApiService.updateTask(taskId, payload);
 }
 
 export async function deleteTask(taskId: number): Promise<void> {
-  return taskServiceImpl.deleteTask(taskId);
+  return taskApiService.deleteTask(taskId);
 }
 
 export async function triggerTask(taskId: number): Promise<TaskRun> {
-  return taskServiceImpl.triggerTask(taskId);
+  return taskApiService.triggerTask(taskId);
 }
 
 export async function terminateTaskRun(runId: number): Promise<TaskRun> {
-  return taskServiceImpl.terminateTaskRun(runId);
+  return taskApiService.terminateTaskRun(runId);
 }
 
 export async function fetchTaskRuns(
@@ -69,11 +65,11 @@ export async function fetchTaskRuns(
   page: number = 1,
   pageSize: number = 20
 ): Promise<PaginatedResponse<TaskRun>> {
-  return taskServiceImpl.fetchTaskRuns(taskId, page, pageSize);
+  return taskApiService.fetchTaskRuns(taskId, page, pageSize);
 }
 
 export async function fetchTaskRunLogs(runId: number): Promise<TaskRunLog[]> {
-  return taskServiceImpl.fetchTaskRunLogs(runId);
+  return taskApiService.fetchTaskRunLogs(runId);
 }
 
 export async function fetchTaskRunLogsPaginated(
@@ -81,5 +77,5 @@ export async function fetchTaskRunLogsPaginated(
   page: number = 1,
   pageSize: number = 100
 ): Promise<PaginatedResponse<TaskRunLog>> {
-  return taskServiceImpl.fetchTaskRunLogsPaginated(runId, page, pageSize);
+  return taskApiService.fetchTaskRunLogsPaginated(runId, page, pageSize);
 }

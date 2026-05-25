@@ -1,16 +1,13 @@
 from __future__ import annotations
 
-import asyncio
 import json
 import logging
-import random
 from collections.abc import Awaitable, Callable, Iterable
 from typing import Any, Literal
 
 from redis.asyncio import Redis
 
-from app.integrations.ticket_12306.browser_manager import PlaywrightUnavailableError
-from app.integrations.ticket_12306.client import AbstractTicketClient
+from app.integrations.ticket_12306.client import AbstractTicketClient, TicketLegRequest
 from app.integrations.ticket_12306.models import TicketSegmentData
 from app.integrations.ticket_12306.parser import build_seat_infos, segment_min_price
 from app.journey_search_sessions.schemas import (
@@ -56,26 +53,18 @@ class Ticket12306Service:
         ticket_client: AbstractTicketClient | None,
         cache_ttl_seconds: int = 600,
         failure_ttl_seconds: int = 10,
-        retry_initial_delay_seconds: float = 1.0,
-        retry_max_delay_seconds: float = 60.0,
     ) -> None:
         self._redis = redis_client
         self._station_repo = station_repo
         self._ticket_client = ticket_client
         self._cache_ttl_seconds = cache_ttl_seconds
         self._failure_ttl_seconds = failure_ttl_seconds
-        self._retry_initial_delay_seconds = max(0.0, retry_initial_delay_seconds)
-        self._retry_max_delay_seconds = max(
-            self._retry_initial_delay_seconds,
-            retry_max_delay_seconds,
-        )
 
     async def prefetch_all_prices(
         self,
         *,
         run_date: str,
         candidates: list[CachedRouteCandidate],
-        max_concurrency: int = 2,
         on_progress: ProgressCallback | None = None,
         on_leg_complete: OnLegCompleteCallback | None = None,
     ) -> dict[str, PriceCacheEntry]:
@@ -189,83 +178,49 @@ class Ticket12306Service:
             if maybe is not None:
                 await maybe
 
-        # 6. Fetch uncached legs concurrently
+        # 6. Fetch uncached legs with the ticket client's worker queue.
         fetched_legs: dict[LegLookupKey, dict[str, Any]] = {}
         if legs_to_fetch:
-            semaphore = asyncio.Semaphore(max_concurrency)
             completed_count = 0
 
-            async def fetch_one_leg(
-                leg_key: LegLookupKey, from_code: str, to_code: str
-            ) -> tuple[LegLookupKey, dict[str, Any]]:
+            async def handle_leg_complete(
+                request: TicketLegRequest,
+                leg_rows: dict[str, Any],
+            ) -> None:
                 nonlocal completed_count
-                async with semaphore:
-                    departure_date, from_station, to_station = leg_key
-                    result = leg_key, await self._fetch_leg_until_success(
-                        departure_date,
-                        from_station,
-                        to_station,
-                        from_code,
-                        to_code,
+                leg_key = request.key
+                completed_count += 1
+                if on_progress:
+                    maybe = on_progress({
+                        "type": "leg_fetched",
+                        "completed": completed_count,
+                        "total": legs_to_fetch_count,
+                    })
+                    if maybe is not None:
+                        await maybe
+                if on_leg_complete:
+                    await self._emit_leg_complete_prices(
+                        leg_key=leg_key,
+                        leg_rows=leg_rows,
+                        legs_segments=legs_segments,
+                        segment_keys=segment_keys,
+                        on_leg_complete=on_leg_complete,
                     )
-                    completed_count += 1
-                    if on_progress:
-                        maybe = on_progress({
-                            "type": "leg_fetched",
-                            "completed": completed_count,
-                            "total": legs_to_fetch_count,
-                        })
-                        if maybe is not None:
-                            await maybe
-                    # Invoke per-leg callback with price entries
-                    if on_leg_complete:
-                        _lk, leg_rows = result
-                        leg_price_batch: dict[str, PriceCacheEntry] = {}
-                        for sk in legs_segments.get(_lk, []):
-                            seg = segment_keys[sk]
-                            if not leg_rows:
-                                _d, tn, fs, ts = sk
-                                key = price_map_key(tn, fs, ts)
-                                leg_price_batch[key] = PriceCacheEntry(failed=True)
-                            else:
-                                ticket = self._ticket_from_rows(
-                                    leg_rows,
-                                    train_no=seg.trainNo if hasattr(seg, "trainNo") else sk[1],
-                                    station_train_code=seg.no if hasattr(seg, "no") else "",
-                                )
-                                _d, tn, fs, ts = sk
-                                mk = price_map_key(tn, fs, ts)
-                                if ticket is not None:
-                                    leg_price_batch[mk] = PriceCacheEntry(
-                                        min_price=ticket.min_price,
-                                        seats=[
-                                            SeatInfoEntry(
-                                                seat_type=s.seat_type,
-                                                status=s.status,
-                                                price=s.price,
-                                                available=s.available,
-                                            )
-                                            for s in ticket.seats
-                                        ],
-                                        matched_by=ticket.matched_by,
-                                        failed=False,
-                                    )
-                                else:
-                                    leg_price_batch[mk] = PriceCacheEntry(failed=True)
-                        if leg_price_batch:
-                            cb_result = on_leg_complete(leg_price_batch)
-                            if cb_result is not None:
-                                await cb_result
-                    return result
 
-            results = await asyncio.gather(
-                *(
-                    fetch_one_leg(leg_key, from_code, to_code)
-                    for leg_key, from_code, to_code in legs_to_fetch
+            requests = [
+                TicketLegRequest(
+                    run_date=leg_key[0],
+                    from_station=leg_key[1],
+                    to_station=leg_key[2],
+                    from_telecode=from_code,
+                    to_telecode=to_code,
                 )
+                for leg_key, from_code, to_code in legs_to_fetch
+            ]
+            fetched_legs = await self._ticket_client.fetch_legs(
+                requests,
+                on_leg_complete=handle_leg_complete,
             )
-            for leg_key, rows in results:
-                fetched_legs[leg_key] = rows
 
         # 7. Extract ticket data for each uncached segment from fetched legs
         fetched_data: dict[SegmentLookupKey, TicketSegmentData] = {}
@@ -452,7 +407,8 @@ class Ticket12306Service:
 
         fetched_legs: dict[LegLookupKey, dict[str, Any]] = {}
         leg_telecodes: dict[LegLookupKey, tuple[str, str]] = {}
-        for leg_key, leg_segments in by_leg.items():
+        requests: list[TicketLegRequest] = []
+        for leg_key in by_leg:
             departure_date, from_station, to_station = leg_key
             from_code = telecodes.get(from_station)
             to_code = telecodes.get(to_station)
@@ -460,13 +416,24 @@ class Ticket12306Service:
                 fetched_legs[leg_key] = {}
                 continue
             leg_telecodes[leg_key] = (from_code, to_code)
-            rows = await self._fetch_leg_until_success(
-                departure_date,
-                from_station,
-                to_station,
-                from_code,
-                to_code,
+            requests.append(
+                TicketLegRequest(
+                    run_date=departure_date,
+                    from_station=from_station,
+                    to_station=to_station,
+                    from_telecode=from_code,
+                    to_telecode=to_code,
+                )
             )
+
+        if requests:
+            assert self._ticket_client is not None
+            fetched_legs.update(
+                await self._ticket_client.fetch_legs(requests)
+            )
+
+        for leg_key, leg_segments in by_leg.items():
+            rows = fetched_legs.get(leg_key, {})
             fetched_legs[leg_key] = rows
             for seg_key in leg_segments:
                 _departure_date, train_no, _from_station, _to_station = seg_key
@@ -478,49 +445,6 @@ class Ticket12306Service:
                 if ticket is not None:
                     fetched[seg_key] = ticket
         return fetched, fetched_legs, leg_telecodes
-
-    async def _fetch_leg_until_success(
-        self,
-        run_date: str,
-        from_station: str,
-        to_station: str,
-        from_telecode: str,
-        to_telecode: str,
-    ) -> dict[str, Any]:
-        """Fetch one 12306 leg, retrying transient failures with backoff."""
-        delay = self._retry_initial_delay_seconds
-        attempt = 1
-        while True:
-            try:
-                return await self._ticket_client.fetch_leg(  # type: ignore[union-attr]
-                    run_date,
-                    from_station,
-                    to_station,
-                    from_telecode,
-                    to_telecode,
-                )
-            except PlaywrightUnavailableError:
-                raise
-            except asyncio.CancelledError:
-                raise
-            except Exception as exc:
-                logger.warning(
-                    "Ticket fetch failed for leg %s->%s on %s (attempt %d); "
-                    "retrying after %.1fs: %s",
-                    from_station,
-                    to_station,
-                    run_date,
-                    attempt,
-                    delay,
-                    exc,
-                )
-                if delay > 0:
-                    await asyncio.sleep(delay + random.uniform(0.0, delay * 0.1))
-                attempt += 1
-                delay = min(
-                    self._retry_max_delay_seconds,
-                    delay * 2 if delay > 0 else 0.0,
-                )
 
     def _collect_train_segments(
         self, routes: Iterable[RouteResponse]
@@ -824,6 +748,41 @@ class Ticket12306Service:
             matched_by=ticket.matched_by,
             failed=False,
         )
+
+    async def _emit_leg_complete_prices(
+        self,
+        *,
+        leg_key: LegLookupKey,
+        leg_rows: dict[str, Any],
+        legs_segments: dict[LegLookupKey, list[SegmentLookupKey]],
+        segment_keys: dict[SegmentLookupKey, CachedTrainSegment],
+        on_leg_complete: OnLegCompleteCallback,
+    ) -> None:
+        leg_price_batch: dict[str, PriceCacheEntry] = {}
+        for sk in legs_segments.get(leg_key, []):
+            seg = segment_keys[sk]
+            _departure_date, train_no, from_station, to_station = sk
+            key = price_map_key(train_no, from_station, to_station)
+            if not leg_rows:
+                leg_price_batch[key] = PriceCacheEntry(failed=True)
+                continue
+
+            ticket = self._ticket_from_rows(
+                leg_rows,
+                train_no=seg.trainNo,
+                station_train_code=seg.no,
+            )
+            if ticket is None:
+                leg_price_batch[key] = PriceCacheEntry(failed=True)
+                continue
+
+            leg_price_batch[key] = self._ticket_to_price_entry(ticket)
+
+        if leg_price_batch:
+            result = on_leg_complete(leg_price_batch)
+            if result is not None:
+                await result
+
     async def _store_fetched_leg_caches(
         self,
         *,

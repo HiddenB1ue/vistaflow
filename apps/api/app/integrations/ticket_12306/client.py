@@ -1,225 +1,234 @@
 from __future__ import annotations
 
+import asyncio
+import inspect
+import json
+import logging
 from abc import ABC, abstractmethod
+from collections.abc import Awaitable, Callable
+from contextlib import AbstractAsyncContextManager
 from dataclasses import dataclass
-from typing import Any
+from http.cookies import SimpleCookie
+from typing import Any, cast
 
-from app.integrations.ticket_12306.browser_manager import (
-    PlaywrightBrowserManager,
-    PlaywrightUnavailableError,
-)
-from app.integrations.ticket_12306.models import TicketSegmentData
-from app.integrations.ticket_12306.parser import (
-    LEFT_TICKET_QUERY_URL,
-    build_seat_infos,
-    parse_query_rows,
-    segment_min_price,
-)
-from app.models import SeatLookupKey
+from app.integrations.ticket_12306.parser import LEFT_TICKET_QUERY_URL, parse_query_rows
 from app.system.settings_provider import SystemSettingsDataError, SystemSettingsProvider
+
+logger = logging.getLogger(__name__)
+
+INIT_URL = "https://kyfw.12306.cn/otn/leftTicket/init"
+REQUESTS_PER_WORKER_TARGET = 100
+MAX_WORKERS = 10
+REQUEST_RETRIES = 1
+WORKER_TIMEOUT_SECONDS = 30
+PAUSE_EVERY_REQUESTS = 10
+PAUSE_SECONDS = 1.0
+
+BASE_QUERY_PARAMS = {
+    "purpose_codes": "ADULT",
+}
+
+SCRAPLING_HEADERS = {
+    "Referer": INIT_URL,
+    "Accept": "application/json, text/javascript, */*; q=0.01",
+    "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
+}
 
 
 @dataclass(frozen=True)
-class TicketClientConfig:
-    timeout_ms: int = 600_000
+class TicketLegRequest:
+    run_date: str
+    from_station: str
+    to_station: str
+    from_telecode: str
+    to_telecode: str
+
+    @property
+    def key(self) -> tuple[str, str, str]:
+        return (self.run_date, self.from_station, self.to_station)
+
+
+LegCompleteCallback = Callable[
+    [TicketLegRequest, dict[str, Any]],
+    Awaitable[None] | None,
+]
+SessionFactory = Callable[[], AbstractAsyncContextManager[Any]]
 
 
 class AbstractTicketClient(ABC):
-    """12306 票价查询客户端抽象基类。"""
+    """12306 ticket client contract for batch leg fetching."""
 
     @abstractmethod
-    async def fetch_tickets(
+    async def fetch_legs(
         self,
-        run_date: str,
-        segments: set[SeatLookupKey],
-        telecodes: dict[str, str],
-        train_codes: dict[SeatLookupKey, str],
-    ) -> dict[SeatLookupKey, TicketSegmentData]:
-        """查询指定区间的票价和余票信息。"""
-
-    @abstractmethod
-    async def fetch_leg(
-        self,
-        run_date: str,
-        from_station: str,
-        to_station: str,
-        from_telecode: str,
-        to_telecode: str,
-    ) -> dict[str, Any]:
-        """Query a single leg and return raw row data keyed by train_no and station_train_code."""
+        legs: list[TicketLegRequest],
+        *,
+        on_leg_complete: LegCompleteCallback | None = None,
+    ) -> dict[tuple[str, str, str], dict[str, Any]]:
+        """Fetch leg-scoped query rows keyed by ``(date, from_station, to_station)``."""
 
 
-class PlaywrightTicketClient(AbstractTicketClient):
-    """12306 ticket client backed by a shared Playwright Chromium browser."""
+class ScraplingTicketClient(AbstractTicketClient):
+    """12306 ticket client using Scrapling sessions and queue-based workers."""
 
     def __init__(
         self,
         *,
-        browser_manager: PlaywrightBrowserManager,
-        config: TicketClientConfig,
+        session_factory: SessionFactory | None = None,
+        requests_per_worker_target: int = REQUESTS_PER_WORKER_TARGET,
+        max_workers: int = MAX_WORKERS,
+        pause_every_requests: int = PAUSE_EVERY_REQUESTS,
+        pause_seconds: float = PAUSE_SECONDS,
     ) -> None:
-        self._browser_manager = browser_manager
-        self._config = config
+        self._session_factory = session_factory or self._default_session_factory
+        self._requests_per_worker_target = max(1, requests_per_worker_target)
+        self._max_workers = max(1, max_workers)
+        self._pause_every_requests = max(1, pause_every_requests)
+        self._pause_seconds = max(0.0, pause_seconds)
 
-    async def fetch_leg(
+    async def fetch_legs(
         self,
-        run_date: str,
-        from_station: str,
-        to_station: str,
-        from_telecode: str,
-        to_telecode: str,
-    ) -> dict[str, Any]:
-        return await self._browser_manager.run_with_browser(
-            lambda browser: self._fetch_leg_with_browser(
-                browser=browser,
-                run_date=run_date,
-                from_station=from_station,
-                to_station=to_station,
-                from_telecode=from_telecode,
-                to_telecode=to_telecode,
-            )
-        )
-
-    async def _fetch_leg_with_browser(
-        self,
+        legs: list[TicketLegRequest],
         *,
-        browser: Any,
-        run_date: str,
-        from_station: str,
-        to_station: str,
-        from_telecode: str,
-        to_telecode: str,
-    ) -> dict[str, Any]:
-        context = await browser.new_context(
-            locale="zh-CN",
-            timezone_id="Asia/Shanghai",
+        on_leg_complete: LegCompleteCallback | None = None,
+    ) -> dict[tuple[str, str, str], dict[str, Any]]:
+        if not legs:
+            return {}
+
+        queue: asyncio.Queue[TicketLegRequest] = asyncio.Queue()
+        for leg in legs:
+            queue.put_nowait(leg)
+
+        results: dict[tuple[str, str, str], dict[str, Any]] = {}
+        worker_count = self.calculate_worker_count(
+            len(legs),
+            requests_per_worker_target=self._requests_per_worker_target,
+            max_workers=self._max_workers,
         )
 
-        try:
-            page = await context.new_page()
-            page.set_default_timeout(self._config.timeout_ms)
-            page.set_default_navigation_timeout(self._config.timeout_ms)
-
-            await page.goto(
-                "https://kyfw.12306.cn/otn/leftTicket/init?linktypeid=dc",
-                wait_until="domcontentloaded",
-                timeout=self._config.timeout_ms,
-            )
-            await page.wait_for_load_state("networkidle", timeout=self._config.timeout_ms)
-
-            await page.locator("input#fromStationText").fill(from_station)
-            await page.locator("input#toStationText").fill(to_station)
-            await page.locator("input#train_date").fill(run_date)
-            await page.evaluate(
-                """({fromName, fromCode, toName, toCode, runDate}) => {
-                    const setValue = (id, value) => {
-                        const el = document.getElementById(id);
-                        if (!el) return;
-                        el.value = value;
-                        el.dispatchEvent(new Event("input", { bubbles: true }));
-                        el.dispatchEvent(new Event("change", { bubbles: true }));
-                    };
-                    setValue("fromStationText", fromName);
-                    setValue("fromStation", fromCode);
-                    setValue("toStationText", toName);
-                    setValue("toStation", toCode);
-                    setValue("train_date", runDate);
-                    setValue("back_train_date", runDate);
-                }""",
-                {
-                    "fromName": from_station,
-                    "fromCode": from_telecode,
-                    "toName": to_station,
-                    "toCode": to_telecode,
-                    "runDate": run_date,
-                },
-            )
-
+        async def worker(worker_id: int) -> None:
+            processed = 0
             try:
-                async with page.expect_response(
-                    lambda response: (
-                        response.request.method == "GET"
-                        and response.url.startswith(LEFT_TICKET_QUERY_URL)
-                    ),
-                    timeout=self._config.timeout_ms,
-                ) as response_info:
-                    await page.locator("#query_ticket").click()
-                response = await response_info.value
-                payload = await response.json()
-            except Exception:
-                return {}
+                async with self._session_factory() as session:
+                    init_page = await session.get(
+                        INIT_URL,
+                        headers=SCRAPLING_HEADERS,
+                        follow_redirects=False,
+                        timeout=WORKER_TIMEOUT_SECONDS,
+                        retries=REQUEST_RETRIES,
+                    )
+                    cookies = _parse_set_cookie(
+                        _header_get(getattr(init_page, "headers", {}), "set-cookie")
+                    )
+                    headers = _build_headers(cookies)
 
-            return parse_query_rows(payload)
-        finally:
-            await context.close()
+                    while True:
+                        try:
+                            leg = queue.get_nowait()
+                        except asyncio.QueueEmpty:
+                            break
 
-    async def fetch_tickets(
+                        try:
+                            rows = await self._fetch_one_leg(session, headers, leg)
+                        except Exception as exc:  # noqa: BLE001 - per-leg failures degrade to empty rows
+                            logger.warning(
+                                "Scrapling ticket fetch failed for %s->%s on %s: %s",
+                                leg.from_station,
+                                leg.to_station,
+                                leg.run_date,
+                                exc,
+                            )
+                            rows = {}
+                        finally:
+                            queue.task_done()
+
+                        results[leg.key] = rows
+                        await _maybe_call(on_leg_complete, leg, rows)
+
+                        processed += 1
+                        if (
+                            not queue.empty()
+                            and processed % self._pause_every_requests == 0
+                            and self._pause_seconds > 0
+                        ):
+                            await asyncio.sleep(self._pause_seconds)
+            except Exception as exc:  # noqa: BLE001 - other workers may still complete the queue
+                logger.warning("Scrapling ticket worker %d setup failed: %s", worker_id, exc)
+
+        await asyncio.gather(*(worker(worker_id) for worker_id in range(worker_count)))
+
+        for leg in legs:
+            if leg.key in results:
+                continue
+            results[leg.key] = {}
+            await _maybe_call(on_leg_complete, leg, {})
+
+        return results
+
+    async def _fetch_one_leg(
         self,
-        run_date: str,
-        segments: set[SeatLookupKey],
-        telecodes: dict[str, str],
-        train_codes: dict[SeatLookupKey, str],
-    ) -> dict[SeatLookupKey, TicketSegmentData]:
-        leg_cache: dict[tuple[str, str], dict[str, Any]] = {}
-        for _train_no, from_station, to_station in sorted(segments):
-            leg = (from_station, to_station)
-            if leg in leg_cache:
-                continue
-            from_code = telecodes.get(from_station)
-            to_code = telecodes.get(to_station)
-            if not from_code or not to_code:
-                leg_cache[leg] = {}
-                continue
-            leg_cache[leg] = await self.fetch_leg(
-                run_date,
-                from_station,
-                to_station,
-                from_code,
-                to_code,
+        session: Any,
+        headers: dict[str, str],
+        leg: TicketLegRequest,
+    ) -> dict[str, Any]:
+        page = await session.get(
+            LEFT_TICKET_QUERY_URL,
+            params={
+                **BASE_QUERY_PARAMS,
+                "leftTicketDTO.train_date": leg.run_date,
+                "leftTicketDTO.from_station": leg.from_telecode,
+                "leftTicketDTO.to_station": leg.to_telecode,
+            },
+            headers=headers,
+            follow_redirects=False,
+            timeout=WORKER_TIMEOUT_SECONDS,
+            retries=REQUEST_RETRIES,
+        )
+        if getattr(page, "status", None) != 200:
+            logger.info(
+                "Scrapling ticket fetch returned status %s for %s->%s on %s",
+                getattr(page, "status", None),
+                leg.from_station,
+                leg.to_station,
+                leg.run_date,
             )
+            return {}
 
-        result: dict[SeatLookupKey, TicketSegmentData] = {}
-        for train_no, from_station, to_station in sorted(segments):
-            leg = (from_station, to_station)
-            rows = leg_cache.get(leg, {})
-            if not rows:
-                continue
+        payload = await _response_json(page)
+        return cast(dict[str, Any], parse_query_rows(payload))
 
-            row = rows.get(train_no)
-            matched_by = "train_no"
-            if row is None:
-                stc = train_codes.get((train_no, from_station, to_station), "")
-                row = rows.get(stc)
-                matched_by = "station_train_code"
+    @staticmethod
+    def calculate_worker_count(
+        leg_count: int,
+        *,
+        requests_per_worker_target: int = REQUESTS_PER_WORKER_TARGET,
+        max_workers: int = MAX_WORKERS,
+    ) -> int:
+        if leg_count <= 0:
+            return 0
+        target = max(1, requests_per_worker_target)
+        cap = max(1, max_workers)
+        return min(cap, max(1, (leg_count + target - 1) // target))
 
-            if row is None:
-                continue
+    @staticmethod
+    def _default_session_factory() -> AbstractAsyncContextManager[Any]:
+        from scrapling.fetchers import FetcherSession
 
-            seat_status, seat_prices = row
-            seats = build_seat_infos(seat_status, seat_prices)
-            result[(train_no, from_station, to_station)] = TicketSegmentData(
-                seats=seats,
-                min_price=segment_min_price(seats),
-                matched_by=matched_by,
-            )
+        return cast(
+            AbstractAsyncContextManager[Any],
+            FetcherSession(
+                impersonate="chrome",
+                stealthy_headers=True,
+                timeout=WORKER_TIMEOUT_SECONDS,
+                retries=REQUEST_RETRIES,
+            ),
+        )
 
-        return result
 
 async def build_ticket_client(
     settings_provider: SystemSettingsProvider,
-    browser_manager: PlaywrightBrowserManager,
-    *,
-    redis_client: Any = None,
-    cookie_pool: Any = None,
 ) -> AbstractTicketClient | None:
-    """Build the production 12306 ticket client.
-
-    Returns ``None`` when the feature flag is disabled or settings are
-    unavailable.  When HTTP direct mode is enabled (``ticket_12306_http_enabled``)
-    and a pre-created :class:`CookiePool` is provided, returns a
-    :class:`FallbackTicketClient` that prefers HTTP and falls back to Playwright
-    on failure.  Otherwise returns the legacy :class:`PlaywrightTicketClient`.
-    """
+    """Build the production 12306 ticket client."""
     try:
         enabled = await settings_provider.get_bool("ticket_12306_enabled")
     except SystemSettingsDataError:
@@ -227,46 +236,79 @@ async def build_ticket_client(
 
     if not enabled:
         return None
+    return ScraplingTicketClient()
 
-    playwright_client = PlaywrightTicketClient(
-        browser_manager=browser_manager,
-        config=TicketClientConfig(),
-    )
 
-    if cookie_pool is None:
-        return playwright_client
+def _parse_set_cookie(set_cookie_header: str | None) -> dict[str, str]:
+    cookie = SimpleCookie()
+    cookie.load(set_cookie_header or "")
+    return {key: morsel.value for key, morsel in cookie.items()}
 
-    try:
-        http_enabled = await settings_provider.get_bool("ticket_12306_http_enabled")
-    except SystemSettingsDataError:
-        return playwright_client
 
-    if not http_enabled:
-        return playwright_client
+def _build_cookie_header(cookies: dict[str, str]) -> str:
+    return "; ".join(f"{key}={value}" for key, value in cookies.items())
 
-    try:
-        concurrency = await settings_provider.get_int("ticket_12306_http_concurrency")
-    except SystemSettingsDataError:
-        concurrency = 8
 
-    # Lazy imports to avoid circular dependency: fallback_client imports this module.
-    from app.integrations.ticket_12306.fallback_client import FallbackTicketClient
-    from app.integrations.ticket_12306.http_client import HttpTicketClient
+def _build_headers(cookies: dict[str, str] | None = None) -> dict[str, str]:
+    if not cookies:
+        return dict(SCRAPLING_HEADERS)
 
-    http_client = HttpTicketClient(
-        cookie_pool=cookie_pool,
-        max_concurrency=max(1, concurrency),
-    )
-    return FallbackTicketClient(
-        http_client=http_client,
-        playwright_client=playwright_client,
-    )
+    return {
+        **SCRAPLING_HEADERS,
+        "Cookie": _build_cookie_header(cookies),
+        "Origin": "https://kyfw.12306.cn",
+        "X-Requested-With": "XMLHttpRequest",
+    }
+
+
+def _header_get(headers: Any, name: str) -> str | None:
+    value = headers.get(name) if hasattr(headers, "get") else None
+    return str(value) if value is not None else None
+
+
+async def _response_json(page: Any) -> Any:
+    json_method = getattr(page, "json", None)
+    if callable(json_method):
+        payload = json_method()
+        if inspect.isawaitable(payload):
+            return await payload
+        return payload
+
+    text_value = getattr(page, "text", None)
+    if callable(text_value):
+        text = text_value()
+        if inspect.isawaitable(text):
+            text = await text
+        return json.loads(str(text))
+    if isinstance(text_value, str):
+        return json.loads(text_value)
+
+    content = getattr(page, "body", None)
+    if isinstance(content, bytes):
+        return json.loads(content.decode("utf-8"))
+    if isinstance(content, str):
+        return json.loads(content)
+    return {}
+
+
+async def _maybe_call(
+    callback: LegCompleteCallback | None,
+    leg: TicketLegRequest,
+    rows: dict[str, Any],
+) -> None:
+    if callback is None:
+        return
+    result = callback(leg, rows)
+    if result is not None:
+        await result
 
 
 __all__ = [
     "AbstractTicketClient",
-    "PlaywrightTicketClient",
-    "PlaywrightUnavailableError",
-    "TicketClientConfig",
+    "LegCompleteCallback",
+    "MAX_WORKERS",
+    "REQUESTS_PER_WORKER_TARGET",
+    "ScraplingTicketClient",
+    "TicketLegRequest",
     "build_ticket_client",
 ]

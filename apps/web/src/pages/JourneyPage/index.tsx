@@ -1,5 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useCallback, useMemo } from 'react';
 import {
   AuraBackground,
   ContentSection,
@@ -12,14 +11,7 @@ import { JourneyViewDrawer } from '@/components/overlays/JourneyViewDrawer';
 import { JOURNEY_LABELS } from '@/constants/labels';
 import { useCardReveal } from '@/hooks/useCardReveal';
 import { usePageTransition } from '@/hooks/usePageTransition';
-import {
-  buildJourneyViewRequest,
-  fetchJourneySearchSessionView,
-  fetchRouteStopsGeo,
-} from '@/services/routeService';
-import { startPriceStream } from '@/services/priceStreamService';
-import { createSessionStream } from '@/services/searchStreamService';
-import { usePriceStore } from '@/stores/priceStore';
+import { buildJourneyViewRequest } from '@/services/routeService';
 import { useRouteStore } from '@/stores/routeStore';
 import { useSearchStore } from '@/stores/searchStore';
 import { useUiStore } from '@/stores/uiStore';
@@ -27,6 +19,9 @@ import type { Route } from '@/types/route';
 import { RouteListPanel } from './RouteListPanel';
 import { RouteMap } from './RouteMap';
 import { getNextSelectedRoute, routeHasAvailableTickets } from './routeList.helpers';
+import { useJourneyPriceStream } from './useJourneyPriceStream';
+import { useJourneySessionView } from './useJourneySessionView';
+import { useRouteStopsGeo } from './useRouteStopsGeo';
 
 export function JourneyPage() {
   const navigate = useNavigate();
@@ -56,10 +51,8 @@ export function JourneyPage() {
     setJourneyFilterOpen,
     setJourneyFilterPrefs,
   } = useUiStore();
-  const isPriceStreaming = usePriceStore((s) => s.isStreaming);
-  const priceFetchedLegs = usePriceStore((s) => s.fetchedLegs);
-  const priceTotalLegs = usePriceStore((s) => s.totalLegs);
-  const sseStarted = useRef(false);
+  const { isPriceStreaming, priceFetchedLegs, priceTotalLegs } =
+    useJourneyPriceStream(searchId);
 
   const backendSortMode = sortMode;
   const currentViewRequest = useMemo(
@@ -67,127 +60,22 @@ export function JourneyPage() {
     [journeyFilterPrefs, backendSortMode, page, pageSize],
   );
 
-  const initialData = useMemo(() => {
-    if (!searchId || sessionSearchId !== searchId || appliedView === null) {
-      return undefined;
-    }
-
-    const matchesCurrentView =
-      appliedView.page === currentViewRequest.page &&
-      appliedView.pageSize === currentViewRequest.page_size &&
-      appliedView.sortBy === currentViewRequest.sort_by &&
-      appliedView.excludeDirectTrainCodesInTransferRoutes ===
-        currentViewRequest.exclude_direct_train_codes_in_transfer_routes &&
-      appliedView.displayTrainTypes.join(',') ===
-        currentViewRequest.display_train_types.join(',') &&
-      appliedView.transferCounts.join(',') === currentViewRequest.transfer_counts.join(',');
-
-    if (!matchesCurrentView) {
-      return undefined;
-    }
-
-    return {
-      items: routes,
-      total,
-      page,
-      pageSize,
-      totalPages,
-      appliedView,
-      availableFacets,
-    };
-  }, [
-    appliedView,
-    availableFacets,
+  const { isLoading, error } = useJourneySessionView({
+    searchId,
+    params,
     currentViewRequest,
+    routes,
+    total,
     page,
     pageSize,
-    routes,
-    searchId,
-    sessionSearchId,
-    total,
     totalPages,
-  ]);
-
-  const { data, isLoading, error } = useQuery({
-    queryKey: ['journey-search-view', searchId, currentViewRequest],
-    queryFn: () => fetchJourneySearchSessionView(searchId ?? '', currentViewRequest),
-    enabled: Boolean(searchId),
-    initialData,
+    appliedView,
+    availableFacets,
+    sessionSearchId,
+    setSortMode,
+    setViewResult,
+    revealPage,
   });
-
-  // Trigger SSE session creation when page mounts without a searchId
-  useEffect(() => {
-    if (searchId || sseStarted.current) return;
-    if (!params.origin.trim() || !params.destination.trim()) {
-      navigate('/', { replace: true });
-      return;
-    }
-    sseStarted.current = true;
-
-    createSessionStream(params)
-      .then((session) => {
-        const { setSearchId } = useSearchStore.getState();
-        setSearchId(session.searchId);
-        setSortMode('duration');
-        setViewResult(session.searchId, session.viewResult);
-        revealPage();
-      })
-      .catch((err) => {
-        console.error('SSE session creation failed:', err);
-        // Error state is already set in searchProgressStore by the stream service
-      });
-  }, [searchId, params, navigate, setSortMode, setViewResult, revealPage]);
-
-  // When searchId already exists (e.g. revisiting), reveal immediately
-  useEffect(() => {
-    if (searchId) {
-      revealPage();
-    }
-  }, [searchId, revealPage]);
-
-  useEffect(() => {
-    if (!searchId || !data) return;
-    setViewResult(searchId, data);
-  }, [data, searchId, setViewResult]);
-
-  // Start price stream when searchId becomes available
-  useEffect(() => {
-    if (!searchId) return;
-
-    const { reset, startStream, mergePrices, endStream } = usePriceStore.getState();
-    reset();
-
-    const abort = startPriceStream(searchId, {
-      onStarted: (totalLegs) => {
-        startStream(totalLegs);
-      },
-      onPriceBatch: (prices) => {
-        mergePrices(prices);
-        useRouteStore.getState().updateRoutesPrices(
-          usePriceStore.getState().priceMap,
-        );
-      },
-      onLegFetched: (completed) => {
-        usePriceStore.setState({ fetchedLegs: completed });
-      },
-      onComplete: () => {
-        endStream();
-        // Final sync: apply all accumulated prices
-        useRouteStore.getState().updateRoutesPrices(
-          usePriceStore.getState().priceMap,
-        );
-      },
-      onError: (msg) => {
-        console.error('Price stream error:', msg);
-        endStream();
-      },
-    });
-
-    return () => {
-      abort();
-      reset();
-    };
-  }, [searchId]);
 
   const displayRoutes = useMemo(
     () =>
@@ -208,11 +96,7 @@ export function JourneyPage() {
   );
   const sessionExpired = error instanceof Error;
 
-  const { data: stopsGeo } = useQuery({
-    queryKey: ['route-stops-geo', displaySelectedRoute?.id],
-    queryFn: () => fetchRouteStopsGeo(displaySelectedRoute!),
-    enabled: displaySelectedRoute !== null,
-  });
+  const { data: stopsGeo } = useRouteStopsGeo(displaySelectedRoute);
 
   return (
     <div className="relative min-h-screen" style={{ backgroundColor: 'var(--color-bg)' }}>

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { routeFixtures } from '@/services/mock/routeFixtures';
+import { routeFixtures } from '@/test/routeFixtures';
 import type { SeatClass } from '@/types/route';
 import {
   getLowestAvailablePrice,

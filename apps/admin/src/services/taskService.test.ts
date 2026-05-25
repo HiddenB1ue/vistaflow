@@ -1,48 +1,103 @@
-import { describe, it, expect } from 'vitest';
+import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
+import { apiClient } from './api';
 import { createTask, deleteTask, fetchTask, fetchTasks, updateTask } from './taskService';
+import type { Task } from '@/types/task';
+
+vi.mock('./api', () => ({
+  apiClient: {
+    get: vi.fn(),
+    post: vi.fn(),
+    patch: vi.fn(),
+    delete: vi.fn(),
+  },
+}));
+
+const sampleTask: Task = {
+  id: 1,
+  name: 'Fetch stations',
+  type: 'fetch-station',
+  typeLabel: 'Fetch stations',
+  status: 'idle',
+  enabled: true,
+  payload: {},
+  metrics: { label: 'records', value: '0' },
+  timing: { label: 'last run', value: '-' },
+  latestRun: null,
+};
 
 describe('taskService', () => {
-  it('fetchTasks returns mock data in mock mode', async () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('fetchTasks forwards query parameters to the API', async () => {
+    (apiClient.get as Mock).mockResolvedValueOnce({
+      data: {
+        data: {
+          items: [sampleTask],
+          page: 1,
+          pageSize: 20,
+          total: 1,
+          totalPages: 1,
+        },
+      },
+    });
+
     const tasks = await fetchTasks({
       page: 1,
       pageSize: 20,
-      keyword: '',
-      status: 'all',
-    });
-    expect(Array.isArray(tasks.items)).toBe(true);
-    expect(tasks.items.length).toBeGreaterThan(0);
-    for (const task of tasks.items) {
-      expect(task).toHaveProperty('id');
-      expect(task).toHaveProperty('name');
-      expect(task).toHaveProperty('status');
-    }
-  });
-
-  it('updateTask toggles enabled in mock mode', async () => {
-    const created = await createTask({
-      name: `Mock toggle ${Date.now()}`,
-      type: 'fetch-station',
-      scheduleMode: 'cron',
-      cron: '0 3 * * *',
-      payload: {},
+      keyword: ' station ',
+      status: 'idle',
     });
 
-    const disabled = await updateTask(created.id, { enabled: false });
-    expect(disabled.enabled).toBe(false);
-
-    const enabled = await updateTask(created.id, { enabled: true });
-    expect(enabled.enabled).toBe(true);
+    expect(apiClient.get).toHaveBeenCalledWith('/admin/tasks', {
+      params: {
+        page: 1,
+        pageSize: 20,
+        keyword: 'station',
+        status: 'idle',
+      },
+    });
+    expect(tasks.items).toEqual([sampleTask]);
   });
 
-  it('deleteTask removes mock task state', async () => {
+  it('createTask unwraps the API response', async () => {
+    (apiClient.post as Mock).mockResolvedValueOnce({ data: { data: sampleTask } });
+
     const created = await createTask({
-      name: `Mock delete ${Date.now()}`,
+      name: 'Fetch stations',
       type: 'fetch-station',
       payload: {},
     });
 
-    await deleteTask(created.id);
+    expect(apiClient.post).toHaveBeenCalledWith('/admin/tasks', {
+      name: 'Fetch stations',
+      type: 'fetch-station',
+      payload: {},
+    });
+    expect(created).toEqual(sampleTask);
+  });
 
-    await expect(fetchTask(created.id)).rejects.toThrow();
+  it('updateTask patches a task and unwraps the API response', async () => {
+    const updated = { ...sampleTask, enabled: false };
+    (apiClient.patch as Mock).mockResolvedValueOnce({ data: { data: updated } });
+
+    await expect(updateTask(1, { enabled: false })).resolves.toEqual(updated);
+    expect(apiClient.patch).toHaveBeenCalledWith('/admin/tasks/1', { enabled: false });
+  });
+
+  it('deleteTask calls the API endpoint', async () => {
+    (apiClient.delete as Mock).mockResolvedValueOnce({});
+
+    await deleteTask(1);
+
+    expect(apiClient.delete).toHaveBeenCalledWith('/admin/tasks/1');
+  });
+
+  it('fetchTask unwraps the API response', async () => {
+    (apiClient.get as Mock).mockResolvedValueOnce({ data: { data: sampleTask } });
+
+    await expect(fetchTask(1)).resolves.toEqual(sampleTask);
+    expect(apiClient.get).toHaveBeenCalledWith('/admin/tasks/1');
   });
 });

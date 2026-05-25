@@ -7,7 +7,7 @@
 - 出发地、目的地、日期搜索
 - 出行方案结果列表展示
 - 方案筛选、排序、分页视图
-- 与后端 API 或本地 mock 数据联调
+- 与后端 API 联调
 
 说明：
 
@@ -24,7 +24,7 @@ apps/web/
 │   │   └── JourneyPage/   # 方案结果页
 │   ├── components/    # 通用组件、布局和弹层
 │   ├── animations/    # 动画实现
-│   ├── services/      # API 请求、mock 数据与数据映射
+│   ├── services/      # API 请求与数据映射
 │   ├── stores/        # Zustand 状态管理
 │   ├── hooks/         # 自定义 hooks
 │   ├── constants/     # 文案与常量
@@ -75,13 +75,11 @@ pnpm preview
 当前前端实际使用的环境变量：
 
 - `VITE_API_BASE_URL`：后端接口基础地址
-- `VITE_USE_MOCK`：是否启用 mock 数据，默认不是 `false` 时会走 mock
 
 推荐本地配置示例：
 
 ```env
 VITE_API_BASE_URL=http://localhost:8000/api
-VITE_USE_MOCK=false
 ```
 
 ## Routes

@@ -1,7 +1,9 @@
-import type { JourneySearchSessionResult } from '@/services/routeService';
+import {
+  buildJourneyViewRequest,
+  type JourneySearchSessionResult,
+} from '@/services/routeService';
 import { useSearchProgressStore } from '@/stores/searchProgressStore';
 import type { SearchParams } from '@/types/search';
-import { buildJourneyViewRequest } from '@/services/routeService';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? '/api';
 
@@ -9,12 +11,6 @@ function normalizeStationName(name: string): string {
   return name.endsWith('站') ? name.slice(0, -1) : name;
 }
 
-/**
- * Start an SSE session creation stream. Updates searchProgressStore in
- * real-time and returns the final session result on completion.
- *
- * Throws on network errors or if the backend sends an error event.
- */
 export async function createSessionStream(
   params: SearchParams,
 ): Promise<JourneySearchSessionResult> {
@@ -82,7 +78,6 @@ export async function createSessionStream(
 
       buffer += decoder.decode(value, { stream: true });
       const lines = buffer.split('\n');
-      // Keep the last (possibly incomplete) line in the buffer
       buffer = lines.pop() ?? '';
 
       for (const line of lines) {
@@ -108,7 +103,6 @@ export async function createSessionStream(
           if (parseErr instanceof Error && parseErr.message.includes('搜索失败')) {
             throw parseErr;
           }
-          // Ignore malformed SSE lines
         }
       }
     }

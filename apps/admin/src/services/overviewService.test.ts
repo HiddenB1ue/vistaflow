@@ -1,20 +1,42 @@
-import { describe, it, expect } from 'vitest';
+import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
+import { apiClient } from './api';
 import { fetchKpiStats, fetchSparklineData } from './overviewService';
 
+vi.mock('./api', () => ({
+  apiClient: {
+    get: vi.fn(),
+  },
+}));
+
 describe('overviewService', () => {
-  it('fetchSparklineData returns mock data in mock mode', async () => {
-    const data = await fetchSparklineData();
-    expect(data).toHaveProperty('values');
-    expect(data).toHaveProperty('labels');
-    expect(Array.isArray(data.values)).toBe(true);
+  beforeEach(() => {
+    vi.clearAllMocks();
   });
 
-  it('fetchKpiStats returns real KPI fields', async () => {
+  it('fetchSparklineData requests the sparkline endpoint', async () => {
+    (apiClient.get as Mock).mockResolvedValueOnce({
+      data: { data: { values: [1, 2, 3], labels: ['a', 'b', 'c'] } },
+    });
+
+    const data = await fetchSparklineData();
+    expect(apiClient.get).toHaveBeenCalledWith('/admin/system/overview/sparkline?days=7');
+    expect(data.values).toEqual([1, 2, 3]);
+  });
+
+  it('fetchKpiStats requests the KPI endpoint', async () => {
+    (apiClient.get as Mock).mockResolvedValueOnce({
+      data: {
+        data: {
+          totalRecords: 1,
+          stationsWithCoordinates: 2,
+          todayRecordChanges: 3,
+          todayTaskRuns: 4,
+        },
+      },
+    });
+
     const stats = await fetchKpiStats();
-    expect(stats).toHaveProperty('totalRecords');
-    expect(stats).toHaveProperty('stationsWithCoordinates');
-    expect(stats).toHaveProperty('todayRecordChanges');
-    expect(stats).toHaveProperty('todayTaskRuns');
-    expect(stats).not.toHaveProperty('remainingQuota');
+    expect(apiClient.get).toHaveBeenCalledWith('/admin/system/overview/kpi');
+    expect(stats.totalRecords).toBe(1);
   });
 });

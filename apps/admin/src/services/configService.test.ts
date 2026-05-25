@@ -1,22 +1,57 @@
-import { describe, it, expect } from 'vitest';
+import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
+import { apiClient } from './api';
 import { fetchSystemSettings, updateSystemSettings } from './configService';
+import type { SystemSetting } from '@/types/config';
+
+vi.mock('./api', () => ({
+  apiClient: {
+    get: vi.fn(),
+    patch: vi.fn(),
+  },
+}));
+
+const sampleSetting: SystemSetting = {
+  key: 'maintenance_mode',
+  label: 'Maintenance mode',
+  description: 'Disable public search',
+  value: false,
+  valueType: 'bool',
+  category: 'system',
+  enabled: true,
+  updatedAt: '2026-01-01T00:00:00Z',
+};
 
 describe('configService', () => {
-  it('fetchSystemSettings returns mock data in mock mode', async () => {
-    const settings = await fetchSystemSettings();
-    expect(Array.isArray(settings)).toBe(true);
-    expect(settings.length).toBeGreaterThan(0);
-    for (const item of settings) {
-      expect(item).toHaveProperty('key');
-      expect(item).toHaveProperty('valueType');
-      expect(item).toHaveProperty('enabled');
-    }
+  beforeEach(() => {
+    vi.clearAllMocks();
   });
 
-  it('updateSystemSettings returns updated mock result in mock mode', async () => {
+  it('fetchSystemSettings unwraps the API response', async () => {
+    (apiClient.get as Mock).mockResolvedValueOnce({ data: { data: [sampleSetting] } });
+
+    const settings = await fetchSystemSettings();
+    expect(apiClient.get).toHaveBeenCalledWith('/admin/system/settings');
+    expect(settings).toEqual([sampleSetting]);
+  });
+
+  it('updateSystemSettings patches settings and unwraps the API response', async () => {
+    (apiClient.patch as Mock).mockResolvedValueOnce({
+      data: {
+        data: {
+          updatedCount: 1,
+          updatedKeys: ['maintenance_mode'],
+          updatedAt: '2026-01-01T00:00:00Z',
+        },
+      },
+    });
+    const payload = {
+      items: [{ key: 'maintenance_mode', value: true, enabled: true }],
+    };
+
     const updated = await updateSystemSettings({
       items: [{ key: 'maintenance_mode', value: true, enabled: true }],
     });
+    expect(apiClient.patch).toHaveBeenCalledWith('/admin/system/settings', payload);
     expect(updated.updatedCount).toBe(1);
     expect(updated.updatedKeys).toEqual(['maintenance_mode']);
   });

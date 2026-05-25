@@ -1,9 +1,8 @@
 from __future__ import annotations
 
-import asyncio
-import logging
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Awaitable
 from contextlib import asynccontextmanager
+from typing import cast
 
 import asyncpg
 import httpx
@@ -18,8 +17,6 @@ from app.config import get_settings
 from app.exceptions import BusinessError
 from app.integrations.crawler.client import Live12306CrawlerClient
 from app.integrations.geo.client import DynamicGeoClient
-from app.integrations.ticket_12306.browser_manager import PlaywrightBrowserManager
-from app.integrations.ticket_12306.cookie_pool import CookiePool
 from app.journey_search_sessions.router import (
     router as journey_search_sessions_router,
 )
@@ -48,7 +45,6 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     )
     app.state.task_registry = create_task_registry()
     app.state.system_settings_provider = build_system_settings_provider(app.state.db_pool)
-    app.state.ticket_browser_manager = PlaywrightBrowserManager()
 
     http_client = httpx.AsyncClient()
     app.state.http_client = http_client
@@ -56,14 +52,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         settings.redis_url,
         decode_responses=True,
     )
-    await redis_client.ping()
+    await cast(Awaitable[bool], redis_client.ping())
     app.state.redis_client = redis_client
-
-    cookie_pool = CookiePool(
-        redis_client=redis_client,
-        browser_manager=app.state.ticket_browser_manager,
-    )
-    app.state.cookie_pool = cookie_pool
 
     app.state.crawler_client = Live12306CrawlerClient(http_client=http_client)
     app.state.geo_client = DynamicGeoClient(
@@ -71,42 +61,11 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         http_client=http_client,
     )
 
-    refresh_task = asyncio.create_task(
-        _cookie_pool_refresh_loop(cookie_pool)
-    )
-
     yield
 
-    refresh_task.cancel()
     await app.state.db_pool.close()
-    await app.state.ticket_browser_manager.close()
     await http_client.aclose()
     await redis_client.aclose()
-
-
-_COOKIE_POOL_REFRESH_INTERVAL_SECONDS = 20 * 60  # 20 minutes
-
-
-logger = logging.getLogger(__name__)
-
-
-async def _cookie_pool_refresh_loop(pool: CookiePool) -> None:
-    """Periodically warm up empty cookie pool slots."""
-    # Initial warmup on startup
-    try:
-        refreshed = await pool.refresh_pool()
-        logger.info("Cookie pool initial warmup: %d slots refreshed", refreshed)
-    except Exception as exc:
-        logger.warning("Cookie pool initial warmup failed: %s", exc)
-
-    while True:
-        await asyncio.sleep(_COOKIE_POOL_REFRESH_INTERVAL_SECONDS)
-        try:
-            await pool.refresh_pool()
-        except asyncio.CancelledError:
-            break
-        except Exception as exc:
-            logger.warning("Cookie pool refresh failed: %s", exc)
 
 
 def create_app() -> FastAPI:

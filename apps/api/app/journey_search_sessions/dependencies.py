@@ -1,12 +1,11 @@
 from __future__ import annotations
 
 import logging
-from typing import Annotated, Protocol
+from typing import Annotated, Protocol, cast
 
 from fastapi import Depends, Request
 from redis.asyncio import Redis
 
-from app.integrations.ticket_12306.browser_manager import PlaywrightBrowserManager
 from app.integrations.ticket_12306.client import build_ticket_client
 from app.integrations.ticket_12306.service import Ticket12306Service
 from app.journey_search_sessions.service import JourneySearchSessionService
@@ -26,7 +25,7 @@ class _IntSettingsProvider(Protocol):
 
 
 def get_redis_client(request: Request) -> Redis:
-    return request.app.state.redis_client  # type: ignore[no-any-return]
+    return cast(Redis, request.app.state.redis_client)
 
 
 async def get_ticket_service(
@@ -34,14 +33,8 @@ async def get_ticket_service(
     redis_client: Annotated[Redis, Depends(get_redis_client)],
     pool: DbPool,
 ) -> Ticket12306Service:
-    browser_manager: PlaywrightBrowserManager = request.app.state.ticket_browser_manager
     settings_provider = request.app.state.system_settings_provider
-    ticket_client = await build_ticket_client(
-        settings_provider=settings_provider,
-        browser_manager=browser_manager,
-        redis_client=redis_client,
-        cookie_pool=getattr(request.app.state, "cookie_pool", None),
-    )
+    ticket_client = await build_ticket_client(settings_provider=settings_provider)
     cache_ttl_seconds = await _get_ticket_cache_ttl_seconds(settings_provider)
     return Ticket12306Service(
         redis_client=redis_client,

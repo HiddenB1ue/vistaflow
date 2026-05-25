@@ -6,10 +6,12 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 from app.integrations.ticket_12306.client import (
-    PlaywrightTicketClient,
-    TicketClientConfig,
+    INIT_URL,
+    ScraplingTicketClient,
+    TicketLegRequest,
     build_ticket_client,
 )
+from app.integrations.ticket_12306.parser import LEFT_TICKET_QUERY_URL
 
 RAW_RESULT = "|".join(
     [
@@ -58,191 +60,164 @@ RAW_RESULT = "|".join(
 
 
 @dataclass
-class FakeResponse:
-    payload: dict[str, Any]
+class FakePage:
+    status: int
+    payload: Any = None
+    headers: dict[str, str] | None = None
+    json_error: Exception | None = None
 
-    async def json(self) -> dict[str, Any]:
+    def json(self) -> Any:
+        if self.json_error is not None:
+            raise self.json_error
         return self.payload
 
 
-class FakeResponseInfo:
-    def __init__(self, payload: dict[str, Any]) -> None:
-        self.value: asyncio.Future[FakeResponse] = asyncio.Future()
-        self.value.set_result(FakeResponse(payload))
+class FakeSession:
+    def __init__(self, factory: FakeSessionFactory, session_id: int) -> None:
+        self._factory = factory
+        self.session_id = session_id
+        self.init_calls = 0
+        self.query_calls: list[dict[str, Any]] = []
 
+    async def __aenter__(self) -> FakeSession:
+        return self
 
-class FakeExpectResponse:
-    def __init__(self, payload: dict[str, Any]) -> None:
-        self._payload = payload
-
-    async def __aenter__(self) -> FakeResponseInfo:
-        return FakeResponseInfo(self._payload)
-
-    async def __aexit__(self, exc_type, exc, tb) -> None:
+    async def __aexit__(self, exc_type: object, exc: object, tb: object) -> None:
         return None
 
+    async def get(self, url: str, **kwargs: Any) -> FakePage:
+        await asyncio.sleep(0)
+        if url == INIT_URL:
+            self.init_calls += 1
+            return FakePage(
+                status=200,
+                headers={"set-cookie": f"JSESSIONID=session-{self.session_id}"},
+            )
+        if url != LEFT_TICKET_QUERY_URL:
+            raise AssertionError(f"unexpected url: {url}")
 
-class FakeLocator:
+        self.query_calls.append(kwargs)
+        params = kwargs["params"]
+        key = (
+            params["leftTicketDTO.train_date"],
+            params["leftTicketDTO.from_station"],
+            params["leftTicketDTO.to_station"],
+        )
+        response = self._factory.responses.get(key)
+        if isinstance(response, Exception):
+            raise response
+        if response is not None:
+            return response
+        return FakePage(status=200, payload={"status": True, "data": {"result": [RAW_RESULT]}})
+
+
+class FakeSessionFactory:
     def __init__(self) -> None:
-        self.filled_values: list[str] = []
-        self.click_count = 0
+        self.sessions: list[FakeSession] = []
+        self.responses: dict[tuple[str, str, str], FakePage | Exception] = {}
 
-    async def fill(self, value: str) -> None:
-        self.filled_values.append(value)
-
-    async def click(self) -> None:
-        self.click_count += 1
-
-
-class FakePage:
-    def __init__(self, payload: dict[str, Any]) -> None:
-        self._payload = payload
-        self.locators: dict[str, FakeLocator] = {}
-        self.goto_calls: list[tuple[str, str, int]] = []
-        self.wait_for_load_state_calls: list[tuple[str, int]] = []
-        self.evaluate_calls: list[dict[str, Any]] = []
-        self.timeout_ms: int | None = None
-        self.navigation_timeout_ms: int | None = None
-
-    def set_default_timeout(self, timeout_ms: int) -> None:
-        self.timeout_ms = timeout_ms
-
-    def set_default_navigation_timeout(self, timeout_ms: int) -> None:
-        self.navigation_timeout_ms = timeout_ms
-
-    async def goto(self, url: str, *, wait_until: str, timeout: int) -> None:
-        self.goto_calls.append((url, wait_until, timeout))
-
-    async def wait_for_load_state(self, state: str, *, timeout: int) -> None:
-        self.wait_for_load_state_calls.append((state, timeout))
-
-    def locator(self, selector: str) -> FakeLocator:
-        locator = self.locators.get(selector)
-        if locator is None:
-            locator = FakeLocator()
-            self.locators[selector] = locator
-        return locator
-
-    async def evaluate(self, expression: str, arg: dict[str, Any]) -> None:
-        self.evaluate_calls.append({"expression": expression, "arg": arg})
-
-    def expect_response(self, predicate, *, timeout: int) -> FakeExpectResponse:
-        return FakeExpectResponse(self._payload)
+    def __call__(self) -> FakeSession:
+        session = FakeSession(self, len(self.sessions))
+        self.sessions.append(session)
+        return session
 
 
-class FakeContext:
-    def __init__(self, payload: dict[str, Any]) -> None:
-        self.page = FakePage(payload)
-        self.closed = False
-
-    async def new_page(self) -> FakePage:
-        return self.page
-
-    async def close(self) -> None:
-        self.closed = True
-
-
-class FakeBrowser:
-    def __init__(self, payload: dict[str, Any]) -> None:
-        self.payload = payload
-        self.contexts: list[FakeContext] = []
-
-    async def new_context(self, **kwargs: Any) -> FakeContext:
-        context = FakeContext(self.payload)
-        self.contexts.append(context)
-        return context
-
-
-class FakeBrowserManager:
-    def __init__(self, payload: dict[str, Any]) -> None:
-        self.browser = FakeBrowser(payload)
-        self.calls = 0
-
-    async def get_browser(self) -> FakeBrowser:
-        self.calls += 1
-        return self.browser
-
-    async def run_with_browser(self, callback):
-        self.calls += 1
-        return await callback(self.browser)
-
-
-def _make_payload(result: list[Any]) -> dict[str, Any]:
-    return {"status": True, "data": {"result": result}}
+def _leg(index: int) -> TicketLegRequest:
+    return TicketLegRequest(
+        run_date="2026-04-28",
+        from_station=f"from-{index}",
+        to_station=f"to-{index}",
+        from_telecode=f"F{index}",
+        to_telecode=f"T{index}",
+    )
 
 
 def test_build_ticket_client_returns_none_when_setting_disabled() -> None:
     settings_provider = MagicMock()
     settings_provider.get_bool = AsyncMock(return_value=False)
-    browser_manager = MagicMock()
 
-    client = asyncio.run(build_ticket_client(settings_provider, browser_manager))
+    client = asyncio.run(build_ticket_client(settings_provider))
 
     assert client is None
     settings_provider.get_bool.assert_awaited_once_with("ticket_12306_enabled")
 
 
-def test_build_ticket_client_returns_playwright_client_when_setting_enabled() -> None:
+def test_build_ticket_client_returns_scrapling_client_when_setting_enabled() -> None:
     settings_provider = MagicMock()
     settings_provider.get_bool = AsyncMock(return_value=True)
-    browser_manager = MagicMock()
 
-    client = asyncio.run(build_ticket_client(settings_provider, browser_manager))
+    client = asyncio.run(build_ticket_client(settings_provider))
 
-    assert isinstance(client, PlaywrightTicketClient)
+    assert isinstance(client, ScraplingTicketClient)
     settings_provider.get_bool.assert_awaited_once_with("ticket_12306_enabled")
 
 
-def test_fetch_leg_builds_rows_from_queryg_payload() -> None:
-    payload = _make_payload([RAW_RESULT])
-    browser_manager = FakeBrowserManager(payload)
-    client = PlaywrightTicketClient(
-        browser_manager=browser_manager,
-        config=TicketClientConfig(timeout_ms=15_000),
-    )
+def test_worker_count_boundaries() -> None:
+    assert ScraplingTicketClient.calculate_worker_count(1) == 1
+    assert ScraplingTicketClient.calculate_worker_count(100) == 1
+    assert ScraplingTicketClient.calculate_worker_count(101) == 2
+    assert ScraplingTicketClient.calculate_worker_count(1000) == 10
+    assert ScraplingTicketClient.calculate_worker_count(1001) == 10
 
-    rows = asyncio.run(
-        client.fetch_leg("2026-04-28", "Beijing", "Shanghai", "BJP", "SHH")
-    )
 
+def test_fetch_legs_uses_worker_queue_and_reuses_worker_sessions() -> None:
+    factory = FakeSessionFactory()
+    client = ScraplingTicketClient(session_factory=factory, pause_seconds=0)
+    legs = [_leg(i) for i in range(101)]
+
+    results = asyncio.run(client.fetch_legs(legs))
+
+    assert len(results) == 101
+    assert len(factory.sessions) == 2
+    assert all(session.init_calls == 1 for session in factory.sessions)
+    assert sum(len(session.query_calls) for session in factory.sessions) == 101
+
+
+def test_fetch_legs_parses_query_rows_and_passes_cookie_header() -> None:
+    factory = FakeSessionFactory()
+    client = ScraplingTicketClient(session_factory=factory, pause_seconds=0)
+    leg = _leg(1)
+
+    results = asyncio.run(client.fetch_legs([leg]))
+
+    rows = results[leg.key]
     assert "240000G1010A" in rows
     assert "G1" in rows
-    seat_status, seat_prices = rows["240000G1010A"]
-    assert seat_status["wz"] == "5"
-    assert seat_prices["zy"] == 99.0
-    assert seat_prices["ze"] == 55.3
-
-    page = browser_manager.browser.contexts[0].page
-    assert page.locators["input#fromStationText"].filled_values == ["Beijing"]
-    assert page.locators["input#toStationText"].filled_values == ["Shanghai"]
-    assert page.locators["input#train_date"].filled_values == ["2026-04-28"]
-    assert page.locators["#query_ticket"].click_count == 1
-    assert browser_manager.browser.contexts[0].closed is True
+    query = factory.sessions[0].query_calls[0]
+    assert "JSESSIONID=session-0" in query["headers"]["Cookie"]
 
 
-def test_fetch_leg_returns_empty_on_invalid_payload() -> None:
-    browser_manager = FakeBrowserManager({"status": False, "data": {"result": [RAW_RESULT]}})
-    client = PlaywrightTicketClient(
-        browser_manager=browser_manager,
-        config=TicketClientConfig(),
+def test_fetch_legs_returns_empty_rows_for_failed_responses() -> None:
+    factory = FakeSessionFactory()
+    legs = [_leg(1), _leg(2), _leg(3)]
+    factory.responses[(legs[0].run_date, legs[0].from_telecode, legs[0].to_telecode)] = (
+        FakePage(status=302)
     )
-
-    rows = asyncio.run(
-        client.fetch_leg("2026-04-28", "Beijing", "Shanghai", "BJP", "SHH")
+    factory.responses[(legs[1].run_date, legs[1].from_telecode, legs[1].to_telecode)] = (
+        FakePage(status=200, json_error=ValueError("bad json"))
     )
-
-    assert rows == {}
-
-
-def test_fetch_leg_returns_empty_when_results_structure_is_invalid() -> None:
-    browser_manager = FakeBrowserManager({"status": True, "data": {"result": "bad"}})
-    client = PlaywrightTicketClient(
-        browser_manager=browser_manager,
-        config=TicketClientConfig(),
+    factory.responses[(legs[2].run_date, legs[2].from_telecode, legs[2].to_telecode)] = (
+        RuntimeError("network")
     )
+    client = ScraplingTicketClient(session_factory=factory, pause_seconds=0)
 
-    rows = asyncio.run(
-        client.fetch_leg("2026-04-28", "Beijing", "Shanghai", "BJP", "SHH")
-    )
+    results = asyncio.run(client.fetch_legs(legs))
 
-    assert rows == {}
+    assert results[legs[0].key] == {}
+    assert results[legs[1].key] == {}
+    assert results[legs[2].key] == {}
+
+
+def test_fetch_legs_invokes_per_leg_callback() -> None:
+    factory = FakeSessionFactory()
+    client = ScraplingTicketClient(session_factory=factory, pause_seconds=0)
+    legs = [_leg(1), _leg(2)]
+    completed: list[tuple[str, str, str]] = []
+
+    def on_leg_complete(leg: TicketLegRequest, rows: dict[str, Any]) -> None:
+        assert rows
+        completed.append(leg.key)
+
+    asyncio.run(client.fetch_legs(legs, on_leg_complete=on_leg_complete))
+
+    assert sorted(completed) == sorted(leg.key for leg in legs)

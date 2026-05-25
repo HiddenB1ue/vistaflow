@@ -1,11 +1,8 @@
 import type { JourneyViewPrefs } from '@/stores/uiStore';
-import type { Route, RouteList, TrainSegment } from '@/types/route';
+import type { Route, TrainSegment } from '@/types/route';
 import { isTransfer } from '@/types/route';
 import type { SearchParams } from '@/types/search';
 import { apiClient } from './api';
-import { mockRoutes } from './mock/routes.mock';
-
-const USE_MOCK = import.meta.env.VITE_USE_MOCK === 'true';
 
 export type JourneySortMode = 'duration' | 'departure' | 'price';
 export type JourneyDisplaySortMode = JourneySortMode;
@@ -26,7 +23,7 @@ export interface JourneyViewRequest {
 }
 
 export interface JourneyViewResult {
-  items: RouteList;
+  items: Route[];
   total: number;
   page: number;
   pageSize: number;
@@ -54,105 +51,8 @@ export interface JourneySearchSessionResult {
   viewResult: JourneyViewResult;
 }
 
-const mockSessions = new Map<string, RouteList>();
-
 function normalizeStationName(name: string): string {
   return name.endsWith('站') ? name.slice(0, -1) : name;
-}
-
-function getTrainTypes(route: RouteList[number]): string[] {
-  return route.segs
-    .flatMap((segment) =>
-      'transfer' in segment ? [] : [segment.no.trim().toUpperCase().slice(0, 1)],
-    )
-    .filter(Boolean);
-}
-
-function getTrainCodes(route: RouteList[number]): string[] {
-  return route.segs.flatMap((segment) =>
-    'transfer' in segment ? [] : [segment.no.trim().toUpperCase()],
-  );
-}
-
-function getTransferCount(route: RouteList[number]): number {
-  return route.segs.filter((segment) => 'transfer' in segment).length;
-}
-
-function routeDepartureKey(route: RouteList[number]): string {
-  return `${route.departureDate}T${route.departureTime}`;
-}
-
-function isDirectRoute(route: RouteList[number]): boolean {
-  return getTransferCount(route) === 0;
-}
-
-function buildAvailableFacets(routes: RouteList): JourneyAvailableFacets {
-  return {
-    transferCounts: [...new Set(routes.map((route) => getTransferCount(route)))].sort(
-      (a, b) => a - b,
-    ),
-    trainTypes: [...new Set(routes.flatMap((route) => getTrainTypes(route)))].sort(),
-  };
-}
-
-function applyMockView(routes: RouteList, request: JourneyViewRequest): JourneyViewResult {
-  const availableFacets = buildAvailableFacets(routes);
-  let nextRoutes = [...routes];
-
-  if (request.transfer_counts.length > 0) {
-    const allowedTransferCounts = new Set(request.transfer_counts);
-    nextRoutes = nextRoutes.filter((route) =>
-      allowedTransferCounts.has(getTransferCount(route)),
-    );
-  }
-
-  if (request.exclude_direct_train_codes_in_transfer_routes) {
-    const directCodes = new Set(
-      routes.flatMap((route) => (isDirectRoute(route) ? getTrainCodes(route) : [])),
-    );
-    nextRoutes = nextRoutes.filter(
-      (route) =>
-        isDirectRoute(route) ||
-        getTrainCodes(route).every((code) => !directCodes.has(code)),
-    );
-  }
-
-  if (request.display_train_types.length > 0) {
-    const allowedTypes = new Set(
-      request.display_train_types.map((item) => item.trim().toUpperCase()),
-    );
-    nextRoutes = nextRoutes.filter((route) =>
-      getTrainTypes(route).every((trainType) => allowedTypes.has(trainType)),
-    );
-  }
-
-  if (request.sort_by === 'departure') {
-    nextRoutes.sort((a, b) => routeDepartureKey(a).localeCompare(routeDepartureKey(b)));
-  } else {
-    nextRoutes.sort((a, b) => a.durationMinutes - b.durationMinutes);
-  }
-
-  const total = nextRoutes.length;
-  const start = (request.page - 1) * request.page_size;
-  const items = nextRoutes.slice(start, start + request.page_size);
-  return {
-    items,
-    total,
-    page: request.page,
-    pageSize: request.page_size,
-    totalPages: total === 0 ? 0 : Math.ceil(total / request.page_size),
-    appliedView: {
-      sortBy: request.sort_by,
-      excludeDirectTrainCodesInTransferRoutes:
-        request.exclude_direct_train_codes_in_transfer_routes,
-      displayTrainTypes: [...request.display_train_types],
-      transferCounts: [...request.transfer_counts].sort((a, b) => a - b),
-      page: request.page,
-      pageSize: request.page_size,
-      includeTickets: request.include_tickets,
-    },
-    availableFacets,
-  };
 }
 
 export function buildJourneyViewRequest(
@@ -188,22 +88,6 @@ export async function createJourneySearchSession(
     20,
   );
 
-  if (USE_MOCK) {
-    await new Promise((resolve) => setTimeout(resolve, 200));
-    const searchId = `mock-${Date.now()}`;
-    mockSessions.set(searchId, mockRoutes);
-    return {
-      searchId,
-      searchSummary: {
-        fromStation: params.origin,
-        toStation: params.destination,
-        date: params.date,
-        totalCandidates: mockRoutes.length,
-      },
-      viewResult: applyMockView(mockRoutes, initialView),
-    };
-  }
-
   const { data } = await apiClient.post<{ data: JourneySearchSessionResult }>(
     '/journey-search-sessions',
     {
@@ -236,11 +120,6 @@ export async function fetchJourneySearchSessionView(
   searchId: string,
   request: JourneyViewRequest,
 ): Promise<JourneyViewResult> {
-  if (USE_MOCK) {
-    await new Promise((resolve) => setTimeout(resolve, 100));
-    return applyMockView(mockSessions.get(searchId) ?? mockRoutes, request);
-  }
-
   const { data } = await apiClient.post<{ data: JourneyViewResult }>(
     `/journey-search-sessions/${encodeURIComponent(searchId)}/view`,
     request,
@@ -248,37 +127,10 @@ export async function fetchJourneySearchSessionView(
   return data.data;
 }
 
-// ---------------------------------------------------------------------------
-// Route stops with geo — for map display
-// ---------------------------------------------------------------------------
-
 export interface RouteStopGeo {
   name: string;
   lng: number;
   lat: number;
-}
-
-function collectMockStopGeos(route: Route): RouteStopGeo[] {
-  const stops: RouteStopGeo[] = [];
-  const seen = new Set<string>();
-
-  const add = (name: string, lng: number, lat: number) => {
-    if (seen.has(name)) return;
-    seen.add(name);
-    if (lng === 0 && lat === 0) return;
-    stops.push({ name, lng, lat });
-  };
-
-  for (const seg of route.segs) {
-    if (isTransfer(seg)) continue;
-    add(seg.origin.name, seg.origin.lng, seg.origin.lat);
-    for (const stop of seg.stops) {
-      add(stop.station.name, stop.station.lng, stop.station.lat);
-    }
-    add(seg.destination.name, seg.destination.lng, seg.destination.lat);
-  }
-
-  return stops;
 }
 
 async function fetchSegmentStops(
@@ -307,11 +159,6 @@ async function fetchSegmentStops(
 }
 
 export async function fetchRouteStopsGeo(route: Route): Promise<RouteStopGeo[]> {
-  if (USE_MOCK) {
-    await new Promise((resolve) => setTimeout(resolve, 50));
-    return collectMockStopGeos(route);
-  }
-
   const trainSegs = route.segs.filter(
     (s): s is TrainSegment => !isTransfer(s),
   );
@@ -333,7 +180,7 @@ export async function fetchRouteStopsGeo(route: Route): Promise<RouteStopGeo[]> 
         }
       }
     } catch {
-      // Skip if stops fetch fails for a segment
+      // Skip if stops fetch fails for a segment.
     }
   }
 

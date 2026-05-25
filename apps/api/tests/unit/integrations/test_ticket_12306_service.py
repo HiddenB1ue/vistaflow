@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 import json
-from typing import Any
+from typing import Any, cast
 from unittest.mock import AsyncMock
 
 import pytest
 
-from app.integrations.ticket_12306.browser_manager import PlaywrightUnavailableError
+from app.integrations.ticket_12306.client import TicketLegRequest
 from app.integrations.ticket_12306.service import Ticket12306Service
 from app.journey_search_sessions.schemas import (
     CachedRouteCandidate,
@@ -17,12 +17,9 @@ from app.journey_search_sessions.schemas import (
     price_map_key,
 )
 
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
 
-def _station(name: str, code: str = "") -> RouteStationResponse:
-    return RouteStationResponse(name=name, code=code, city="", lng=0.0, lat=0.0)
+def _station(name: str) -> RouteStationResponse:
+    return RouteStationResponse(name=name, code="", city="", lng=0.0, lat=0.0)
 
 
 def _train_seg(
@@ -70,42 +67,63 @@ def _candidate(
 
 
 class FakeRedis:
-    """Minimal async Redis stub for testing."""
-
     def __init__(self) -> None:
-        self._store: dict[str, str] = {}
+        self.store: dict[str, str] = {}
+        self.ttls: dict[str, int] = {}
 
     async def mget(self, keys: list[str]) -> list[str | None]:
-        return [self._store.get(k) for k in keys]
+        return [self.store.get(k) for k in keys]
 
     async def setex(self, key: str, ttl: int, value: str) -> bool:
-        self._store[key] = value
+        self.store[key] = value
+        self.ttls[key] = ttl
         return True
-
-    async def get(self, key: str) -> str | None:
-        return self._store.get(key)
 
 
 class FakeStationRepo:
-    """Stub that maps station names to telecodes."""
-
     def __init__(self, telecodes: dict[str, str]) -> None:
         self._telecodes = telecodes
 
     async def get_telecodes_by_names(self, names: set[str]) -> dict[str, str]:
-        return {n: self._telecodes[n] for n in names if n in self._telecodes}
+        return {name: self._telecodes[name] for name in names if name in self._telecodes}
 
 
-def _make_fetch_leg_rows(
+class FakeBatchTicketClient:
+    def __init__(
+        self,
+        *,
+        default_rows: dict[str, Any] | None = None,
+        rows_by_leg: dict[tuple[str, str, str], dict[str, Any]] | None = None,
+    ) -> None:
+        self.default_rows = default_rows or {}
+        self.rows_by_leg = rows_by_leg or {}
+        self.calls: list[list[TicketLegRequest]] = []
+
+    async def fetch_legs(
+        self,
+        legs: list[TicketLegRequest],
+        *,
+        on_leg_complete: Any = None,
+    ) -> dict[tuple[str, str, str], dict[str, Any]]:
+        self.calls.append(list(legs))
+        result: dict[tuple[str, str, str], dict[str, Any]] = {}
+        for leg in legs:
+            rows = self.rows_by_leg.get(leg.key, self.default_rows)
+            result[leg.key] = rows
+            if on_leg_complete is not None:
+                maybe = on_leg_complete(leg, rows)
+                if maybe is not None:
+                    await maybe
+        return result
+
+
+def _make_rows(
     train_no: str,
     stc: str,
     seat_status: dict[str, str] | None = None,
     seat_prices: dict[str, float] | None = None,
 ) -> dict[str, Any]:
-    """Build a rows dict as returned by fetch_leg."""
-    ss = seat_status or {"ze": "有", "zy": "有"}
-    sp = seat_prices or {"ze": 55.5, "zy": 99.0}
-    entry = (ss, sp)
+    entry = (seat_status or {"ze": "5", "zy": "2"}, seat_prices or {"ze": 55.5, "zy": 99.0})
     rows: dict[str, Any] = {}
     if train_no:
         rows[train_no] = entry
@@ -114,554 +132,200 @@ def _make_fetch_leg_rows(
     return rows
 
 
-# ---------------------------------------------------------------------------
-# Tests
-# ---------------------------------------------------------------------------
-
-
-class TestPrefetchAllPrices:
-    """Unit tests for Ticket12306Service.prefetch_all_prices."""
-
-    @pytest.fixture
-    def redis(self) -> FakeRedis:
-        return FakeRedis()
-
-    @pytest.fixture
-    def station_repo(self) -> FakeStationRepo:
-        return FakeStationRepo({
-            "A": "BJP",
-            "B": "SHH",
-            "北京": "BJP",
-            "上海": "SHH",
-            "南京": "NJH",
-            "杭州": "HZH",
-        })
-
-    def _build_service(
-        self,
-        redis: FakeRedis,
-        station_repo: FakeStationRepo,
-        ticket_client: Any = None,
-    ) -> Ticket12306Service:
-        return Ticket12306Service(
-            redis_client=redis,  # type: ignore[arg-type]
-            station_repo=station_repo,  # type: ignore[arg-type]
-            ticket_client=ticket_client,
-            cache_ttl_seconds=60,
-            failure_ttl_seconds=10,
-            retry_initial_delay_seconds=0.0,
-            retry_max_delay_seconds=0.0,
-        )
-
-    # --- Req 1.4: ticket_client is None → return empty dict ---
-    async def test_returns_empty_when_no_ticket_client(
-        self, redis: FakeRedis, station_repo: FakeStationRepo
-    ) -> None:
-        service = self._build_service(redis, station_repo, ticket_client=None)
-        candidates = [_candidate([_train_seg("T1", "G1", "北京", "上海")])]
-        result = await service.prefetch_all_prices(
-            run_date="2025-01-01", candidates=candidates
-        )
-        assert result == {}
-
-    # --- Basic success path ---
-    async def test_basic_prefetch_returns_price_map(
-        self, redis: FakeRedis, station_repo: FakeStationRepo
-    ) -> None:
-        mock_client = AsyncMock()
-        mock_client.fetch_leg.return_value = _make_fetch_leg_rows("T1", "G1")
-
-        service = self._build_service(redis, station_repo, ticket_client=mock_client)
-        candidates = [_candidate([_train_seg("T1", "G1", "北京", "上海")])]
-
-        result = await service.prefetch_all_prices(
-            run_date="2025-01-01", candidates=candidates
-        )
-
-        key = price_map_key("T1", "北京", "上海")
-        assert key in result
-        entry = result[key]
-        assert isinstance(entry, PriceCacheEntry)
-        assert entry.failed is False
-        assert entry.min_price is not None
-        assert len(entry.seats) > 0
-
-    # --- Req 1.3: Leg deduplication ---
-    async def test_deduplicates_legs(
-        self, redis: FakeRedis, station_repo: FakeStationRepo
-    ) -> None:
-        mock_client = AsyncMock()
-        mock_client.fetch_leg.return_value = _make_fetch_leg_rows("T1", "G1")
-
-        service = self._build_service(redis, station_repo, ticket_client=mock_client)
-        # Two candidates with same leg (北京→上海) but different trains
-        seg1 = _train_seg("T1", "G1", "北京", "上海")
-        seg2 = _train_seg("T2", "G2", "北京", "上海")
-        # Add T2 to the fetch_leg return
-        rows = _make_fetch_leg_rows("T1", "G1")
-        rows["T2"] = rows["T1"]
-        rows["G2"] = rows["T1"]
-        mock_client.fetch_leg.return_value = rows
-
-        candidates = [_candidate([seg1], "c1"), _candidate([seg2], "c2")]
-        await service.prefetch_all_prices(
-            run_date="2025-01-01", candidates=candidates
-        )
-
-        # Only one fetch_leg call since both segments share the same leg
-        assert mock_client.fetch_leg.call_count == 1
-
-    async def test_segment_departure_date_controls_prefetch_date(
-        self, redis: FakeRedis, station_repo: FakeStationRepo
-    ) -> None:
-        mock_client = AsyncMock()
-        mock_client.fetch_leg.return_value = _make_fetch_leg_rows("T1", "G1")
-
-        service = self._build_service(redis, station_repo, ticket_client=mock_client)
-        candidates = [
-            _candidate([
-                _train_seg(
-                    "T1",
-                    "G1",
-                    "A",
-                    "B",
-                    departure_date="2025-01-02",
-                )
-            ])
-        ]
-
-        await service.prefetch_all_prices(
-            run_date="2025-01-01", candidates=candidates
-        )
-
-        mock_client.fetch_leg.assert_awaited_once()
-        assert mock_client.fetch_leg.await_args.args[0] == "2025-01-02"
-        cache_key = "journey_search:ticket_segment:v3:2025-01-02:A:B"
-        assert cache_key in redis._store
-
-    # --- Req 1.5: Transient failure resilience ---
-    async def test_transient_leg_failure_retries_until_success(
-        self, redis: FakeRedis, station_repo: FakeStationRepo
-    ) -> None:
-        mock_client = AsyncMock()
-        attempts: dict[str, int] = {}
-
-        # Use side_effect function to control which leg fails based on args
-        async def _fetch_leg(
-            run_date: str,
-            from_station: str,
-            to_station: str,
-            from_code: str,
-            to_code: str,
-        ) -> dict[str, Any]:
-            attempts[to_station] = attempts.get(to_station, 0) + 1
-            if to_code == "SHH":
-                return _make_fetch_leg_rows("T1", "G1")
-            if attempts[to_station] == 1:
-                raise Exception("network error")
-            return _make_fetch_leg_rows("T2", "G2")
-
-        mock_client.fetch_leg.side_effect = _fetch_leg
-
-        service = self._build_service(redis, station_repo, ticket_client=mock_client)
-        seg1 = _train_seg("T1", "G1", "北京", "上海")
-        seg2 = _train_seg("T2", "G2", "北京", "南京")
-
-        candidates = [_candidate([seg1], "c1"), _candidate([seg2], "c2")]
-        result = await service.prefetch_all_prices(
-            run_date="2025-01-01", candidates=candidates
-        )
-
-        # First segment should succeed
-        key1 = price_map_key("T1", "北京", "上海")
-        assert key1 in result
-        assert result[key1].failed is False
-
-        # Second segment should succeed after one retry
-        key2 = price_map_key("T2", "北京", "南京")
-        assert key2 in result
-        assert result[key2].failed is False
-        assert attempts[seg2.destination.name] == 2
-
-    # --- Req 3.1, 3.2: Cache hit → no HTTP call ---
-    async def test_cache_hit_skips_fetch(
-        self, redis: FakeRedis, station_repo: FakeStationRepo
-    ) -> None:
-        mock_client = AsyncMock()
-        service = self._build_service(redis, station_repo, ticket_client=mock_client)
-
-        # Pre-populate Redis cache
-        cache_key = "journey_search:ticket_segment:v3:2025-01-01:北京:上海"
-        cache_payload = {
-            "T1": {
-                "seats": [
-                    ["ze", "有", 55.5, 1]
-                ],
-                "min_price": 55.5,
-            },
-        }
-        redis._store[cache_key] = json.dumps(cache_payload)
-
-        candidates = [_candidate([_train_seg("T1", "G1", "北京", "上海")])]
-        result = await service.prefetch_all_prices(
-            run_date="2025-01-01", candidates=candidates
-        )
-
-        # Should not call fetch_leg since cache hit
-        mock_client.fetch_leg.assert_not_called()
-
-        key = price_map_key("T1", "北京", "上海")
-        assert key in result
-        assert result[key].failed is False
-        assert result[key].min_price == 55.5
-
-    # --- Req 3.3: Cache miss + success → result written to cache ---
-    async def test_cache_miss_stores_result(
-        self, redis: FakeRedis, station_repo: FakeStationRepo
-    ) -> None:
-        mock_client = AsyncMock()
-        mock_client.fetch_leg.return_value = _make_fetch_leg_rows("T1", "G1")
-
-        service = self._build_service(redis, station_repo, ticket_client=mock_client)
-        candidates = [_candidate([_train_seg("T1", "G1", "北京", "上海")])]
-
-        await service.prefetch_all_prices(
-            run_date="2025-01-01", candidates=candidates
-        )
-
-        cache_key = "journey_search:ticket_segment:v3:2025-01-01:北京:上海"
-        raw = redis._store.get(cache_key)
-        assert raw is not None
-        payload = json.loads(raw)
-        assert payload["T1"]["seats"] == [["zy", "有", 99.0, 1], ["ze", "有", 55.5, 1]]
-        assert payload["T1"]["min_price"] == 55.5
-
-    # --- Req 3.4: Cache miss + transient failure → retry then cache result ---
-    async def test_cache_miss_transient_failure_retries_and_stores_result(
-        self, redis: FakeRedis, station_repo: FakeStationRepo
-    ) -> None:
-        mock_client = AsyncMock()
-        mock_client.fetch_leg.side_effect = [
-            Exception("timeout"),
-            _make_fetch_leg_rows("T1", "G1"),
-        ]
-
-        service = self._build_service(redis, station_repo, ticket_client=mock_client)
-        candidates = [_candidate([_train_seg("T1", "G1", "北京", "上海")])]
-
-        result = await service.prefetch_all_prices(
-            run_date="2025-01-01", candidates=candidates
-        )
-
-        cache_key = "journey_search:ticket_segment:v3:2025-01-01:北京:上海"
-        raw = redis._store.get(cache_key)
-        assert raw is not None
-        assert raw != ""
-
-        key = price_map_key("T1", "北京", "上海")
-        assert result[key].failed is False
-        assert mock_client.fetch_leg.await_count == 2
-
-    async def test_browser_init_error_bubbles_up(
-        self, redis: FakeRedis, station_repo: FakeStationRepo
-    ) -> None:
-        mock_client = AsyncMock()
-        mock_client.fetch_leg.side_effect = PlaywrightUnavailableError(
-            "missing chromium"
-        )
-
-        service = self._build_service(redis, station_repo, ticket_client=mock_client)
-        candidates = [_candidate([_train_seg("T1", "G1", "北京", "上海")])]
-
-        with pytest.raises(PlaywrightUnavailableError, match="missing chromium"):
-            await service.prefetch_all_prices(
-                run_date="2025-01-01", candidates=candidates
-            )
-
-    # --- Req 2.2: Default max concurrency is 2 ---
-    async def test_default_max_concurrency(
-        self, redis: FakeRedis, station_repo: FakeStationRepo
-    ) -> None:
-        mock_client = AsyncMock()
-        mock_client.fetch_leg.return_value = {}
-
-        service = self._build_service(redis, station_repo, ticket_client=mock_client)
-        # Just verify it runs without error with default concurrency
-        import inspect
-        sig = inspect.signature(service.prefetch_all_prices)
-        assert sig.parameters["max_concurrency"].default == 2
-
-    # --- Transfer segments are skipped ---
-    async def test_skips_transfer_segments(
-        self, redis: FakeRedis, station_repo: FakeStationRepo
-    ) -> None:
-        mock_client = AsyncMock()
-        mock_client.fetch_leg.return_value = _make_fetch_leg_rows("T1", "G1")
-
-        service = self._build_service(redis, station_repo, ticket_client=mock_client)
-        segs: list[CachedTrainSegment | RouteTransferSegmentResponse] = [
-            _train_seg("T1", "G1", "北京", "南京"),
-            RouteTransferSegmentResponse(transfer="南京"),
-            _train_seg("T2", "G2", "南京", "上海"),
-        ]
-        # Add T2 rows for the second leg
-        rows2 = _make_fetch_leg_rows("T2", "G2")
-        mock_client.fetch_leg.side_effect = [
-            _make_fetch_leg_rows("T1", "G1"),
-            rows2,
-        ]
-
-        candidates = [_candidate(segs)]
-        result = await service.prefetch_all_prices(
-            run_date="2025-01-01", candidates=candidates
-        )
-
-        # Should have entries for both train segments but not the transfer
-        key1 = price_map_key("T1", "北京", "南京")
-        key2 = price_map_key("T2", "南京", "上海")
-        assert key1 in result
-        assert key2 in result
-        assert len(result) == 2
-
-    # --- Empty candidates → empty result ---
-    async def test_empty_candidates_returns_empty(
-        self, redis: FakeRedis, station_repo: FakeStationRepo
-    ) -> None:
-        mock_client = AsyncMock()
-        service = self._build_service(redis, station_repo, ticket_client=mock_client)
-        result = await service.prefetch_all_prices(
-            run_date="2025-01-01", candidates=[]
-        )
-        assert result == {}
-
-    # --- PR2: leg-level full backfill ---
-    async def test_leg_fetch_writes_all_trains_in_response(
-        self, redis: FakeRedis, station_repo: FakeStationRepo
-    ) -> None:
-        """A single leg fetch should persist a Redis key per train_no in the response,
-        not just for the requested segment."""
-        mock_client = AsyncMock()
-        # Leg response carries 3 trains; we only request T1 in candidates.
-        rows = _make_fetch_leg_rows("T1", "G1")
-        rows["T2_LONGFORM"] = ({"ze": "有"}, {"ze": 70.0})
-        rows["G2"] = rows["T2_LONGFORM"]
-        rows["T3_LONGFORM"] = ({"ze": "12"}, {"ze": 80.0})
-        rows["G3"] = rows["T3_LONGFORM"]
-        mock_client.fetch_leg.return_value = rows
-
-        service = self._build_service(redis, station_repo, ticket_client=mock_client)
-        candidates = [_candidate([_train_seg("T1", "G1", "北京", "上海")])]
-
-        await service.prefetch_all_prices(
-            run_date="2025-01-01", candidates=candidates
-        )
-
-        # All three trains must have v3 cache entries written.
-        key = "journey_search:ticket_segment:v3:2025-01-01:北京:上海"
-        raw = redis._store.get(key)
-        assert raw is not None
-        payload = json.loads(raw)
-        for train_no in ("T1", "T2_LONGFORM", "T3_LONGFORM"):
-            assert train_no in payload
-
-    async def test_leg_response_reused_for_sibling_segment(
-        self, redis: FakeRedis, station_repo: FakeStationRepo
-    ) -> None:
-        """If leg backfill from one search wrote T2's data, a later search asking only
-        about T2 on the same leg/date must hit cache (no fetch_leg call)."""
-        mock_client = AsyncMock()
-        rows = _make_fetch_leg_rows("T1", "G1")
-        rows["T2_LONGFORM"] = ({"ze": "有"}, {"ze": 70.0})
-        rows["G2"] = rows["T2_LONGFORM"]
-        mock_client.fetch_leg.return_value = rows
-
-        service = self._build_service(redis, station_repo, ticket_client=mock_client)
-        # First search asks T1; backfill should also persist T2.
-        await service.prefetch_all_prices(
-            run_date="2025-01-01",
-            candidates=[_candidate([_train_seg("T1", "G1", "北京", "上海")])],
-        )
-        assert mock_client.fetch_leg.await_count == 1
-
-        # Second search asks T2 — must be served entirely from cache.
-        result = await service.prefetch_all_prices(
-            run_date="2025-01-01",
-            candidates=[
-                _candidate(
-                    [_train_seg("T2_LONGFORM", "G2", "北京", "上海")], "c2"
-                )
-            ],
-        )
-        assert mock_client.fetch_leg.await_count == 1  # unchanged
-        key = price_map_key("T2_LONGFORM", "北京", "上海")
-        assert key in result
-        assert result[key].failed is False
-        assert result[key].min_price == 70.0
-
-    async def test_extract_train_nos_picks_long_key_per_row(self) -> None:
-        """Internal: the ``id``-grouped extractor returns the canonical long-form
-        train_no when both train_no and station_train_code keys point at the
-        same row tuple."""
-        row_a = ({"ze": "有"}, {"ze": 1.0})
-        row_b = ({"ze": "12"}, {"ze": 2.0})
-        rows = {
-            "240000T1010A": row_a,
-            "G1": row_a,
-            "240000T2010A": row_b,
-            "K9": row_b,
-        }
-        train_nos = sorted(Ticket12306Service._extract_train_nos_from_rows(rows))
-        assert train_nos == ["240000T1010A", "240000T2010A"]
-
-    # --- station_train_code fallback matching ---
-    async def test_matches_by_station_train_code_fallback(
-        self, redis: FakeRedis, station_repo: FakeStationRepo
-    ) -> None:
-        mock_client = AsyncMock()
-        # Only return data keyed by station_train_code, not train_no
-        mock_client.fetch_leg.return_value = {"G1": ({"ze": "有"}, {"ze": 55.5})}
-
-        service = self._build_service(redis, station_repo, ticket_client=mock_client)
-        candidates = [_candidate([_train_seg("T1", "G1", "北京", "上海")])]
-
-        result = await service.prefetch_all_prices(
-            run_date="2025-01-01", candidates=candidates
-        )
-
-        key = price_map_key("T1", "北京", "上海")
-        assert key in result
-        assert result[key].matched_by == "station_train_code"
-        assert result[key].failed is False
-
-
-class TestOnLegCompleteCallback:
-    """Unit tests for the on_leg_complete callback in prefetch_all_prices."""
-
-    @pytest.fixture
-    def redis(self) -> FakeRedis:
-        return FakeRedis()
-
-    @pytest.fixture
-    def station_repo(self) -> FakeStationRepo:
-        return FakeStationRepo({
-            "北京": "BJP",
-            "上海": "SHH",
-            "南京": "NJH",
-        })
-
-    def _build_service(
-        self,
-        redis: FakeRedis,
-        station_repo: FakeStationRepo,
-        ticket_client: Any = None,
-    ) -> Ticket12306Service:
-        return Ticket12306Service(
-            redis_client=redis,  # type: ignore[arg-type]
-            station_repo=station_repo,  # type: ignore[arg-type]
-            ticket_client=ticket_client,
-            cache_ttl_seconds=60,
-            failure_ttl_seconds=10,
-            retry_initial_delay_seconds=0.0,
-            retry_max_delay_seconds=0.0,
-        )
-
-    async def test_callback_invoked_for_fetched_leg(
-        self, redis: FakeRedis, station_repo: FakeStationRepo
-    ) -> None:
-        """on_leg_complete is invoked after a leg is fetched."""
-        mock_client = AsyncMock()
-        mock_client.fetch_leg.return_value = _make_fetch_leg_rows("T1", "G1")
-
-        service = self._build_service(redis, station_repo, ticket_client=mock_client)
-        candidates = [_candidate([_train_seg("T1", "G1", "北京", "上海")])]
-
-        batches: list[dict[str, PriceCacheEntry]] = []
-        callback = AsyncMock(side_effect=lambda b: batches.append(b))
-
-        await service.prefetch_all_prices(
-            run_date="2025-01-01",
-            candidates=candidates,
-            on_leg_complete=callback,
-        )
-
-        assert len(batches) >= 1
-        key = price_map_key("T1", "北京", "上海")
-        # The key should appear in one of the batches
-        all_keys = {k for batch in batches for k in batch}
-        assert key in all_keys
-
-    async def test_callback_invoked_for_cached_leg(
-        self, redis: FakeRedis, station_repo: FakeStationRepo
-    ) -> None:
-        """on_leg_complete is invoked for legs already cached in Redis."""
-        # Pre-populate Redis cache with the correct encoded format
-        cache_key = "journey_search:ticket_segment:v3:2025-01-01:北京:上海"
-        cache_data = json.dumps({
-            "T1": {"seats": [["ze", "有", 55.5, 1]], "min_price": 55.5},
-            "G1": {"seats": [["ze", "有", 55.5, 1]], "min_price": 55.5},
-        })
-        redis._store[cache_key] = cache_data
-
-        # Need a ticket_client (even if unused) to avoid early return
-        mock_client = AsyncMock()
-        service = self._build_service(redis, station_repo, ticket_client=mock_client)
-        candidates = [_candidate([_train_seg("T1", "G1", "北京", "上海")])]
-
-        batches: list[dict[str, PriceCacheEntry]] = []
-        callback = AsyncMock(side_effect=lambda b: batches.append(b))
-
-        await service.prefetch_all_prices(
-            run_date="2025-01-01",
-            candidates=candidates,
-            on_leg_complete=callback,
-        )
-
-        assert len(batches) >= 1
-        key = price_map_key("T1", "北京", "上海")
-        all_keys = {k for batch in batches for k in batch}
-        assert key in all_keys
-
-    async def test_callback_receives_price_map_key_format(
-        self, redis: FakeRedis, station_repo: FakeStationRepo
-    ) -> None:
-        """Callback batch keys use price_map_key format (trainNo:from:to)."""
-        mock_client = AsyncMock()
-        mock_client.fetch_leg.return_value = _make_fetch_leg_rows("T1", "G1")
-
-        service = self._build_service(redis, station_repo, ticket_client=mock_client)
-        candidates = [_candidate([_train_seg("T1", "G1", "北京", "上海")])]
-
-        batches: list[dict[str, PriceCacheEntry]] = []
-        callback = AsyncMock(side_effect=lambda b: batches.append(b))
-
-        await service.prefetch_all_prices(
-            run_date="2025-01-01",
-            candidates=candidates,
-            on_leg_complete=callback,
-        )
-
-        all_keys = {k for batch in batches for k in batch}
-        expected_key = price_map_key("T1", "北京", "上海")
-        assert expected_key in all_keys
-        # Keys should be in "trainNo:fromStation:toStation" format
-        for key in all_keys:
-            assert key.count(":") == 2
-
-    async def test_callback_not_invoked_when_not_provided(
-        self, redis: FakeRedis, station_repo: FakeStationRepo
-    ) -> None:
-        """prefetch_all_prices works without on_leg_complete."""
-        mock_client = AsyncMock()
-        mock_client.fetch_leg.return_value = _make_fetch_leg_rows("T1", "G1")
-
-        service = self._build_service(redis, station_repo, ticket_client=mock_client)
-        candidates = [_candidate([_train_seg("T1", "G1", "北京", "上海")])]
-
-        # Should not raise
-        result = await service.prefetch_all_prices(
-            run_date="2025-01-01",
-            candidates=candidates,
-        )
-
-        key = price_map_key("T1", "北京", "上海")
-        assert key in result
+@pytest.fixture
+def redis() -> FakeRedis:
+    return FakeRedis()
+
+
+@pytest.fixture
+def station_repo() -> FakeStationRepo:
+    return FakeStationRepo({
+        "A": "AAA",
+        "B": "BBB",
+        "C": "CCC",
+    })
+
+
+def _build_service(
+    redis: FakeRedis,
+    station_repo: FakeStationRepo,
+    ticket_client: Any = None,
+) -> Ticket12306Service:
+    return Ticket12306Service(
+        redis_client=cast(Any, redis),
+        station_repo=cast(Any, station_repo),
+        ticket_client=ticket_client,
+        cache_ttl_seconds=60,
+        failure_ttl_seconds=10,
+    )
+
+
+async def test_returns_empty_when_no_ticket_client(
+    redis: FakeRedis,
+    station_repo: FakeStationRepo,
+) -> None:
+    service = _build_service(redis, station_repo, ticket_client=None)
+    candidates = [_candidate([_train_seg("T1", "G1", "A", "B")])]
+
+    result = await service.prefetch_all_prices(run_date="2025-01-01", candidates=candidates)
+
+    assert result == {}
+
+
+async def test_basic_prefetch_returns_price_map_and_uses_segment_departure_date(
+    redis: FakeRedis,
+    station_repo: FakeStationRepo,
+) -> None:
+    client = FakeBatchTicketClient(default_rows=_make_rows("T1", "G1"))
+    service = _build_service(redis, station_repo, ticket_client=client)
+    candidates = [_candidate([_train_seg("T1", "G1", "A", "B", "2025-01-02")])]
+
+    result = await service.prefetch_all_prices(run_date="2025-01-01", candidates=candidates)
+
+    key = price_map_key("T1", "A", "B")
+    assert result[key].failed is False
+    assert result[key].min_price == 55.5
+    assert client.calls[0][0].run_date == "2025-01-02"
+    assert client.calls[0][0].from_telecode == "AAA"
+    assert "journey_search:ticket_segment:v3:2025-01-02:A:B" in redis.store
+
+
+async def test_deduplicates_unique_leg_date_keys(
+    redis: FakeRedis,
+    station_repo: FakeStationRepo,
+) -> None:
+    rows = _make_rows("T1", "G1")
+    rows["T2"] = rows["T1"]
+    rows["G2"] = rows["T1"]
+    client = FakeBatchTicketClient(default_rows=rows)
+    service = _build_service(redis, station_repo, ticket_client=client)
+    candidates = [
+        _candidate([_train_seg("T1", "G1", "A", "B")], "c1"),
+        _candidate([_train_seg("T2", "G2", "A", "B")], "c2"),
+    ]
+
+    await service.prefetch_all_prices(run_date="2025-01-01", candidates=candidates)
+
+    assert len(client.calls) == 1
+    assert len(client.calls[0]) == 1
+
+
+async def test_cache_hit_skips_fetch(
+    redis: FakeRedis,
+    station_repo: FakeStationRepo,
+) -> None:
+    client = FakeBatchTicketClient(default_rows=_make_rows("T1", "G1"))
+    service = _build_service(redis, station_repo, ticket_client=client)
+    redis.store["journey_search:ticket_segment:v3:2025-01-01:A:B"] = json.dumps({
+        "T1": {"seats": [["ze", "5", 55.5, 1]], "min_price": 55.5},
+    })
+    candidates = [_candidate([_train_seg("T1", "G1", "A", "B")])]
+
+    result = await service.prefetch_all_prices(run_date="2025-01-01", candidates=candidates)
+
+    assert client.calls == []
+    assert result[price_map_key("T1", "A", "B")].failed is False
+
+
+async def test_cache_miss_stores_all_trains_from_leg_response(
+    redis: FakeRedis,
+    station_repo: FakeStationRepo,
+) -> None:
+    rows = _make_rows("T1", "G1")
+    rows["T2_LONGFORM"] = ({"ze": "8"}, {"ze": 70.0})
+    rows["G2"] = rows["T2_LONGFORM"]
+    client = FakeBatchTicketClient(default_rows=rows)
+    service = _build_service(redis, station_repo, ticket_client=client)
+    candidates = [_candidate([_train_seg("T1", "G1", "A", "B")])]
+
+    await service.prefetch_all_prices(run_date="2025-01-01", candidates=candidates)
+
+    raw = redis.store["journey_search:ticket_segment:v3:2025-01-01:A:B"]
+    payload = json.loads(raw)
+    assert "T1" in payload
+    assert "T2_LONGFORM" in payload
+
+
+async def test_empty_rows_write_failure_cache_and_return_failed_price(
+    redis: FakeRedis,
+    station_repo: FakeStationRepo,
+) -> None:
+    client = FakeBatchTicketClient(default_rows={})
+    service = _build_service(redis, station_repo, ticket_client=client)
+    candidates = [_candidate([_train_seg("T1", "G1", "A", "B")])]
+
+    result = await service.prefetch_all_prices(run_date="2025-01-01", candidates=candidates)
+
+    cache_key = "journey_search:ticket_segment:v3:2025-01-01:A:B"
+    assert redis.store[cache_key] == ""
+    assert redis.ttls[cache_key] == 10
+    assert result[price_map_key("T1", "A", "B")].failed is True
+
+
+async def test_transfer_segments_are_skipped(
+    redis: FakeRedis,
+    station_repo: FakeStationRepo,
+) -> None:
+    rows_by_leg = {
+        ("2025-01-01", "A", "C"): _make_rows("T1", "G1"),
+        ("2025-01-01", "C", "B"): _make_rows("T2", "G2"),
+    }
+    client = FakeBatchTicketClient(rows_by_leg=rows_by_leg)
+    service = _build_service(redis, station_repo, ticket_client=client)
+    candidates = [
+        _candidate([
+            _train_seg("T1", "G1", "A", "C"),
+            RouteTransferSegmentResponse(transfer="C"),
+            _train_seg("T2", "G2", "C", "B"),
+        ])
+    ]
+
+    result = await service.prefetch_all_prices(run_date="2025-01-01", candidates=candidates)
+
+    assert len(client.calls[0]) == 2
+    assert price_map_key("T1", "A", "C") in result
+    assert price_map_key("T2", "C", "B") in result
+    assert len(result) == 2
+
+
+async def test_matches_by_station_train_code_fallback(
+    redis: FakeRedis,
+    station_repo: FakeStationRepo,
+) -> None:
+    client = FakeBatchTicketClient(default_rows={"G1": ({"ze": "5"}, {"ze": 55.5})})
+    service = _build_service(redis, station_repo, ticket_client=client)
+    candidates = [_candidate([_train_seg("T1", "G1", "A", "B")])]
+
+    result = await service.prefetch_all_prices(run_date="2025-01-01", candidates=candidates)
+
+    entry = result[price_map_key("T1", "A", "B")]
+    assert entry.failed is False
+    assert entry.matched_by == "station_train_code"
+
+
+async def test_on_leg_complete_invoked_for_fetched_and_cached_legs(
+    redis: FakeRedis,
+    station_repo: FakeStationRepo,
+) -> None:
+    client = FakeBatchTicketClient(default_rows=_make_rows("T1", "G1"))
+    service = _build_service(redis, station_repo, ticket_client=client)
+    callback = AsyncMock()
+    candidates = [_candidate([_train_seg("T1", "G1", "A", "B")])]
+
+    await service.prefetch_all_prices(
+        run_date="2025-01-01",
+        candidates=candidates,
+        on_leg_complete=callback,
+    )
+    await service.prefetch_all_prices(
+        run_date="2025-01-01",
+        candidates=candidates,
+        on_leg_complete=callback,
+    )
+
+    assert callback.await_count == 2
+    batches = [call.args[0] for call in callback.await_args_list]
+    assert all(
+        isinstance(batch[price_map_key("T1", "A", "B")], PriceCacheEntry)
+        for batch in batches
+    )
